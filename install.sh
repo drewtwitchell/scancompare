@@ -73,33 +73,36 @@ if [[ -n "$HISTFILE" && -f "$HISTFILE" ]]; then
 fi
 
 echo "🎉 Installation complete."
-echo "🔁 Launching a new login shell so scancompare is available now..."
-echo ""
 
-# Manually export for this current shell to avoid command-not-found
+# Ensure ~/.local/bin/scancompare is executable
+chmod +x "$SCRIPT_PATH"
+
+# Export PATH for this current shell
 export PATH="$HOME/.local/bin:$PATH"
 
-# Detect correct login shell
-detect_login_shell() {
-  if command -v getent &>/dev/null; then
-    getent passwd "$USER" | cut -d: -f7
-  elif command -v dscl &>/dev/null; then
-    dscl . -read ~/ UserShell | awk '{print $2}'
-  elif [[ "$OS" == "Windows_NT" ]]; then
-    echo "$SHELL"
-  else
-    echo "$SHELL"
-  fi
-}
-
-LOGIN_SHELL="$(detect_login_shell)"
-
-if [[ -x "$LOGIN_SHELL" ]]; then
-  exec "$LOGIN_SHELL" -l
+# Confirm scancompare now works
+if command -v scancompare &>/dev/null; then
+  echo "✅ scancompare is now available. Try: scancompare --help"
 else
-  echo "⚠️ Could not detect a valid login shell."
-  echo "👉 Please run this manually:"
-  echo '  export PATH="$HOME/.local/bin:$PATH"'
-  echo "Then try: scancompare --help"
+  echo "⚠️ scancompare not found in current shell."
+
+  # Attempt to source shell config
+  if [[ -f "$HOME/.zshrc" ]]; then
+    echo "🔁 Sourcing ~/.zshrc..."
+    source "$HOME/.zshrc"
+  elif [[ -f "$HOME/.bashrc" ]]; then
+    echo "🔁 Sourcing ~/.bashrc..."
+    source "$HOME/.bashrc"
+  fi
+
+  # Recheck
+  if command -v scancompare &>/dev/null; then
+    echo "✅ scancompare is now available. Try: scancompare --help"
+  else
+    echo "❌ scancompare is still not in PATH."
+    echo "👉 Run this to fix temporarily:"
+    echo '   export PATH="$HOME/.local/bin:$PATH"'
+  fi
 fi
+
 
