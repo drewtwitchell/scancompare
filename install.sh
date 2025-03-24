@@ -13,19 +13,15 @@ function uninstall_scancompare() {
   [[ -f "$SCRIPT_PATH" ]] && rm -f "$SCRIPT_PATH" && echo "✅ Removed $SCRIPT_PATH"
 
   for file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-    if [[ -f "$file" ]]; then
-      sed -i.bak '/export PATH="\$HOME\/.local\/bin:\$PATH"/d' "$file"
-    fi
+    [[ -f "$file" ]] && sed -i.bak '/export PATH="\$HOME\/.local\/bin:\$PATH"/d' "$file"
   done
 
-  echo "🧽 Cleanup complete. Restart your terminal to fully refresh environment variables."
+  echo "🧽 Cleanup complete. Restart your terminal to fully refresh."
   exit 0
 }
 
-# Handle uninstall
-if [[ "$1" == "--uninstall" ]]; then
-  uninstall_scancompare
-fi
+# Uninstall support
+[[ "$1" == "--uninstall" ]] && uninstall_scancompare
 
 echo "📦 Installing/updating $SCRIPT_NAME into $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
@@ -43,7 +39,7 @@ if [[ -f "$SCRIPT_PATH" ]]; then
     rm "$TMP_FILE"
     exit 0
   else
-    echo "⬆️  Updating $SCRIPT_NAME from v$LOCAL_VERSION to v$REMOTE_VERSION"
+    echo "⬆️ Updating $SCRIPT_NAME from v$LOCAL_VERSION to v$REMOTE_VERSION"
   fi
 else
   echo "📥 Installing $SCRIPT_NAME v$REMOTE_VERSION"
@@ -51,40 +47,28 @@ fi
 
 mv "$TMP_FILE" "$SCRIPT_PATH"
 
-# Determine shell config
-detect_shell_rc() {
-  CURRENT_SHELL=$(basename "$SHELL")
-  if [[ "$CURRENT_SHELL" == "zsh" ]]; then
-    echo "$HOME/.zshrc"
-  elif [[ "$CURRENT_SHELL" == "bash" ]]; then
-    echo "$HOME/.bashrc"
-  elif [[ -f "$HOME/.profile" ]]; then
-    echo "$HOME/.profile"
-  else
-    echo ""
-  fi
-}
-
-# Update PATH if missing
+# Add to PATH if needed
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-  SHELL_RC=$(detect_shell_rc)
-  echo "🛠️  Adding $INSTALL_DIR to your PATH..."
-
-  if [[ -n "$SHELL_RC" ]]; then
-    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC"
-    echo "✅ Added to $SHELL_RC"
+  CURRENT_SHELL=$(basename "$SHELL")
+  if [[ "$CURRENT_SHELL" == "zsh" && -f "$HOME/.zshrc" ]]; then
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
+    echo "✅ Added to ~/.zshrc"
+  elif [[ "$CURRENT_SHELL" == "bash" && -f "$HOME/.bashrc" ]]; then
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+    echo "✅ Added to ~/.bashrc"
+  elif [[ -f "$HOME/.profile" ]]; then
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.profile"
+    echo "✅ Added to ~/.profile"
+  else
+    echo "⚠️ Could not detect shell config file."
+    echo 'Please manually add: export PATH="$HOME/.local/bin:$PATH"'
   fi
 fi
 
-# Apply PATH now in this script
+# Export path for current shell just in case
 export PATH="$HOME/.local/bin:$PATH"
 
-# Final test
-if ! command -v "$SCRIPT_NAME" &>/dev/null; then
-  echo "⚠️ Shell is not picking up $SCRIPT_NAME yet."
-  echo "➡️  Spawning a new shell with updated PATH..."
-  echo ""
-  exec $SHELL -i
-else
-  echo "🎉 Done! Run: $SCRIPT_NAME --help"
-fi
+echo "🎉 Installation complete."
+echo "🔁 Starting a new login shell so scancompare is available now..."
+echo
+exec $SHELL -l
