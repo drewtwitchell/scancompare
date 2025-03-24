@@ -9,11 +9,11 @@ SCRIPT_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/$SC
 TMP_FILE="$(mktemp)"
 
 function uninstall_scancompare() {
-  echo "🧹 Uninstalling $SCRIPT_NAME..."
+  echo "🛉 Uninstalling $SCRIPT_NAME..."
   [[ -f "$SCRIPT_PATH" ]] && rm -f "$SCRIPT_PATH" && echo "✅ Removed $SCRIPT_PATH"
 
   for file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-    [[ -f "$file" ]] && sed -i.bak '/export PATH="\$HOME\/.local\/bin:\$PATH"/d' "$file"
+    [[ -f "$file" ]] && sed -i.bak '/export PATH=\"\$HOME\/.local\/bin:\$PATH\"/d' "$file"
   done
 
   echo "🧽 Cleanup complete. Restart your terminal to fully refresh."
@@ -42,7 +42,7 @@ if [[ -f "$SCRIPT_PATH" ]]; then
     echo "⬆️ Updating $SCRIPT_NAME from v$LOCAL_VERSION to v$REMOTE_VERSION"
   fi
 else
-  echo "📥 Installing $SCRIPT_NAME v$REMOTE_VERSION"
+  echo "📦 Installing $SCRIPT_NAME v$REMOTE_VERSION"
 fi
 
 mv "$TMP_FILE" "$SCRIPT_PATH"
@@ -67,6 +67,11 @@ fi
 
 # Export path for current shell just in case
 export PATH="$HOME/.local/bin:$PATH"
+
+# Copy current shell history to new shell
+if [[ -n "$HISTFILE" && -f "$HISTFILE" ]]; then
+  cat "$HISTFILE" >> "$HISTFILE.bak.install"
+fi
 
 echo "🎉 Installation complete."
 echo "🔁 Starting a new login shell so scancompare is available now..."
