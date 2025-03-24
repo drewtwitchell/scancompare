@@ -16,9 +16,9 @@ Built for macOS, Linux, and Windows (via WSL or Git Bash), it runs securely and 
 
 ## 🚀 Installation (One-Liner)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare | sudo tee /usr/local/bin/scancompare > /dev/null && sudo chmod +x /usr/local/bin/scancompare
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh)"
 ```
-This will install the script into /usr/local/bin so it can be run globally as scancompare.
+This will install scancompare into ~/.local/bin with no sudo needed and update the user's PATH if necessary.
 
 ---
 
