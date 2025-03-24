@@ -9,7 +9,7 @@ SCRIPT_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/$SC
 TMP_FILE="$(mktemp)"
 
 function uninstall_scancompare() {
-  echo "🛉 Uninstalling $SCRIPT_NAME..."
+  echo "🧹 Uninstalling $SCRIPT_NAME..."
   [[ -f "$SCRIPT_PATH" ]] && rm -f "$SCRIPT_PATH" && echo "✅ Removed $SCRIPT_PATH"
 
   for file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
