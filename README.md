@@ -74,6 +74,7 @@ scan_reports/scan_report.html – Human-readable HTML report
 
 ## 📎 HTML Report Gist
 Every HTML report is automatically uploaded to a GitHub Gist, making it easy to share with others. The Gist URL is printed at the end of each scan.
+
 ---
 
 ## 🧑‍💻 Contributing
