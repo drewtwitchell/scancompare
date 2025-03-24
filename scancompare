@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.1.1"
+VERSION="1.1.2"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -99,7 +99,7 @@ compare_results() {
       unique_to_trivy: $only_in_trivy,
       common_vulnerabilities: $in_both,
       actions: {
-        suggestion: "Fix shared vulnerabilities and upgrade base image if possible."
+        suggestion: "Fix shared vulnerabilities and upgrade base image if available."
       }
     }' > "$diff_output"
   done_msg "Diff report saved to $diff_output"
@@ -111,7 +111,9 @@ generate_html_report() {
   {
     echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Scan Report</title>
     <style>body{font-family:sans-serif;padding:20px;max-width:900px;margin:auto} h1,h2,h3{color:#2c3e50} pre{background:#f4f4f4;padding:10px;border-radius:8px;overflow:auto;} button{margin:10px 0;padding:6px 10px;background:#2c3e50;color:#fff;border:none;border-radius:5px;cursor:pointer} table{border-collapse:collapse;width:100%;margin-top:1em} th,td{border:1px solid #ccc;padding:8px;text-align:left}</style><script>function toggle(id){var el=document.getElementById(id);el.style.display=(el.style.display==='none'||!el.style.display)?'block':'none'} function savePDF(){window.print();}</script></head><body>
-    <h1>Vulnerability Report - $ORIGINAL_TARGET</h1>
+    <h1>Scan Summary for <code>$ORIGINAL_TARGET</code></h1>
+    <p><strong>Date:</strong> $timestamp</p>
+    <p>This report shows vulnerabilities detected in the image <code>$ORIGINAL_TARGET</code> using Trivy and Grype. It provides shared vulnerabilities, tool-specific issues, and recommendations.</p>
     <button onclick='savePDF()'>📄 Download as PDF</button>"
     for type in original upgraded; do
       [[ "$type" == "original" ]] && header="Original Image" || header="Upgraded Image"
@@ -125,10 +127,11 @@ generate_html_report() {
         "<h3>Common Vulnerabilities</h3><ul>" + (.common_vulnerabilities | map("<li>" + . + "</li>") | join("")) + "</ul>" +
         "<h3>Suggested Action</h3><p>" + .actions.suggestion + "</p>"
       ' "$diff_json"
-      echo "<button onclick=\"toggle('${type}_raw')\">Toggle Raw JSON</button><pre id='${type}_raw' style='display:none;'>"
+      echo "<button onclick=\"toggle('${type}_raw')\">Toggle Raw JSON</button><pre id='${type}_raw' style='display:block;'>"
       jq . "$diff_json"
       echo "</pre>"
     done
+    echo "<button onclick=\"window.location.reload()\">🔁 Re-run scan with updated base</button>"
     echo "</body></html>"
   } > "$HTML_REPORT"
   echo "✅ HTML report saved: $HTML_REPORT"
@@ -144,7 +147,7 @@ open_html() {
 }
 
 get_base_image_from_image() {
-  docker history --no-trunc "$TARGET" | awk 'NR==2 {print $2}'
+  docker inspect "$TARGET" 2>/dev/null | jq -r '.[0].Config.Image // empty'
 }
 
 check_for_base_image_upgrade() {
