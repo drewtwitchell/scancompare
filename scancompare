@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.0.0"
+VERSION="1.0.1"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -168,24 +168,26 @@ compare_results() {
   in_both=$(comm -12 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
 
   jq -n \
-    --argjson only_in_grype "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$only_grype")" \
-    --argjson only_in_trivy "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$only_trivy")" \
-    --argjson in_both "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$in_both")" \
-    '{
-      summary: {
-        total_grype: ($only_in_grype | length) + ($in_both | length),
-        total_trivy: ($only_in_trivy | length) + ($in_both | length),
-        shared: ($in_both | length),
-        only_in_grype: ($only_in_grype | length),
-        only_in_trivy: ($only_in_trivy | length)
-      },
-      unique_to_grype: $only_in_grype,
-      unique_to_trivy: $only_in_trivy,
-      common_vulnerabilities: $in_both,
-      actions: {
-        suggestion: "Prioritize shared vulnerabilities and those with fixed versions."
-      }
-    }' > "$DIFF_JSON"
+  --argjson only_in_grype "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$only_grype")" \
+  --argjson only_in_trivy "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$only_trivy")" \
+  --argjson in_both "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$in_both")" '
+  def count(a): a | length;
+
+  {
+    summary: {
+      total_grype: (count($only_in_grype) + count($in_both)),
+      total_trivy: (count($only_in_trivy) + count($in_both)),
+      shared: count($in_both),
+      only_in_grype: count($only_in_grype),
+      only_in_trivy: count($only_in_trivy)
+    },
+    unique_to_grype: $only_in_grype,
+    unique_to_trivy: $only_in_trivy,
+    common_vulnerabilities: $in_both,
+    actions: {
+      suggestion: "Prioritize shared vulnerabilities and those with fixed versions."
+    }
+  }' > "$DIFF_JSON"
 }
 
 generate_html_report() {
