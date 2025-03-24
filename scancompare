@@ -1,17 +1,12 @@
 #!/bin/bash
-VERSION="1.0.5"
+VERSION="1.0.6"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
 REPO_NAME="scancompare"
 REMOTE_URL="https://raw.githubusercontent.com/$REPO_USER/$REPO_NAME/main/$SCRIPT_NAME"
 
-if [[ "$1" == "--no-update" ]]; then
-  SKIP_UPDATE=true
-  shift
-else
-  SKIP_UPDATE=false
-fi
+if [[ "$1" == "--no-update" ]]; then SKIP_UPDATE=true; shift; else SKIP_UPDATE=false; fi
 
 TARGET="$1"
 REPORT_DIR="scan_reports"
@@ -21,122 +16,58 @@ DIFF_JSON="$REPORT_DIR/diff_report.json"
 HTML_REPORT="$REPORT_DIR/scan_report.html"
 UPGRADED_IMAGE=""
 
-# --- Commands ---
-if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-  echo ""
-  echo "Usage:"
-  echo "  scancompare <image>      Scan and compare vulnerabilities"
-  echo "  scancompare update       Manually update the CLI"
-  echo "  scancompare uninstall    Remove scancompare from your system"
-  echo "  scancompare --version    Show current version"
-  echo ""
-  exit 0
-fi
+# Helper functions
+step() { echo -e "\n🔹 $1"; }
+done_msg() { echo "    ✔ $1"; }
 
-if [[ "$1" == "--version" ]]; then
-  echo "scancompare version $VERSION"
-  exit 0
-fi
-
-if [[ "$1" == "uninstall" ]]; then
-  echo "🧹 Uninstalling scancompare..."
-  [[ -f "$SCRIPT_PATH" ]] && rm -f "$SCRIPT_PATH" && echo "✅ Removed $SCRIPT_PATH"
-  for file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-    [[ -f "$file" ]] && sed -i.bak '/.local\/bin/d' "$file"
-  done
-  echo "✅ scancompare uninstalled. Restart your terminal to finish cleanup."
-  exit 0
-fi
-
-# --- Auto-Update ---
 get_remote_version() {
   curl -fsSL "$REMOTE_URL" | grep 'VERSION=' | cut -d'"' -f2
 }
 
 self_update() {
   tmp_file=$(mktemp)
-  echo "📥 Auto-updating from $REMOTE_URL"
-  curl -fsSL "$REMOTE_URL" -o "$tmp_file" || {
-    echo "❌ Failed to fetch remote version."
-    exit 1
-  }
-
+  curl -fsSL "$REMOTE_URL" -o "$tmp_file" || { echo "❌ Failed to fetch update."; exit 1; }
   remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
-  echo "🌐 Fetched remote version: $remote_version"
+  echo "🌐 Remote version: $remote_version"
 
-  if [[ "$remote_version" == "$VERSION" ]]; then
-    rm -f "$tmp_file"
-    return
-  fi
+  [[ "$remote_version" == "$VERSION" ]] && rm -f "$tmp_file" && return
 
-  echo "🔄 New version available: $remote_version (current: $VERSION)"
+  echo "🔄 Updating to $remote_version..."
   chmod +x "$tmp_file"
   mv "$tmp_file" "$SCRIPT_PATH"
-  echo "✅ scancompare updated to version $remote_version"
+  echo "✅ Updated to $remote_version"
   exec "$SCRIPT_PATH" --no-update "$@"
 }
 
-if [[ "$1" == "update" ]]; then
-  self_update "$@"
-  exit 0
-fi
-
-auto_update_check() {
-  $SKIP_UPDATE && return
+[[ "$1" == "update" ]] && self_update "$@" && exit 0
+$SKIP_UPDATE || auto_update_check() {
   remote_ver=$(get_remote_version)
-  if [[ "$VERSION" != "$remote_ver" ]]; then
-    echo "🔄 New version available: $remote_ver (current: $VERSION)"
-    self_update "$@"
-  fi
-}
-auto_update_check "$@"
+  [[ "$VERSION" != "$remote_ver" ]] && self_update "$@"
+}; auto_update_check "$@"
 
-# --- Tools ---
-SED_BIN="sed"
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  SED_BIN="gsed"
-  command -v $SED_BIN &>/dev/null || SED_BIN="sed"
-fi
-
-check_and_install_tools() {
+check_tools() {
   for tool in grype trivy jq; do
     if ! command -v $tool &>/dev/null; then
       echo "📦 Installing $tool..."
-      if command -v brew &>/dev/null; then
-        brew install $tool
-      else
-        echo "❌ Please install $tool manually. Exiting."
-        exit 1
-      fi
+      if command -v brew &>/dev/null; then brew install $tool
+      else echo "❌ Please install $tool manually"; exit 1; fi
     fi
   done
 }
 
-check_docker() {
-  if ! command -v docker &>/dev/null; then
-    echo "❌ Docker not installed. Install Docker Desktop: https://www.docker.com/products/docker-desktop"
-    exit 1
-  fi
-  docker info &>/dev/null || {
-    echo "⚠️ Docker is installed but not running."
-    echo "👉 Please start Docker Desktop and try again."
-    exit 1
-  }
-}
-
-# --- Scans ---
 run_scans() {
   mkdir -p "$REPORT_DIR"
-  echo "🔬 Running Trivy..."
-  trivy -q image --format json --output "$TRIVY_OUTPUT" "$TARGET" &
-  echo "🔬 Running Grype..."
-  grype "$TARGET" -o json > "$GRYPE_OUTPUT" &
-  wait
+  step "Scanning with Trivy..."
+  trivy image --format json --output "$TRIVY_OUTPUT" "$TARGET"
+  done_msg "Trivy scan saved to $TRIVY_OUTPUT"
+
+  step "Scanning with Grype..."
+  grype "$TARGET" -o json > "$GRYPE_OUTPUT"
+  done_msg "Grype scan saved to $GRYPE_OUTPUT"
 }
 
 compare_results() {
-  [[ ! -s "$GRYPE_OUTPUT" || ! -s "$TRIVY_OUTPUT" ]] && echo "❌ Missing scan reports." && return 1
-
+  step "Comparing scan results..."
   grype_cves=$(jq -r '.matches[].vulnerability.id' "$GRYPE_OUTPUT" | sort | uniq)
   trivy_cves=$(jq -r '[.Results[].Vulnerabilities[]?.VulnerabilityID] | flatten | .[]' "$TRIVY_OUTPUT" | sort | uniq)
   echo "$grype_cves" > "$REPORT_DIR/grype.txt"
@@ -165,6 +96,8 @@ compare_results() {
         suggestion: "Prioritize shared vulnerabilities and those with fixed versions."
       }
     }' > "$DIFF_JSON"
+
+  done_msg "Diff report saved to $DIFF_JSON"
 }
 
 generate_html_report() {
@@ -172,12 +105,36 @@ generate_html_report() {
     echo "❌ Missing report data."; return 1;
   }
 
+  local image_name_clean=$(echo "$TARGET" | tr '/:' '__')
+  local timestamp=$(date +"%Y-%m-%d")
+  local report_title="scan_report_${image_name_clean}_$timestamp"
+  HTML_REPORT="$REPORT_DIR/${report_title}.html"
+
   {
-    echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Scan Report</title>"
-    echo "<style>body { font-family: sans-serif; padding: 20px; max-width: 900px; margin: auto; }"
-    echo "h1, h2, h3 { color: #2c3e50; } pre { background: #f8f8f8; padding: 1em; border-radius: 8px; overflow-x: auto; }</style></head><body>"
+    echo "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
+    echo "<title>Scan Report - $TARGET - $timestamp</title>"
+    echo "<style>
+      body { font-family: sans-serif; padding: 20px; max-width: 960px; margin: auto; }
+      h1, h2, h3 { color: #2c3e50; }
+      ul { background: #f9f9f9; padding: 10px; border-radius: 8px; }
+      pre { background: #f0f0f0; padding: 1em; border-radius: 8px; overflow-x: auto; display: none; }
+      .section { margin-top: 30px; }
+      button { margin-top: 10px; padding: 8px 14px; background-color: #2c3e50; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    </style>"
+    echo "<script>
+      function toggle(id) {
+        var x = document.getElementById(id);
+        if (x.style.display === 'none') x.style.display = 'block';
+        else x.style.display = 'none';
+      }
+      function savePDF() {
+        window.print();
+      }
+    </script></head><body>"
 
     echo "<h1>Grype vs Trivy Vulnerability Report</h1>"
+    echo "<p><strong>Image:</strong> $TARGET<br><strong>Date:</strong> $timestamp</p>"
+    echo "<button onclick='savePDF()'>📄 Download as PDF</button>"
 
     jq -r '
       def cves(title; list):
@@ -194,31 +151,31 @@ generate_html_report() {
       "<div><strong>Recommendation:</strong> " + .actions.suggestion + "</div>"
     ' "$DIFF_JSON"
 
-    echo "<hr><h2>🗂 Full Trivy Output</h2><pre>"
-    cat "$TRIVY_OUTPUT" | jq . || cat "$TRIVY_OUTPUT"
-    echo "</pre>"
+    echo "<div class='section'><h2>🗂 Trivy Full Output</h2>"
+    echo "<button onclick=\"toggle('trivy_raw')\">Toggle Trivy Output</button>"
+    echo "<pre id='trivy_raw'>"
+    jq . "$TRIVY_OUTPUT" || cat "$TRIVY_OUTPUT"
+    echo "</pre></div>"
 
-    echo "<hr><h2>🗂 Full Grype Output</h2><pre>"
-    cat "$GRYPE_OUTPUT" | jq . || cat "$GRYPE_OUTPUT"
-    echo "</pre>"
+    echo "<div class='section'><h2>🗂 Grype Full Output</h2>"
+    echo "<button onclick=\"toggle('grype_raw')\">Toggle Grype Output</button>"
+    echo "<pre id='grype_raw'>"
+    jq . "$GRYPE_OUTPUT" || cat "$GRYPE_OUTPUT"
+    echo "</pre></div>"
 
     echo "</body></html>"
   } > "$HTML_REPORT"
+
+  echo "✅ HTML report saved: $HTML_REPORT"
 }
 
-show_local_html_report() {
-  echo "📄 Opening local HTML report..."
-  if [[ -f "$HTML_REPORT" ]]; then
-    case "$OSTYPE" in
-      darwin*)  open "$HTML_REPORT" ;;
-      linux*)   xdg-open "$HTML_REPORT" ;;
-      msys*)    start "$HTML_REPORT" ;;
-      cygwin*)  cygstart "$HTML_REPORT" ;;
-      *)        echo "🔗 Report saved to: $HTML_REPORT" ;;
-    esac
-  else
-    echo "❌ HTML report not found at $HTML_REPORT"
-  fi
+open_html() {
+  echo "📄 Opening report..."
+  case "$OSTYPE" in
+    darwin*) open "$HTML_REPORT" ;;
+    linux*) xdg-open "$HTML_REPORT" ;;
+    *) echo "View at: $HTML_REPORT" ;;
+  esac
 }
 
 get_base_image() {
@@ -226,51 +183,42 @@ get_base_image() {
 }
 
 check_for_base_image_upgrade() {
+  step "Checking for base image upgrade..."
   base_image=$(get_base_image)
-  [[ -z "$base_image" ]] && echo "⚠️ Could not detect base image." && return
-
   image_name=$(echo "$base_image" | cut -d':' -f1)
   current_tag=$(echo "$base_image" | cut -d':' -f2)
-  tags=$(curl -s "https://registry.hub.docker.com/v1/repositories/${image_name}/tags" | jq -r '.[].name')
+  tags=$(curl -s "https://registry.hub.docker.com/v1/repositories/$image_name/tags" | jq -r '.[].name')
   latest=$(echo "$tags" | grep -E '^[0-9]+\.[0-9]+' | sort -V | tail -1)
 
   if [[ "$latest" != "$current_tag" ]]; then
-    echo "⬆️  Upgrade available: $base_image → $image_name:$latest"
-    $SED_BIN -i.bak "s|$base_image|$image_name:$latest|" Dockerfile
+    echo "⬆️  Upgrade found: $current_tag → $latest"
+    sed -i.bak "s|$base_image|$image_name:$latest|" Dockerfile
     docker build -t "${TARGET}-upgraded" .
     UPGRADED_IMAGE="${TARGET}-upgraded"
-    echo "✅ Rebuilt image: $UPGRADED_IMAGE"
+    echo "✅ Rebuilt upgraded image: $UPGRADED_IMAGE"
   else
-    echo "✅ Base image is up-to-date."
+    echo "✅ Base image is already latest."
   fi
 }
 
 main() {
-  if [ -z "$TARGET" ]; then
-    echo "❌ Usage: scancompare <docker-image>"
-    exit 1
-  fi
+  [[ -z "$TARGET" ]] && echo "❌ Usage: scancompare <image>" && exit 1
+  echo "🔍 Starting vulnerability scan for image: $TARGET"
 
-  check_docker
-  check_and_install_tools
-
-  echo "🔍 Initial scan..."
+  check_tools
   run_scans
   compare_results
   generate_html_report
-  show_local_html_report
+  open_html
 
-  echo "🔧 Checking base image..."
-  if [ -f Dockerfile ]; then
-    check_for_base_image_upgrade
-    if [[ -n "$UPGRADED_IMAGE" ]]; then
-      TARGET="$UPGRADED_IMAGE"
-      echo "🔁 Re-scanning upgraded image..."
-      run_scans
-      compare_results
-      generate_html_report
-      show_local_html_report
-    fi
+  [[ -f Dockerfile ]] && check_for_base_image_upgrade
+  if [[ -n "$UPGRADED_IMAGE" ]]; then
+    echo "🔁 Re-scanning upgraded image: $UPGRADED_IMAGE"
+    TARGET="$UPGRADED_IMAGE"
+    run_scans
+    compare_results
+    generate_html_report
+    open_html
   fi
 }
 
