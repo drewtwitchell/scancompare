@@ -184,9 +184,13 @@ compare_results() {
 
 generate_html_report() {
   [[ ! -s "$DIFF_JSON" ]] && echo "❌ No diff data to generate report." && return 1
+
   jq -r '
     def cves(title; list):
-      "<h3>" + title + "</h3><ul>" + (list | map("<li>" + . + "</li>") | join("")) + "</ul>";
+      "<h3>" + title + "</h3><ul>" +
+      (list | map("<li>" + . + "</li>") | join("")) +
+      "</ul>";
+
     "<!DOCTYPE html><html><head><meta charset=\"UTF-8\">
     <title>Scan Report</title><style>
     body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: auto; }
@@ -194,12 +198,15 @@ generate_html_report() {
     .summary, .actions { background: #e8f5e9; padding: 10px; border-radius: 8px; margin-top: 20px; }
     </style></head><body>
     <h1>Grype vs Trivy Vulnerability Report</h1>" +
+
     (.summary | "<div class=\"summary\"><strong>Total Grype:</strong> \(.total_grype) |
-     <strong>Total Trivy:</strong> \(.total_trivy) |
-     <strong>Shared:</strong> \(.shared)</div>") +
-    cves("Only in Grype", .unique_to_grype) +
-    cves("Only in Trivy", .unique_to_trivy) +
-    cves("Common Vulnerabilities", .common_vulnerabilities) +
+    <strong>Total Trivy:</strong> \(.total_trivy) |
+    <strong>Shared:</strong> \(.shared)</div>") +
+
+    cves("Only in Grype"; .unique_to_grype) +
+    cves("Only in Trivy"; .unique_to_trivy) +
+    cves("Common Vulnerabilities"; .common_vulnerabilities) +
+
     "<div class=\"actions\"><strong>Recommendation:</strong> " + .actions.suggestion + "</div>
     </body></html>"
   ' "$DIFF_JSON" > "$HTML_REPORT"
