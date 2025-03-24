@@ -13,7 +13,7 @@ function uninstall_scancompare() {
   [[ -f "$SCRIPT_PATH" ]] && rm -f "$SCRIPT_PATH" && echo "✅ Removed $SCRIPT_PATH"
 
   for file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-    [[ -f "$file" ]] && sed -i.bak '/export PATH=\"\$HOME\/.local\/bin:\$PATH\"/d' "$file"
+    [[ -f "$file" ]] && sed -i.bak '/export PATH="\$HOME\/.local\/bin:\$PATH"/d' "$file"
   done
 
   echo "🧽 Cleanup complete. Restart your terminal to fully refresh."
