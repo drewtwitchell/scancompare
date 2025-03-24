@@ -23,7 +23,6 @@ function uninstall_scancompare() {
 # Uninstall support
 [[ "$1" == "--uninstall" ]] && uninstall_scancompare
 
-echo "📦 Installing/updating $SCRIPT_NAME into $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 
 # Download latest version
@@ -42,7 +41,7 @@ if [[ -f "$SCRIPT_PATH" ]]; then
     echo "⬆️ Updating $SCRIPT_NAME from v$LOCAL_VERSION to v$REMOTE_VERSION"
   fi
 else
-  echo "📦 Installing $SCRIPT_NAME v$REMOTE_VERSION"
+  echo "📦 Installing $SCRIPT_NAME v$REMOTE_VERSION into $INSTALL_DIR""
 fi
 
 mv "$TMP_FILE" "$SCRIPT_PATH"
