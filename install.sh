@@ -11,14 +11,11 @@ function uninstall_scancompare() {
   echo "🧹 Uninstalling $SCRIPT_NAME..."
   [[ -f "$SCRIPT_PATH" ]] && rm -f "$SCRIPT_PATH" && echo "✅ Removed $SCRIPT_PATH"
 
-  # Remove env sourcing from shell configs
   for file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-    [[ -f "$file" ]] && sed -i.bak '/scancompare\/env.sh/d' "$file"
+    [[ -f "$file" ]] && sed -i.bak '/.local\/bin/d' "$file"
   done
 
-  # Remove env file
   rm -f "$HOME/.config/scancompare/env.sh"
-
   echo "🧽 Cleanup complete. Restart your terminal to fully refresh."
   exit 0
 }
@@ -49,33 +46,39 @@ fi
 mv "$TMP_FILE" "$SCRIPT_PATH"
 chmod +x "$SCRIPT_PATH"
 
-# Drop persistent env file like Homebrew does
-mkdir -p "$HOME/.config/scancompare"
-echo 'export PATH="$HOME/.local/bin:$PATH"' > "$HOME/.config/scancompare/env.sh"
+echo ""
+echo "🎉 scancompare installed to: $SCRIPT_PATH"
 
-# Inject loader into shell config files if missing
+# Export for this session only
+export PATH="$HOME/.local/bin:$PATH"
+
+# Suggest adding to ~/.zshrc, ~/.bashrc, or ~/.profile
+SUGGEST_LINE='export PATH="$HOME/.local/bin:$PATH"'
+ADDED=false
 for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile"; do
-  if [[ -f "$rc" && ! $(grep 'scancompare/env.sh' "$rc") ]]; then
-    echo '[[ -f "$HOME/.config/scancompare/env.sh" ]] && source "$HOME/.config/scancompare/env.sh"' >> "$rc"
-    echo "✅ Added scancompare env loader to $rc"
+  if [[ -f "$rc" && ! $(grep "$SUGGEST_LINE" "$rc") ]]; then
+    echo "$SUGGEST_LINE" >> "$rc"
+    echo "✅ Added to $rc"
+    ADDED=true
+    break
   fi
 done
 
-# Source it now for this session
-source "$HOME/.config/scancompare/env.sh"
+echo ""
+echo "🔧 To make scancompare available in future terminal sessions, run:"
+echo "  echo '$SUGGEST_LINE' >> ~/.zshrc  # or your shell profile"
+echo ""
 
-echo "🎉 Installation complete."
+echo "💡 To use scancompare immediately in this terminal, run:"
+echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+echo ""
 
+# Check availability
 if command -v scancompare >/dev/null 2>&1; then
-  echo "✅ scancompare has been installed to $SCRIPT_PATH"
-  echo "➡️  To start using it now, run:"
-  echo ""
-  echo "   exec \$SHELL -l"
-  echo ""
-  echo "Or open a new terminal window."
+  echo "✅ scancompare is now ready to use!"
+  echo "➡️ Try: scancompare --help"
 else
   echo "⚠️ scancompare not found in this shell yet."
-  echo "👉 Run this manually:"
+  echo "👉 Run:"
   echo '   export PATH="$HOME/.local/bin:$PATH"'
-  echo "Or restart your terminal."
 fi
