@@ -67,10 +67,15 @@ source "$HOME/.config/scancompare/env.sh"
 echo "🎉 Installation complete."
 
 if command -v scancompare >/dev/null 2>&1; then
-  echo "✅ scancompare is now available! Run: scancompare --help"
+  echo "✅ scancompare has been installed to $SCRIPT_PATH"
+  echo "➡️  To start using it now, run:"
+  echo ""
+  echo "   exec \$SHELL -l"
+  echo ""
+  echo "Or open a new terminal window."
 else
-  echo "⚠️ scancompare not found in this shell."
-  echo "👉 Run this to fix immediately:"
+  echo "⚠️ scancompare not found in this shell yet."
+  echo "👉 Run this manually:"
   echo '   export PATH="$HOME/.local/bin:$PATH"'
   echo "Or restart your terminal."
 fi
