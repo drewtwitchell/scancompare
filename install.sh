@@ -11,9 +11,13 @@ function uninstall_scancompare() {
   echo "🧹 Uninstalling $SCRIPT_NAME..."
   [[ -f "$SCRIPT_PATH" ]] && rm -f "$SCRIPT_PATH" && echo "✅ Removed $SCRIPT_PATH"
 
+  # Remove env sourcing from shell configs
   for file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-    [[ -f "$file" ]] && sed -i.bak '/export PATH="\$HOME\/.local\/bin:\$PATH"/d' "$file"
+    [[ -f "$file" ]] && sed -i.bak '/scancompare\/env.sh/d' "$file"
   done
+
+  # Remove env file
+  rm -f "$HOME/.config/scancompare/env.sh"
 
   echo "🧽 Cleanup complete. Restart your terminal to fully refresh."
   exit 0
@@ -45,35 +49,28 @@ fi
 mv "$TMP_FILE" "$SCRIPT_PATH"
 chmod +x "$SCRIPT_PATH"
 
-# Add to PATH if not already in shell configs
-if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-  echo "🔧 Adding $INSTALL_DIR to your PATH..."
+# Drop persistent env file like Homebrew does
+mkdir -p "$HOME/.config/scancompare"
+echo 'export PATH="$HOME/.local/bin:$PATH"' > "$HOME/.config/scancompare/env.sh"
 
-  SHELL_RC=""
-  if [[ -n "$ZSH_VERSION" && -f "$HOME/.zshrc" ]]; then
-    SHELL_RC="$HOME/.zshrc"
-  elif [[ -n "$BASH_VERSION" && -f "$HOME/.bashrc" ]]; then
-    SHELL_RC="$HOME/.bashrc"
-  elif [[ -f "$HOME/.profile" ]]; then
-    SHELL_RC="$HOME/.profile"
+# Inject loader into shell config files if missing
+for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile"; do
+  if [[ -f "$rc" && ! $(grep 'scancompare/env.sh' "$rc") ]]; then
+    echo '[[ -f "$HOME/.config/scancompare/env.sh" ]] && source "$HOME/.config/scancompare/env.sh"' >> "$rc"
+    echo "✅ Added scancompare env loader to $rc"
   fi
+done
 
-  if [[ -n "$SHELL_RC" && ! $(grep "$INSTALL_DIR" "$SHELL_RC") ]]; then
-    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC"
-    echo "✅ Added to $SHELL_RC"
-  fi
-
-  # Also update the PATH for current session
-  export PATH="$HOME/.local/bin:$PATH"
-fi
+# Source it now for this session
+source "$HOME/.config/scancompare/env.sh"
 
 echo "🎉 Installation complete."
 
 if command -v scancompare >/dev/null 2>&1; then
-  echo "✅ scancompare is now ready to use!"
-  echo "➡️ Try: scancompare --help"
+  echo "✅ scancompare is now available! Run: scancompare --help"
 else
-  echo "⚠️ scancompare not found in current session."
-  echo "👉 Run: export PATH=\"\$HOME/.local/bin:\$PATH\""
+  echo "⚠️ scancompare not found in this shell."
+  echo "👉 Run this to fix immediately:"
+  echo '   export PATH="$HOME/.local/bin:$PATH"'
   echo "Or restart your terminal."
 fi
