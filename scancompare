@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.1.2"
+VERSION="1.1.3"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -11,13 +11,15 @@ if [[ "$1" == "--no-update" ]]; then SKIP_UPDATE=true; shift; else SKIP_UPDATE=f
 TARGET="$1"
 ORIGINAL_TARGET="$TARGET"
 REPORT_DIR="scan_reports"
+TIMESTAMP=$(date +"%Y-%m-%d")
+HTML_REPORT="$REPORT_DIR/scan_report_${ORIGINAL_TARGET//[\/:]/_}_$TIMESTAMP.html"
+
 ORIG_GRYPE="$REPORT_DIR/original_grype.json"
 ORIG_TRIVY="$REPORT_DIR/original_trivy.json"
 UPG_GRYPE="$REPORT_DIR/upgraded_grype.json"
 UPG_TRIVY="$REPORT_DIR/upgraded_trivy.json"
 ORIG_DIFF="$REPORT_DIR/original_diff.json"
 UPG_DIFF="$REPORT_DIR/upgraded_diff.json"
-HTML_REPORT="$REPORT_DIR/scan_report.html"
 UPGRADED_IMAGE=""
 
 step() { echo -e "\n🔹 $1"; }
@@ -56,6 +58,10 @@ check_tools() {
       else echo "❌ Please install $tool manually"; exit 1; fi
     fi
   done
+}
+
+clear_old_report() {
+  rm -f "$HTML_REPORT"
 }
 
 run_scans() {
@@ -106,13 +112,11 @@ compare_results() {
 }
 
 generate_html_report() {
-  local timestamp=$(date +"%Y-%m-%d")
-  HTML_REPORT="$REPORT_DIR/scan_report_${ORIGINAL_TARGET//[\/:]/_}_$timestamp.html"
   {
     echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Scan Report</title>
     <style>body{font-family:sans-serif;padding:20px;max-width:900px;margin:auto} h1,h2,h3{color:#2c3e50} pre{background:#f4f4f4;padding:10px;border-radius:8px;overflow:auto;} button{margin:10px 0;padding:6px 10px;background:#2c3e50;color:#fff;border:none;border-radius:5px;cursor:pointer} table{border-collapse:collapse;width:100%;margin-top:1em} th,td{border:1px solid #ccc;padding:8px;text-align:left}</style><script>function toggle(id){var el=document.getElementById(id);el.style.display=(el.style.display==='none'||!el.style.display)?'block':'none'} function savePDF(){window.print();}</script></head><body>
     <h1>Scan Summary for <code>$ORIGINAL_TARGET</code></h1>
-    <p><strong>Date:</strong> $timestamp</p>
+    <p><strong>Date:</strong> $TIMESTAMP</p>
     <p>This report shows vulnerabilities detected in the image <code>$ORIGINAL_TARGET</code> using Trivy and Grype. It provides shared vulnerabilities, tool-specific issues, and recommendations.</p>
     <button onclick='savePDF()'>📄 Download as PDF</button>"
     for type in original upgraded; do
@@ -131,7 +135,6 @@ generate_html_report() {
       jq . "$diff_json"
       echo "</pre>"
     done
-    echo "<button onclick=\"window.location.reload()\">🔁 Re-run scan with updated base</button>"
     echo "</body></html>"
   } > "$HTML_REPORT"
   echo "✅ HTML report saved: $HTML_REPORT"
@@ -153,7 +156,11 @@ get_base_image_from_image() {
 check_for_base_image_upgrade() {
   step "Checking for base image upgrade..."
   base_image=$(get_base_image_from_image)
-  [[ -z "$base_image" || "$base_image" == "missing" ]] && echo "⚠️ Could not detect base image." && return
+  if [[ -z "$base_image" || "$base_image" == "missing" ]]; then
+    echo "⚠️ Could not detect base image."
+    echo "📝 Please ensure the image was built with a FROM instruction or contains valid metadata."
+    return
+  fi
   image_name=$(echo "$base_image" | cut -d':' -f1)
   current_tag=$(echo "$base_image" | cut -d':' -f2)
   tags=$(curl -s "https://registry.hub.docker.com/v1/repositories/$image_name/tags" | jq -r '.[].name')
@@ -176,6 +183,7 @@ main() {
   [[ -z "$TARGET" ]] && echo "❌ Usage: scancompare <image>" && exit 1
   echo "🔍 Starting vulnerability scan for image: $TARGET"
   check_tools
+  clear_old_report
   run_scans "$REPORT_DIR/original"
   compare_results "$REPORT_DIR/original"
   generate_html_report
