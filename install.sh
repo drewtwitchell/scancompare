@@ -23,7 +23,7 @@ function uninstall_scancompare() {
   exit 0
 }
 
-# If uninstall is requested
+# Uninstall mode
 if [[ "$1" == "--uninstall" ]]; then
   uninstall_scancompare
 fi
@@ -31,14 +31,11 @@ fi
 echo "📦 Installing/updating $SCRIPT_NAME into $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 
-# Download to temp
+# Download and check version
 curl -fsSL "$SCRIPT_URL" -o "$TMP_FILE"
 chmod +x "$TMP_FILE"
-
-# Extract remote version
 REMOTE_VERSION=$(grep '^VERSION=' "$TMP_FILE" | cut -d'"' -f2)
 
-# Compare with local version if exists
 if [[ -f "$SCRIPT_PATH" ]]; then
   LOCAL_VERSION=$(grep '^VERSION=' "$SCRIPT_PATH" | cut -d'"' -f2)
   if [[ "$REMOTE_VERSION" == "$LOCAL_VERSION" ]]; then
@@ -54,7 +51,7 @@ fi
 
 mv "$TMP_FILE" "$SCRIPT_PATH"
 
-# Detect user's shell config file
+# Detect shell config
 detect_shell_rc() {
   CURRENT_SHELL=$(basename "$SHELL")
   if [[ "$CURRENT_SHELL" == "zsh" ]]; then
@@ -69,29 +66,37 @@ detect_shell_rc() {
 }
 
 # Add to PATH if needed
-if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-  echo "🛠️  Adding $INSTALL_DIR to your PATH..."
+ADDED_TO_PATH=false
 
+if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
   SHELL_RC=$(detect_shell_rc)
+  echo "🛠️  Adding $INSTALL_DIR to your PATH..."
 
   if [[ -n "$SHELL_RC" ]]; then
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC"
     echo "✅ Added to $SHELL_RC"
-  else
-    echo "⚠️ Could not detect shell config file."
-    echo "👉 Please add this line to your shell config manually:"
-    echo 'export PATH="$HOME/.local/bin:$PATH"'
   fi
 
-  # Export for current session
+  # Immediate effect for this session
   export PATH="$HOME/.local/bin:$PATH"
+  ADDED_TO_PATH=true
 fi
 
-# Confirm it's available now
+# Check availability
 if ! command -v scancompare &>/dev/null; then
-  echo "⚠️ scancompare was installed but is not found in your current PATH."
-  echo "👉 Run this manually, or restart your terminal:"
-  echo '  export PATH="$HOME/.local/bin:$PATH"'
+  echo "⚠️ scancompare not found in your shell yet."
+
+  if [[ "$ADDED_TO_PATH" == true ]]; then
+    echo "👉 Run this to refresh your session now:"
+    SHELL_RC=$(detect_shell_rc)
+    echo "  source $SHELL_RC"
+  else
+    echo "👉 Or add this manually:"
+    echo '  export PATH="$HOME/.local/bin:$PATH"'
+  fi
+
+  echo "✅ You can still run it now using:"
+  echo "  $SCRIPT_PATH"
 else
   echo "🎉 Done! Run: scancompare --help"
 fi
