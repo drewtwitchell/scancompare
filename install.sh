@@ -41,7 +41,7 @@ if [[ -f "$SCRIPT_PATH" ]]; then
     echo "⬆️ Updating $SCRIPT_NAME from v$LOCAL_VERSION to v$REMOTE_VERSION"
   fi
 else
-  echo "📦 Installing $SCRIPT_NAME v$REMOTE_VERSION into $INSTALL_DIR""
+  echo "📦 Installing $SCRIPT_NAME v$REMOTE_VERSION into $INSTALL_DIR"
 fi
 
 mv "$TMP_FILE" "$SCRIPT_PATH"
