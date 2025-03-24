@@ -1,5 +1,4 @@
 #!/bin/bash
-
 set -e
 
 INSTALL_DIR="$HOME/.local/bin"
@@ -20,7 +19,6 @@ function uninstall_scancompare() {
   exit 0
 }
 
-# Uninstall support
 [[ "$1" == "--uninstall" ]] && uninstall_scancompare
 
 mkdir -p "$INSTALL_DIR"
@@ -45,64 +43,37 @@ else
 fi
 
 mv "$TMP_FILE" "$SCRIPT_PATH"
+chmod +x "$SCRIPT_PATH"
 
-# Add to PATH if needed
+# Add to PATH if not already in shell configs
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-  CURRENT_SHELL=$(basename "$SHELL")
-  if [[ "$CURRENT_SHELL" == "zsh" && -f "$HOME/.zshrc" ]]; then
-    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
-    echo "✅ Added to ~/.zshrc"
-  elif [[ "$CURRENT_SHELL" == "bash" && -f "$HOME/.bashrc" ]]; then
-    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
-    echo "✅ Added to ~/.bashrc"
+  echo "🔧 Adding $INSTALL_DIR to your PATH..."
+
+  SHELL_RC=""
+  if [[ -n "$ZSH_VERSION" && -f "$HOME/.zshrc" ]]; then
+    SHELL_RC="$HOME/.zshrc"
+  elif [[ -n "$BASH_VERSION" && -f "$HOME/.bashrc" ]]; then
+    SHELL_RC="$HOME/.bashrc"
   elif [[ -f "$HOME/.profile" ]]; then
-    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.profile"
-    echo "✅ Added to ~/.profile"
-  else
-    echo "⚠️ Could not detect shell config file."
-    echo "Please manually add: export PATH=\"\$HOME/.local/bin:\$PATH\""
+    SHELL_RC="$HOME/.profile"
   fi
-fi
 
-# Export path for current shell just in case
-export PATH="$HOME/.local/bin:$PATH"
+  if [[ -n "$SHELL_RC" && ! $(grep "$INSTALL_DIR" "$SHELL_RC") ]]; then
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC"
+    echo "✅ Added to $SHELL_RC"
+  fi
 
-# Copy current shell history to new shell
-if [[ -n "$HISTFILE" && -f "$HISTFILE" ]]; then
-  cat "$HISTFILE" >> "$HISTFILE.bak.install"
+  # Also update the PATH for current session
+  export PATH="$HOME/.local/bin:$PATH"
 fi
 
 echo "🎉 Installation complete."
 
-# Ensure ~/.local/bin/scancompare is executable
-chmod +x "$SCRIPT_PATH"
-
-# Export PATH for this current shell
-export PATH="$HOME/.local/bin:$PATH"
-
-# Confirm scancompare now works
-if command -v scancompare &>/dev/null; then
-  echo "✅ scancompare is now available. Try: scancompare --help"
+if command -v scancompare >/dev/null 2>&1; then
+  echo "✅ scancompare is now ready to use!"
+  echo "➡️ Try: scancompare --help"
 else
-  echo "⚠️ scancompare not found in current shell."
-
-  # Attempt to source shell config
-  if [[ -f "$HOME/.zshrc" ]]; then
-    echo "🔁 Sourcing ~/.zshrc..."
-    source "$HOME/.zshrc"
-  elif [[ -f "$HOME/.bashrc" ]]; then
-    echo "🔁 Sourcing ~/.bashrc..."
-    source "$HOME/.bashrc"
-  fi
-
-  # Recheck
-  if command -v scancompare &>/dev/null; then
-    echo "✅ scancompare is now available. Try: scancompare --help"
-  else
-    echo "❌ scancompare is still not in PATH."
-    echo "👉 Run this to fix temporarily:"
-    echo '   export PATH="$HOME/.local/bin:$PATH"'
-  fi
+  echo "⚠️ scancompare not found in current session."
+  echo "👉 Run: export PATH=\"\$HOME/.local/bin:\$PATH\""
+  echo "Or restart your terminal."
 fi
-
-
