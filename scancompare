@@ -14,14 +14,14 @@ DIFF_JSON="$REPORT_DIR/diff_report.json"
 HTML_REPORT="$REPORT_DIR/scan_report.html"
 UPGRADED_IMAGE=""
 
-# Early exits
+# --- HELP / VERSION / UNINSTALL ---
 if [[ "$1" == "--help" || "$1" == "-h" ]]; then
   echo ""
   echo "Usage:"
-  echo "  scancompare <image>          Scan and compare vulnerabilities"
-  echo "  scancompare update           Manually update the CLI"
-  echo "  scancompare uninstall        Remove scancompare from your system"
-  echo "  scancompare --version        Show current version"
+  echo "  scancompare <image>      Scan and compare vulnerabilities"
+  echo "  scancompare update       Manually update the CLI"
+  echo "  scancompare uninstall    Remove scancompare from your system"
+  echo "  scancompare --version    Show current version"
   echo ""
   exit 0
 fi
@@ -33,19 +33,17 @@ fi
 
 if [[ "$1" == "uninstall" ]]; then
   echo "🧹 Uninstalling scancompare..."
-  INSTALL_PATH="$HOME/.local/bin/scancompare"
-  [[ -f "$INSTALL_PATH" ]] && rm -f "$INSTALL_PATH" && echo "✅ Removed $INSTALL_PATH"
+  [[ -f "$SCRIPT_PATH" ]] && rm -f "$SCRIPT_PATH" && echo "✅ Removed $SCRIPT_PATH"
   for file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-    [[ -f "$file" ]] && sed -i.bak '/export PATH="\$HOME\/.local\/bin:\$PATH"/d' "$file"
+    [[ -f "$file" ]] && sed -i.bak '/.local\/bin/d' "$file"
   done
-  echo "🎉 scancompare uninstalled successfully."
-  echo "ℹ️ Restart your terminal to refresh environment variables."
+  echo "✅ scancompare uninstalled. Restart your terminal to finish cleanup."
   exit 0
 fi
 
-# Auto-update
+# --- AUTO-UPDATE ---
 get_remote_version() {
-  curl -fsSL "$REMOTE_URL" | grep 'VERSION="' | cut -d'"' -f2
+  curl -fsSL "$REMOTE_URL" | grep 'VERSION=' | cut -d'"' -f2
 }
 
 self_update() {
@@ -71,10 +69,12 @@ self_update() {
 
   echo "🔄 New version available: $remote_version (current: $VERSION)"
   echo "📥 Auto-updating..."
+
   chmod +x "$tmp_file"
   mv "$tmp_file" "$SCRIPT_PATH"
+
   echo "✅ scancompare updated to version $remote_version"
-  exec "$SCRIPT_PATH" "${@:2}"
+  exec "$SCRIPT_PATH" "$@"  # ✅ FIXED: forward all args
 }
 
 if [[ "$1" == "update" ]]; then
@@ -87,19 +87,18 @@ auto_update_check() {
   if [[ "$VERSION" != "$remote_ver" ]]; then
     echo "🔄 New version available: $remote_ver (current: $VERSION)"
     echo "📥 Auto-updating..."
-    self_update
+    self_update "$@"
   fi
 }
-auto_update_check
+auto_update_check "$@"
 
-# Cross-platform sed alias
+# --- TOOLS ---
 SED_BIN="sed"
 if [[ "$OSTYPE" == "darwin"* ]]; then
   SED_BIN="gsed"
   command -v $SED_BIN &>/dev/null || SED_BIN="sed"
 fi
 
-# Install dependencies
 install_tool_from_github() {
   local name=$1 repo=$2 binary=${3:-$1}
   url=$(curl -s "https://api.github.com/repos/$repo/releases/latest" | grep "browser_download_url.*linux.*64.*.tar.gz" | cut -d '"' -f 4 | head -n 1)
@@ -107,13 +106,6 @@ install_tool_from_github() {
   tar -xzf "/tmp/${name}.tar.gz" -C /tmp
   chmod +x /tmp/$binary
   sudo mv /tmp/$binary /usr/local/bin/$binary
-}
-
-install_homebrew() {
-  if ! command -v brew &>/dev/null && [[ "$OSTYPE" == "darwin"* ]]; then
-    echo "🍺 Installing Homebrew for macOS..."
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  fi
 }
 
 check_and_install_tools() {
@@ -149,6 +141,7 @@ check_docker() {
   }
 }
 
+# --- SCAN ---
 run_scans() {
   mkdir -p "$REPORT_DIR"
   grype "$TARGET" -o json > "$GRYPE_OUTPUT" &
@@ -168,31 +161,29 @@ compare_results() {
   in_both=$(comm -12 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
 
   jq -n \
-  --argjson only_in_grype "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$only_grype")" \
-  --argjson only_in_trivy "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$only_trivy")" \
-  --argjson in_both "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$in_both")" '
-  def count(a): a | length;
-
-  {
-    summary: {
-      total_grype: (count($only_in_grype) + count($in_both)),
-      total_trivy: (count($only_in_trivy) + count($in_both)),
-      shared: count($in_both),
-      only_in_grype: count($only_in_grype),
-      only_in_trivy: count($only_in_trivy)
-    },
-    unique_to_grype: $only_in_grype,
-    unique_to_trivy: $only_in_trivy,
-    common_vulnerabilities: $in_both,
-    actions: {
-      suggestion: "Prioritize shared vulnerabilities and those with fixed versions."
-    }
-  }' > "$DIFF_JSON"
+    --argjson only_in_grype "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$only_grype")" \
+    --argjson only_in_trivy "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$only_trivy")" \
+    --argjson in_both "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$in_both")" '
+    def count(a): a | length;
+    {
+      summary: {
+        total_grype: (count($only_in_grype) + count($in_both)),
+        total_trivy: (count($only_in_trivy) + count($in_both)),
+        shared: count($in_both),
+        only_in_grype: count($only_in_grype),
+        only_in_trivy: count($only_in_trivy)
+      },
+      unique_to_grype: $only_in_grype,
+      unique_to_trivy: $only_in_trivy,
+      common_vulnerabilities: $in_both,
+      actions: {
+        suggestion: "Prioritize shared vulnerabilities and those with fixed versions."
+      }
+    }' > "$DIFF_JSON"
 }
 
 generate_html_report() {
   [[ ! -s "$DIFF_JSON" ]] && echo "❌ No diff data to generate report." && return 1
-
   jq -r '
     def cves(title; list):
       "<h3>" + title + "</h3><ul>" + (list | map("<li>" + . + "</li>") | join("")) + "</ul>";
@@ -215,15 +206,13 @@ generate_html_report() {
 }
 
 upload_to_gist() {
-  if [[ ! -s "$HTML_REPORT" ]]; then
-    echo "⚠️ No HTML report to upload."
-    return
-  fi
+  [[ ! -s "$HTML_REPORT" ]] && echo "⚠️ No HTML report to upload." && return
   echo "🌐 Uploading HTML report..."
   GIST_URL=$(gh gist create "$HTML_REPORT" --public --desc "Grype vs Trivy Report" | tail -n1)
   echo "✅ Gist URL: $GIST_URL"
 }
 
+# --- BASE IMAGE CHECK ---
 get_base_image() {
   grep '^FROM' Dockerfile | head -n 1 | awk '{print $2}'
 }
@@ -246,14 +235,14 @@ check_for_base_image_upgrade() {
   fi
 }
 
+# --- MAIN ---
 main() {
-  if [ -z "$TARGET" ] || [[ "$TARGET" == -* ]]; then
+  if [ -z "$TARGET" ]; then
     echo "❌ Usage: scancompare <docker-image>"
     exit 1
   fi
 
   check_docker
-  install_homebrew
   check_and_install_tools
   check_github_login
 
