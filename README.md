@@ -20,17 +20,25 @@ Built for **macOS**, **Linux**, and **Windows** (via WSL or Git Bash), it runs s
 curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare | sudo tee /usr/local/bin/scancompare > /dev/null && sudo chmod +x /usr/local/bin/scancompare
 This will install the script into /usr/local/bin so it can be run globally as scancompare.
 
+---
+
 ## 🧪 Usage
 ```bash
 scancompare <docker-image>
+
+---
 
 ## 📦 Example:
 ```bash
 scancompare alpine:3.14
 
+---
+
 ## 🛠 Options
 scancompare <image>	Runs a vulnerability scan, compares Grype and Trivy, generates report
 scancompare update	Manually forces a script update from GitHub (auto-checks on every run)
+
+---
 
 ## ✨ Features
 ✅ Dual vulnerability scan with Grype + Trivy
@@ -47,6 +55,8 @@ scancompare update	Manually forces a script update from GitHub (auto-checks on e
 
 🔁 Auto-updates from GitHub before every run
 
+---
+
 ## 📄 Output Artifacts
 scan_reports/grype_output.json – Raw Grype scan
 
@@ -56,9 +66,13 @@ scan_reports/diff_report.json – CVE comparison (shared/unique)
 
 scan_reports/scan_report.html – Human-readable HTML report
 
-📎 Uploaded to GitHub Gist automatically
+---
 
-🔄 Self-Updating CLI
+## 📎 Uploaded to GitHub Gist automatically
+
+---
+
+## 🔄 Self-Updating CLI
 Every time you run scancompare, it silently checks for new versions on GitHub and updates itself.
 
 You can also manually trigger an update:
@@ -66,7 +80,9 @@ You can also manually trigger an update:
 ```bash
 scancompare update
 
-🧑‍💻 Contributing
+---
+
+## 🧑‍💻 Contributing
 Want to improve scancompare? PRs are welcome!
 
 Fork the repo
@@ -75,5 +91,7 @@ Make changes
 
 Submit a pull request ✨
 
-📃 License
+---
+
+## 📃 License
 MIT License © 2024 Drew Twitchell
