@@ -2,6 +2,7 @@
 scancompare is a cross-platform CLI tool that scans Docker images using both Grype and Trivy, compares the vulnerability findings, recommends actions like upgrading base images, and generates shareable HTML reports.
 
 Built for macOS, Linux, and Windows (via WSL or Git Bash), it runs securely and independently with automatic tooling installs and self-updates.
+
 ---
 
 ## ✅ Supported Platforms
@@ -10,6 +11,7 @@ Built for macOS, Linux, and Windows (via WSL or Git Bash), it runs securely and 
  - Linux (Debian/Ubuntu, Fedora, Arch, etc.)
 
  - Windows (via WSL2 or Git Bash)
+
 ---
 
 ## 🚀 Installation (One-Liner)
@@ -17,6 +19,7 @@ Built for macOS, Linux, and Windows (via WSL or Git Bash), it runs securely and 
 curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare | sudo tee /usr/local/bin/scancompare > /dev/null && sudo chmod +x /usr/local/bin/scancompare
 ```
 This will install the script into /usr/local/bin so it can be run globally as scancompare.
+
 ---
 
 ## 🧪 Usage
@@ -53,6 +56,7 @@ scancompare alpine:3.14
 ⚙️ Auto-installs required tools (Trivy, Grype, jq, gh)
 
 🔁 Auto-updates from GitHub before every run
+
 ---
 
 ## 📄 Output Artifacts
@@ -65,6 +69,7 @@ scan_reports/trivy_output.json – Raw Trivy scan
 scan_reports/diff_report.json – CVE comparison (shared/unique)
 
 scan_reports/scan_report.html – Human-readable HTML report
+
 ---
 
 ## 📎 HTML Report Gist
@@ -79,6 +84,7 @@ Fork the repo
 Make your changes
 
 Submit a pull request ✨
+
 ---
 
 ## 📃 License
