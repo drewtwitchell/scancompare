@@ -1,0 +1,227 @@
+#!/bin/bash
+
+VERSION="1.0.0"
+SCRIPT_NAME="scancompare"
+SCRIPT_PATH="/usr/local/bin/$SCRIPT_NAME"
+REPO_USER="drewtwitchell"
+REPO_NAME="scancompare"
+REMOTE_URL="https://raw.githubusercontent.com/$REPO_USER/$REPO_NAME/main/$SCRIPT_NAME"
+
+TARGET="$1"
+REPORT_DIR="scan_reports"
+GRYPE_OUTPUT="$REPORT_DIR/grype_output.json"
+TRIVY_OUTPUT="$REPORT_DIR/trivy_output.json"
+DIFF_JSON="$REPORT_DIR/diff_report.json"
+HTML_REPORT="$REPORT_DIR/scan_report.html"
+UPGRADED_IMAGE=""
+
+# Cross-platform sed alias
+SED_BIN="sed"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  SED_BIN="gsed"  # Use GNU sed on macOS if available
+  command -v $SED_BIN &>/dev/null || SED_BIN="sed"
+fi
+
+# --- AUTO-UPDATE ---
+get_remote_version() {
+  curl -fsSL "$REMOTE_URL" | grep 'VERSION="' | cut -d'"' -f2
+}
+
+self_update() {
+  echo "⬆️  Updating $SCRIPT_NAME..."
+  tmp_file=$(mktemp)
+  curl -fsSL "$REMOTE_URL" -o "$tmp_file"
+  if [ $? -eq 0 ]; then
+    chmod +x "$tmp_file"
+    sudo mv "$tmp_file" "$SCRIPT_PATH"
+    echo "✅ $SCRIPT_NAME updated to version $(get_remote_version)"
+    exit 0
+  else
+    echo "❌ Update failed."
+    rm "$tmp_file"
+    exit 1
+  fi
+}
+
+if [[ "$1" == "update" ]]; then
+  self_update
+fi
+
+auto_update_check() {
+  remote_ver=$(get_remote_version)
+  if [[ "$VERSION" != "$remote_ver" ]]; then
+    echo "🔄 New version available: $remote_ver (current: $VERSION)"
+    echo "📥 Auto-updating..."
+    self_update
+  fi
+}
+auto_update_check
+
+install_tool_from_github() {
+  local name=$1 repo=$2 binary=${3:-$1}
+  url=$(curl -s "https://api.github.com/repos/$repo/releases/latest" | grep "browser_download_url.*linux.*64.*.tar.gz" | cut -d '"' -f 4 | head -n 1)
+  curl -L "$url" -o "/tmp/${name}.tar.gz"
+  tar -xzf "/tmp/${name}.tar.gz" -C /tmp
+  chmod +x /tmp/$binary
+  sudo mv /tmp/$binary /usr/local/bin/$binary
+}
+
+install_homebrew() {
+  if ! command -v brew &>/dev/null && [[ "$OSTYPE" == "darwin"* ]]; then
+    echo "🍺 Installing Homebrew for macOS..."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  fi
+}
+
+check_and_install_tools() {
+  for tool in grype trivy jq gh; do
+    if ! command -v $tool &>/dev/null; then
+      if command -v brew &>/dev/null; then
+        brew install $tool
+      else
+        case $tool in
+          grype) install_tool_from_github grype anchore/grype ;;
+          trivy) install_tool_from_github trivy aquasecurity/trivy ;;
+          jq)    install_tool_from_github jq stedolan/jq ;;
+          gh)    install_tool_from_github gh cli/cli gh ;;
+        esac
+      fi
+    fi
+  done
+}
+
+check_github_login() {
+  gh auth status &>/dev/null || gh auth login
+}
+
+check_docker() {
+  if ! command -v docker &>/dev/null; then
+    echo "❌ Docker not installed. Install Docker Desktop: https://www.docker.com/products/docker-desktop"
+    exit 1
+  fi
+  docker info &>/dev/null || {
+    echo "⚠️ Docker is installed but not running."
+    echo "👉 Please start Docker Desktop and try again."
+    exit 1
+  }
+}
+
+run_scans() {
+  mkdir -p "$REPORT_DIR"
+  grype "$TARGET" -o json > "$GRYPE_OUTPUT" &
+  trivy -q image --format json --output "$TRIVY_OUTPUT" "$TARGET" &
+  wait
+}
+
+compare_results() {
+  grype_cves=$(jq -r '.matches[].vulnerability.id' "$GRYPE_OUTPUT" | sort | uniq)
+  trivy_cves=$(jq -r '[.Results[].Vulnerabilities[]?.VulnerabilityID] | flatten | .[]' "$TRIVY_OUTPUT" | sort | uniq)
+  echo "$grype_cves" > "$REPORT_DIR/grype.txt"
+  echo "$trivy_cves" > "$REPORT_DIR/trivy.txt"
+  only_grype=$(comm -23 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
+  only_trivy=$(comm -13 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
+  in_both=$(comm -12 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
+
+  jq -n \
+    --argjson only_in_grype "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$only_grype")" \
+    --argjson only_in_trivy "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$only_trivy")" \
+    --argjson in_both "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$in_both")" \
+    '{
+      summary: {
+        total_grype: ($only_in_grype | length) + ($in_both | length),
+        total_trivy: ($only_in_trivy | length) + ($in_both | length),
+        shared: ($in_both | length),
+        only_in_grype: ($only_in_grype | length),
+        only_in_trivy: ($only_in_trivy | length)
+      },
+      unique_to_grype: $only_in_grype,
+      unique_to_trivy: $only_in_trivy,
+      common_vulnerabilities: $in_both,
+      actions: {
+        suggestion: "Prioritize shared vulnerabilities and those with fixed versions."
+      }
+    }' > "$DIFF_JSON"
+}
+
+generate_html_report() {
+  jq -r '
+    def cves(title; list):
+      "<h3>" + title + "</h3><ul>" + (list | map("<li>" + . + "</li>") | join("")) + "</ul>";
+    "<!DOCTYPE html><html><head><meta charset=\"UTF-8\">
+    <title>Scan Report</title><style>
+    body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: auto; }
+    h1, h3 { color: #2c3e50; } ul { background: #f4f4f4; padding: 10px; border-radius: 8px; }
+    .summary, .actions { background: #e8f5e9; padding: 10px; border-radius: 8px; margin-top: 20px; }
+    </style></head><body>
+    <h1>Grype vs Trivy Vulnerability Report</h1>" +
+    (.summary | "<div class=\"summary\"><strong>Total Grype:</strong> \(.total_grype) |
+     <strong>Total Trivy:</strong> \(.total_trivy) |
+     <strong>Shared:</strong> \(.shared)</div>") +
+    cves("Only in Grype", .unique_to_grype) +
+    cves("Only in Trivy", .unique_to_trivy) +
+    cves("Common Vulnerabilities", .common_vulnerabilities) +
+    "<div class=\"actions\"><strong>Recommendation:</strong> " + .actions.suggestion + "</div>
+    </body></html>"
+  ' "$DIFF_JSON" > "$HTML_REPORT"
+}
+
+upload_to_gist() {
+  echo "🌐 Uploading HTML report..."
+  GIST_URL=$(gh gist create "$HTML_REPORT" --public --desc "Grype vs Trivy Report" | tail -n1)
+  echo "✅ Gist URL: $GIST_URL"
+}
+
+get_base_image() {
+  grep '^FROM' Dockerfile | head -n 1 | awk '{print $2}'
+}
+
+check_for_base_image_upgrade() {
+  base_image=$(get_base_image)
+  image_name=$(echo "$base_image" | cut -d':' -f1)
+  current_tag=$(echo "$base_image" | cut -d':' -f2)
+  tags=$(curl -s "https://registry.hub.docker.com/v1/repositories/${image_name}/tags" | jq -r '.[].name')
+  latest=$(echo "$tags" | grep -E '^[0-9]+\.[0-9]+' | sort -V | tail -1)
+
+  if [[ "$latest" != "$current_tag" ]]; then
+    echo "⬆️  Upgrade available: $base_image → $image_name:$latest"
+    $SED_BIN -i.bak "s|$base_image|$image_name:$latest|" Dockerfile
+    docker build -t "${TARGET}-upgraded" .
+    UPGRADED_IMAGE="${TARGET}-upgraded"
+    echo "✅ Rebuilt image: $UPGRADED_IMAGE"
+  else
+    echo "✅ Base image is up-to-date."
+  fi
+}
+
+main() {
+  if [ -z "$TARGET" ]; then
+    echo "❌ Usage: scancompare <docker-image>"
+    exit 1
+  fi
+
+  check_docker
+  install_homebrew
+  check_and_install_tools
+  check_github_login
+
+  echo "🔍 Initial scan..."
+  run_scans
+  compare_results
+  generate_html_report
+  upload_to_gist
+
+  echo "🔧 Checking base image..."
+  if [ -f Dockerfile ]; then
+    check_for_base_image_upgrade
+    if [[ -n "$UPGRADED_IMAGE" ]]; then
+      TARGET="$UPGRADED_IMAGE"
+      echo "🔁 Re-scanning upgraded image..."
+      run_scans
+      compare_results
+      generate_html_report
+      upload_to_gist
+    fi
+  fi
+}
+
+main "$@"
