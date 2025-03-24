@@ -6,7 +6,6 @@ REPO_USER="drewtwitchell"
 REPO_NAME="scancompare"
 REMOTE_URL="https://raw.githubusercontent.com/$REPO_USER/$REPO_NAME/main/$SCRIPT_NAME"
 
-
 TARGET="$1"
 REPORT_DIR="scan_reports"
 GRYPE_OUTPUT="$REPORT_DIR/grype_output.json"
@@ -15,14 +14,36 @@ DIFF_JSON="$REPORT_DIR/diff_report.json"
 HTML_REPORT="$REPORT_DIR/scan_report.html"
 UPGRADED_IMAGE=""
 
-# Cross-platform sed alias
-SED_BIN="sed"
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  SED_BIN="gsed"  # Use GNU sed on macOS if available
-  command -v $SED_BIN &>/dev/null || SED_BIN="sed"
+# Early exits
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+  echo ""
+  echo "Usage:"
+  echo "  scancompare <image>          Scan and compare vulnerabilities"
+  echo "  scancompare update           Manually update the CLI"
+  echo "  scancompare uninstall        Remove scancompare from your system"
+  echo "  scancompare --version        Show current version"
+  echo ""
+  exit 0
 fi
 
-# --- AUTO-UPDATE ---
+if [[ "$1" == "--version" ]]; then
+  echo "scancompare version $VERSION"
+  exit 0
+fi
+
+if [[ "$1" == "uninstall" ]]; then
+  echo "🧹 Uninstalling scancompare..."
+  INSTALL_PATH="$HOME/.local/bin/scancompare"
+  [[ -f "$INSTALL_PATH" ]] && rm -f "$INSTALL_PATH" && echo "✅ Removed $INSTALL_PATH"
+  for file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+    [[ -f "$file" ]] && sed -i.bak '/export PATH="\$HOME\/.local\/bin:\$PATH"/d' "$file"
+  done
+  echo "🎉 scancompare uninstalled successfully."
+  echo "ℹ️ Restart your terminal to refresh environment variables."
+  exit 0
+fi
+
+# Auto-update
 get_remote_version() {
   curl -fsSL "$REMOTE_URL" | grep 'VERSION="' | cut -d'"' -f2
 }
@@ -50,34 +71,16 @@ self_update() {
 
   echo "🔄 New version available: $remote_version (current: $VERSION)"
   echo "📥 Auto-updating..."
-
   chmod +x "$tmp_file"
   mv "$tmp_file" "$SCRIPT_PATH"
-
   echo "✅ scancompare updated to version $remote_version"
   exec "$SCRIPT_PATH" "${@:2}"
 }
 
-if [[ "$1" == "uninstall" ]]; then
-  echo "🧹 Uninstalling scancompare..."
-  INSTALL_PATH="$HOME/.local/bin/scancompare"
-  [[ -f "$INSTALL_PATH" ]] && rm -f "$INSTALL_PATH" && echo "✅ Removed $INSTALL_PATH"
-
-  for file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
-    if [[ -f "$file" ]]; then
-      sed -i.bak '/export PATH="\$HOME\/.local\/bin:\$PATH"/d' "$file"
-    fi
-  done
-
-  echo "🎉 scancompare uninstalled successfully."
-  echo "ℹ️ Restart your terminal to refresh environment variables."
-  exit 0
-fi
-
 if [[ "$1" == "update" ]]; then
   self_update "$@"
+  exit 0
 fi
-
 
 auto_update_check() {
   remote_ver=$(get_remote_version)
@@ -89,6 +92,14 @@ auto_update_check() {
 }
 auto_update_check
 
+# Cross-platform sed alias
+SED_BIN="sed"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  SED_BIN="gsed"
+  command -v $SED_BIN &>/dev/null || SED_BIN="sed"
+fi
+
+# Install dependencies
 install_tool_from_github() {
   local name=$1 repo=$2 binary=${3:-$1}
   url=$(curl -s "https://api.github.com/repos/$repo/releases/latest" | grep "browser_download_url.*linux.*64.*.tar.gz" | cut -d '"' -f 4 | head -n 1)
@@ -146,6 +157,8 @@ run_scans() {
 }
 
 compare_results() {
+  [[ ! -s "$GRYPE_OUTPUT" || ! -s "$TRIVY_OUTPUT" ]] && echo "❌ Missing scan reports." && return 1
+
   grype_cves=$(jq -r '.matches[].vulnerability.id' "$GRYPE_OUTPUT" | sort | uniq)
   trivy_cves=$(jq -r '[.Results[].Vulnerabilities[]?.VulnerabilityID] | flatten | .[]' "$TRIVY_OUTPUT" | sort | uniq)
   echo "$grype_cves" > "$REPORT_DIR/grype.txt"
@@ -176,6 +189,8 @@ compare_results() {
 }
 
 generate_html_report() {
+  [[ ! -s "$DIFF_JSON" ]] && echo "❌ No diff data to generate report." && return 1
+
   jq -r '
     def cves(title; list):
       "<h3>" + title + "</h3><ul>" + (list | map("<li>" + . + "</li>") | join("")) + "</ul>";
@@ -198,6 +213,10 @@ generate_html_report() {
 }
 
 upload_to_gist() {
+  if [[ ! -s "$HTML_REPORT" ]]; then
+    echo "⚠️ No HTML report to upload."
+    return
+  fi
   echo "🌐 Uploading HTML report..."
   GIST_URL=$(gh gist create "$HTML_REPORT" --public --desc "Grype vs Trivy Report" | tail -n1)
   echo "✅ Gist URL: $GIST_URL"
@@ -226,7 +245,7 @@ check_for_base_image_upgrade() {
 }
 
 main() {
-  if [ -z "$TARGET" ]; then
+  if [ -z "$TARGET" ] || [[ "$TARGET" == -* ]]; then
     echo "❌ Usage: scancompare <docker-image>"
     exit 1
   fi
