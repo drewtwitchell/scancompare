@@ -73,6 +73,30 @@ if [[ -n "$HISTFILE" && -f "$HISTFILE" ]]; then
 fi
 
 echo "🎉 Installation complete."
-echo "🔁 Starting a new login shell so scancompare is available now..."
-echo
-exec $SHELL -l
+echo "🔁 Launching a new login shell so scancompare is available now..."
+echo ""
+
+# Detect correct login shell
+detect_login_shell() {
+  if command -v getent &>/dev/null; then
+    getent passwd "$USER" | cut -d: -f7
+  elif command -v dscl &>/dev/null; then
+    dscl . -read ~/ UserShell | awk '{print $2}'
+  elif [[ "$OS" == "Windows_NT" ]]; then
+    echo "$SHELL"
+  else
+    echo "$SHELL"
+  fi
+}
+
+LOGIN_SHELL="$(detect_login_shell)"
+
+if [[ -x "$LOGIN_SHELL" ]]; then
+  echo "🔁 Launching: $LOGIN_SHELL -l"
+  exec "$LOGIN_SHELL" -l
+else
+  echo "⚠️ Could not detect a valid login shell."
+  echo "👉 Please run this manually:"
+  echo '  export PATH="$HOME/.local/bin:$PATH"'
+  echo "Then try: scancompare --help"
+fi
