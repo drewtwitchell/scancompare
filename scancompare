@@ -1,11 +1,11 @@
 #!/bin/bash
-
 VERSION="1.0.0"
 SCRIPT_NAME="scancompare"
-SCRIPT_PATH="/usr/local/bin/$SCRIPT_NAME"
+SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
 REPO_NAME="scancompare"
 REMOTE_URL="https://raw.githubusercontent.com/$REPO_USER/$REPO_NAME/main/$SCRIPT_NAME"
+
 
 TARGET="$1"
 REPORT_DIR="scan_reports"
@@ -28,20 +28,21 @@ get_remote_version() {
 }
 
 self_update() {
-  echo "⬆️  Updating $SCRIPT_NAME..."
+  echo "⬆️ Updating $SCRIPT_NAME..."
   tmp_file=$(mktemp)
   curl -fsSL "$REMOTE_URL" -o "$tmp_file"
   if [ $? -eq 0 ]; then
     chmod +x "$tmp_file"
-    sudo mv "$tmp_file" "$SCRIPT_PATH"
+    mv "$tmp_file" "$SCRIPT_PATH"
     echo "✅ $SCRIPT_NAME updated to version $(get_remote_version)"
-    exit 0
+    exec "$SCRIPT_PATH" "${@:2}" # Re-run with original args minus 'update'
   else
     echo "❌ Update failed."
     rm "$tmp_file"
     exit 1
   fi
 }
+
 
 if [[ "$1" == "uninstall" ]]; then
   echo "🧹 Uninstalling scancompare..."
@@ -60,8 +61,9 @@ if [[ "$1" == "uninstall" ]]; then
 fi
 
 if [[ "$1" == "update" ]]; then
-  self_update
+  self_update "$@"
 fi
+
 
 auto_update_check() {
   remote_ver=$(get_remote_version)
