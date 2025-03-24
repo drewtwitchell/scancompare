@@ -29,7 +29,7 @@ scancompare uninstall
 ```
 Or via the install script:
 ```bash
-echo "🧹 Uninstalling scancompare..." && curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh |bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh |bash -s -- --uninstall
 ```
 ---
 
