@@ -76,6 +76,9 @@ echo "🎉 Installation complete."
 echo "🔁 Launching a new login shell so scancompare is available now..."
 echo ""
 
+# Manually export for this current shell to avoid command-not-found
+export PATH="$HOME/.local/bin:$PATH"
+
 # Detect correct login shell
 detect_login_shell() {
   if command -v getent &>/dev/null; then
@@ -92,7 +95,6 @@ detect_login_shell() {
 LOGIN_SHELL="$(detect_login_shell)"
 
 if [[ -x "$LOGIN_SHELL" ]]; then
-  echo "🔁 Launching: $LOGIN_SHELL -l"
   exec "$LOGIN_SHELL" -l
 else
   echo "⚠️ Could not detect a valid login shell."
@@ -100,3 +102,4 @@ else
   echo '  export PATH="$HOME/.local/bin:$PATH"'
   echo "Then try: scancompare --help"
 fi
+
