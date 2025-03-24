@@ -60,7 +60,7 @@ if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     echo "✅ Added to ~/.profile"
   else
     echo "⚠️ Could not detect shell config file."
-    echo 'Please manually add: export PATH="$HOME/.local/bin:$PATH"'
+    echo "Please manually add: export PATH=\"\$HOME/.local/bin:\$PATH\""
   fi
 fi
 
