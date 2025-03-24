@@ -55,39 +55,72 @@ scancompare alpine:3.14
 ---
 
 ## ✨ Features
+✨ Features
 ✅ Dual vulnerability scan with Grype + Trivy
 
-📊 Terminal summary and HTML report
+📊 CLI summary: shared CVEs, tool-specific differences, and recommended action
 
-🌐 GitHub Gist upload for easy sharing
+🖥️ HTML report with:
 
-🧠 Base image upgrade detection using live Docker tags
+ - Shared CVEs (linked to nvd.nist.gov)
 
-🏗️ Rebuilds image with upgraded base, re-scans, and compares
+ - Raw JSON (toggleable and printable)
 
-⚙️ Auto-installs required tools (Trivy, Grype, jq, gh)
+ - Suggested remediation
 
-🔁 Auto-updates from GitHub before every run
+ - PDF download button
 
-🧹 Self-removal support (via scancompare uninstall)
+❓ Optional report viewer: You choose if it opens after the scan
+
+⚙️ Auto-installs required tools (grype, trivy, jq, docker)
+
+🔁 Auto-updates from GitHub before each run
 
 ---
 
 ## 📄 Output Artifacts
-After a scan, the following files are generated:
+| File                  | Description                                                                 |
+|-----------------------|-----------------------------------------------------------------------------|
+| `scan_reports/original_grype.json` | Raw Grype scan result|
+| `scan_reports/original_trivy.json`  | Raw Trivy scan result      |
+| `scan_reports/original_diff.json`  | Comparison of vulnerabilities       |
+| `scan_reports/scan_report_<image>_<date>.html`  | Human-readable HTML report      |
 
-scan_reports/grype_output.json – Raw Grype scan
+---
+📎 Report Example
+After running scancompare, you’ll see:
+```bash
+🔍 Starting vulnerability scan for image: postgres:15
 
-scan_reports/trivy_output.json – Raw Trivy scan
+🔹 Scanning with Trivy...
+    ✔ Trivy scan saved to scan_reports/original_trivy.json
 
-scan_reports/diff_report.json – CVE comparison (shared/unique)
+🔹 Scanning with Grype...
+    ✔ Grype scan saved to scan_reports/original_grype.json
 
-scan_reports/scan_report.html – Human-readable HTML report
+🔹 Comparing scan results...
+    ✔ Diff report saved to scan_reports/original_diff.json
+
+📊 Summary:
+Grype: 42 unique, 18 shared
+Trivy: 37 unique, 18 shared
+
+💡 Suggested action: Review shared CVEs and prioritize those with known fixes.
+
+📄 Open HTML report in browser? [y/N]
+```
 
 ---
 
-## 📎 HTML Report Gist
-Every HTML report is automatically uploaded to a GitHub Gist, making it easy to share with others. The Gist URL is printed at the end of each scan.
+## 🔄 Self-Updating CLI
+Every time you run scancompare, it checks GitHub for new versions and silently updates. To run it manually use the following:
+```bash
+scancompare update
+```
+Or can also remove it entirely by running the following:
+```bash
+scancompare uninstall
+```
 
 ---
 
