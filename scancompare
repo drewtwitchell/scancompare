@@ -43,6 +43,22 @@ self_update() {
   fi
 }
 
+if [[ "$1" == "uninstall" ]]; then
+  echo "🧹 Uninstalling scancompare..."
+  INSTALL_PATH="$HOME/.local/bin/scancompare"
+  [[ -f "$INSTALL_PATH" ]] && rm -f "$INSTALL_PATH" && echo "✅ Removed $INSTALL_PATH"
+
+  for file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+    if [[ -f "$file" ]]; then
+      sed -i.bak '/export PATH="\$HOME\/.local\/bin:\$PATH"/d' "$file"
+    fi
+  done
+
+  echo "🎉 scancompare uninstalled successfully."
+  echo "ℹ️ Restart your terminal to refresh environment variables."
+  exit 0
+fi
+
 if [[ "$1" == "update" ]]; then
   self_update
 fi

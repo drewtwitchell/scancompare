@@ -22,6 +22,18 @@ This will install scancompare into ~/.local/bin with no sudo needed and update t
 
 ---
 
+## 🧹 Uninstall
+You can uninstall scancompare at any time using:
+```bash
+scancompare uninstall
+```
+Or via the install script:
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh)" --uninstall
+```
+
+---
+
 ## 🧪 Usage
 ```bash
 scancompare <docker-image>
@@ -39,6 +51,7 @@ scancompare alpine:3.14
 |-----------------------|-----------------------------------------------------------------------------|
 | `scancompare <image>` | Runs a vulnerability scan, compares Grype and Trivy, and generates a report |
 | `scancompare update`  | Manually forces a script update from GitHub (auto-checks on every run)      |
+| `scancompare uninstall`  | Removes the scancompare binary and cleans PATH from shell profiles       |
 
 ---
 
@@ -56,6 +69,8 @@ scancompare alpine:3.14
 ⚙️ Auto-installs required tools (Trivy, Grype, jq, gh)
 
 🔁 Auto-updates from GitHub before every run
+
+🧹 Self-removal support (via scancompare uninstall)
 
 ---
 
