@@ -1,12 +1,11 @@
 #!/bin/bash
-VERSION="1.0.3"
+VERSION="1.0.5"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
 REPO_NAME="scancompare"
 REMOTE_URL="https://raw.githubusercontent.com/$REPO_USER/$REPO_NAME/main/$SCRIPT_NAME"
 
-# --- CLEAN NO-UPDATE HANDLING ---
 if [[ "$1" == "--no-update" ]]; then
   SKIP_UPDATE=true
   shift
@@ -22,7 +21,7 @@ DIFF_JSON="$REPORT_DIR/diff_report.json"
 HTML_REPORT="$REPORT_DIR/scan_report.html"
 UPGRADED_IMAGE=""
 
-# --- HELP / VERSION / UNINSTALL ---
+# --- Commands ---
 if [[ "$1" == "--help" || "$1" == "-h" ]]; then
   echo ""
   echo "Usage:"
@@ -49,13 +48,14 @@ if [[ "$1" == "uninstall" ]]; then
   exit 0
 fi
 
-# --- AUTO-UPDATE ---
+# --- Auto-Update ---
 get_remote_version() {
   curl -fsSL "$REMOTE_URL" | grep 'VERSION=' | cut -d'"' -f2
 }
 
 self_update() {
   tmp_file=$(mktemp)
+  echo "📥 Auto-updating from $REMOTE_URL"
   curl -fsSL "$REMOTE_URL" -o "$tmp_file" || {
     echo "❌ Failed to fetch remote version."
     exit 1
@@ -64,23 +64,14 @@ self_update() {
   remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
   echo "🌐 Fetched remote version: $remote_version"
 
-  if [[ -z "$remote_version" ]]; then
-    echo "❌ Could not determine remote version."
-    rm -f "$tmp_file"
-    exit 1
-  fi
-
   if [[ "$remote_version" == "$VERSION" ]]; then
     rm -f "$tmp_file"
     return
   fi
 
   echo "🔄 New version available: $remote_version (current: $VERSION)"
-  echo "📥 Auto-updating..."
-
   chmod +x "$tmp_file"
   mv "$tmp_file" "$SCRIPT_PATH"
-
   echo "✅ scancompare updated to version $remote_version"
   exec "$SCRIPT_PATH" --no-update "$@"
 }
@@ -95,47 +86,30 @@ auto_update_check() {
   remote_ver=$(get_remote_version)
   if [[ "$VERSION" != "$remote_ver" ]]; then
     echo "🔄 New version available: $remote_ver (current: $VERSION)"
-    echo "📥 Auto-updating..."
     self_update "$@"
   fi
 }
 auto_update_check "$@"
 
-# --- TOOL CHECKS ---
+# --- Tools ---
 SED_BIN="sed"
 if [[ "$OSTYPE" == "darwin"* ]]; then
   SED_BIN="gsed"
   command -v $SED_BIN &>/dev/null || SED_BIN="sed"
 fi
 
-install_tool_from_github() {
-  local name=$1 repo=$2 binary=${3:-$1}
-  url=$(curl -s "https://api.github.com/repos/$repo/releases/latest" | grep "browser_download_url.*linux.*64.*.tar.gz" | cut -d '"' -f 4 | head -n 1)
-  curl -L "$url" -o "/tmp/${name}.tar.gz"
-  tar -xzf "/tmp/${name}.tar.gz" -C /tmp
-  chmod +x /tmp/$binary
-  sudo mv /tmp/$binary /usr/local/bin/$binary
-}
-
 check_and_install_tools() {
-  for tool in grype trivy jq gh; do
+  for tool in grype trivy jq; do
     if ! command -v $tool &>/dev/null; then
+      echo "📦 Installing $tool..."
       if command -v brew &>/dev/null; then
         brew install $tool
       else
-        case $tool in
-          grype) install_tool_from_github grype anchore/grype ;;
-          trivy) install_tool_from_github trivy aquasecurity/trivy ;;
-          jq)    install_tool_from_github jq stedolan/jq ;;
-          gh)    install_tool_from_github gh cli/cli gh ;;
-        esac
+        echo "❌ Please install $tool manually. Exiting."
+        exit 1
       fi
     fi
   done
-}
-
-check_github_login() {
-  gh auth status &>/dev/null || gh auth login
 }
 
 check_docker() {
@@ -150,11 +124,13 @@ check_docker() {
   }
 }
 
-# --- SCANNING ---
+# --- Scans ---
 run_scans() {
   mkdir -p "$REPORT_DIR"
-  grype "$TARGET" -o json > "$GRYPE_OUTPUT" &
+  echo "🔬 Running Trivy..."
   trivy -q image --format json --output "$TRIVY_OUTPUT" "$TARGET" &
+  echo "🔬 Running Grype..."
+  grype "$TARGET" -o json > "$GRYPE_OUTPUT" &
   wait
 }
 
@@ -192,49 +168,67 @@ compare_results() {
 }
 
 generate_html_report() {
-  [[ ! -s "$DIFF_JSON" ]] && echo "❌ No diff data to generate report." && return 1
+  [[ ! -s "$DIFF_JSON" || ! -s "$GRYPE_OUTPUT" || ! -s "$TRIVY_OUTPUT" ]] && {
+    echo "❌ Missing report data."; return 1;
+  }
 
-  jq -r '
-    def cves(title; list):
-      "<h3>" + title + "</h3><ul>" +
-      (list | map("<li>" + . + "</li>") | join("")) +
-      "</ul>";
+  {
+    echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Scan Report</title>"
+    echo "<style>body { font-family: sans-serif; padding: 20px; max-width: 900px; margin: auto; }"
+    echo "h1, h2, h3 { color: #2c3e50; } pre { background: #f8f8f8; padding: 1em; border-radius: 8px; overflow-x: auto; }</style></head><body>"
 
-    "<!DOCTYPE html><html><head><meta charset=\"UTF-8\">
-    <title>Scan Report</title><style>
-    body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: auto; }
-    h1, h3 { color: #2c3e50; } ul { background: #f4f4f4; padding: 10px; border-radius: 8px; }
-    .summary, .actions { background: #e8f5e9; padding: 10px; border-radius: 8px; margin-top: 20px; }
-    </style></head><body>
-    <h1>Grype vs Trivy Vulnerability Report</h1>" +
+    echo "<h1>Grype vs Trivy Vulnerability Report</h1>"
 
-    (.summary | "<div class=\"summary\"><strong>Total Grype:</strong> \(.total_grype) |
-    <strong>Total Trivy:</strong> \(.total_trivy) |
-    <strong>Shared:</strong> \(.shared)</div>") +
+    jq -r '
+      def cves(title; list):
+        "<h3>" + title + "</h3><ul>" +
+        (list | map("<li>" + . + "</li>") | join("")) +
+        "</ul>";
 
-    cves("Only in Grype"; .unique_to_grype) +
-    cves("Only in Trivy"; .unique_to_trivy) +
-    cves("Common Vulnerabilities"; .common_vulnerabilities) +
+      (.summary | "<div><strong>Total Grype:</strong> \(.total_grype) |
+       <strong>Total Trivy:</strong> \(.total_trivy) |
+       <strong>Shared:</strong> \(.shared)</div>") +
+      cves("Only in Grype"; .unique_to_grype) +
+      cves("Only in Trivy"; .unique_to_trivy) +
+      cves("Common Vulnerabilities"; .common_vulnerabilities) +
+      "<div><strong>Recommendation:</strong> " + .actions.suggestion + "</div>"
+    ' "$DIFF_JSON"
 
-    "<div class=\"actions\"><strong>Recommendation:</strong> " + .actions.suggestion + "</div>
-    </body></html>"
-  ' "$DIFF_JSON" > "$HTML_REPORT"
+    echo "<hr><h2>🗂 Full Trivy Output</h2><pre>"
+    cat "$TRIVY_OUTPUT" | jq . || cat "$TRIVY_OUTPUT"
+    echo "</pre>"
+
+    echo "<hr><h2>🗂 Full Grype Output</h2><pre>"
+    cat "$GRYPE_OUTPUT" | jq . || cat "$GRYPE_OUTPUT"
+    echo "</pre>"
+
+    echo "</body></html>"
+  } > "$HTML_REPORT"
 }
 
-upload_to_gist() {
-  [[ ! -s "$HTML_REPORT" ]] && echo "⚠️ No HTML report to upload." && return
-  echo "🌐 Uploading HTML report..."
-  GIST_URL=$(gh gist create "$HTML_REPORT" --public --desc "Grype vs Trivy Report" | tail -n1)
-  echo "✅ Gist URL: $GIST_URL"
+show_local_html_report() {
+  echo "📄 Opening local HTML report..."
+  if [[ -f "$HTML_REPORT" ]]; then
+    case "$OSTYPE" in
+      darwin*)  open "$HTML_REPORT" ;;
+      linux*)   xdg-open "$HTML_REPORT" ;;
+      msys*)    start "$HTML_REPORT" ;;
+      cygwin*)  cygstart "$HTML_REPORT" ;;
+      *)        echo "🔗 Report saved to: $HTML_REPORT" ;;
+    esac
+  else
+    echo "❌ HTML report not found at $HTML_REPORT"
+  fi
 }
 
-# --- BASE IMAGE CHECK ---
 get_base_image() {
   grep '^FROM' Dockerfile | head -n 1 | awk '{print $2}'
 }
 
 check_for_base_image_upgrade() {
   base_image=$(get_base_image)
+  [[ -z "$base_image" ]] && echo "⚠️ Could not detect base image." && return
+
   image_name=$(echo "$base_image" | cut -d':' -f1)
   current_tag=$(echo "$base_image" | cut -d':' -f2)
   tags=$(curl -s "https://registry.hub.docker.com/v1/repositories/${image_name}/tags" | jq -r '.[].name')
@@ -251,7 +245,6 @@ check_for_base_image_upgrade() {
   fi
 }
 
-# --- MAIN ---
 main() {
   if [ -z "$TARGET" ]; then
     echo "❌ Usage: scancompare <docker-image>"
@@ -260,13 +253,12 @@ main() {
 
   check_docker
   check_and_install_tools
-  check_github_login
 
   echo "🔍 Initial scan..."
   run_scans
   compare_results
   generate_html_report
-  upload_to_gist
+  show_local_html_report
 
   echo "🔧 Checking base image..."
   if [ -f Dockerfile ]; then
@@ -277,7 +269,7 @@ main() {
       run_scans
       compare_results
       generate_html_report
-      upload_to_gist
+      show_local_html_report
     fi
   fi
 }
