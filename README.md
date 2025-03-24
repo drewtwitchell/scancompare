@@ -16,7 +16,7 @@ Built for macOS, Linux, and Windows (via WSL or Git Bash), it runs securely and 
 
 ## 🚀 Installation (One-Liner)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh | bash
+bash <(curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh)
 ```
 This will install scancompare into ~/.local/bin with no sudo needed and update the user's PATH if necessary.
 
@@ -29,7 +29,7 @@ scancompare uninstall
 ```
 Or via the install script:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh |bash -s -- --uninstall
+bash <(curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh) --uninstall
 ```
 ---
 
