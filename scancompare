@@ -28,21 +28,35 @@ get_remote_version() {
 }
 
 self_update() {
-  echo "⬆️ Updating $SCRIPT_NAME..."
   tmp_file=$(mktemp)
-  curl -fsSL "$REMOTE_URL" -o "$tmp_file"
-  if [ $? -eq 0 ]; then
-    chmod +x "$tmp_file"
-    mv "$tmp_file" "$SCRIPT_PATH"
-    echo "✅ $SCRIPT_NAME updated to version $(get_remote_version)"
-    exec "$SCRIPT_PATH" "${@:2}" # Re-run with original args minus 'update'
-  else
-    echo "❌ Update failed."
-    rm "$tmp_file"
+  curl -fsSL "$REMOTE_URL" -o "$tmp_file" || {
+    echo "❌ Failed to fetch remote version."
+    exit 1
+  }
+
+  remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
+  echo "🌐 Fetched remote version: $remote_version"
+
+  if [[ -z "$remote_version" ]]; then
+    echo "❌ Could not determine remote version."
+    rm -f "$tmp_file"
     exit 1
   fi
-}
 
+  if [[ "$remote_version" == "$VERSION" ]]; then
+    rm -f "$tmp_file"
+    return
+  fi
+
+  echo "🔄 New version available: $remote_version (current: $VERSION)"
+  echo "📥 Auto-updating..."
+
+  chmod +x "$tmp_file"
+  mv "$tmp_file" "$SCRIPT_PATH"
+
+  echo "✅ scancompare updated to version $remote_version"
+  exec "$SCRIPT_PATH" "${@:2}"
+}
 
 if [[ "$1" == "uninstall" ]]; then
   echo "🧹 Uninstalling scancompare..."
