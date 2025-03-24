@@ -20,19 +20,19 @@ Built for **macOS**, **Linux**, and **Windows** (via WSL or Git Bash), it runs s
 curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare | sudo tee /usr/local/bin/scancompare > /dev/null && sudo chmod +x /usr/local/bin/scancompare
 This will install the script into /usr/local/bin so it can be run globally as scancompare.
 
-🧪 Usage
+## 🧪 Usage
 ```bash
 scancompare <docker-image>
 
-📦 Example:
+## 📦 Example:
 ```bash
 scancompare alpine:3.14
 
-🛠 Options
+## 🛠 Options
 scancompare <image>	Runs a vulnerability scan, compares Grype and Trivy, generates report
 scancompare update	Manually forces a script update from GitHub (auto-checks on every run)
 
-✨ Features
+## ✨ Features
 ✅ Dual vulnerability scan with Grype + Trivy
 
 📊 Terminal summary and HTML report
@@ -47,7 +47,7 @@ scancompare update	Manually forces a script update from GitHub (auto-checks on e
 
 🔁 Auto-updates from GitHub before every run
 
-📄 Output Artifacts
+## 📄 Output Artifacts
 scan_reports/grype_output.json – Raw Grype scan
 
 scan_reports/trivy_output.json – Raw Trivy scan
