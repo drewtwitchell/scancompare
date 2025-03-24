@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.0.9"
+VERSION="1.1.0"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -15,8 +15,8 @@ GRYPE_OUTPUT="$REPORT_DIR/grype_output.json"
 TRIVY_OUTPUT="$REPORT_DIR/trivy_output.json"
 GRYPE_OUTPUT_UPGRADED="$REPORT_DIR/grype_upgraded_output.json"
 TRIVY_OUTPUT_UPGRADED="$REPORT_DIR/trivy_upgraded_output.json"
-DIFF_JSON="$REPORT_DIR/diff_report.json"
-DIFF_JSON_UPGRADED="$REPORT_DIR/diff_report_upgraded.json"
+DIFF_JSON="$REPORT_DIR/original_diff.json"
+DIFF_JSON_UPGRADED="$REPORT_DIR/upgraded_diff.json"
 HTML_REPORT="$REPORT_DIR/scan_report.html"
 UPGRADED_IMAGE=""
 
@@ -55,7 +55,7 @@ self_update() {
 }
 
 check_tools() {
-  for tool in grype trivy jq; do
+  for tool in grype trivy jq docker; do
     if ! command -v $tool &>/dev/null; then
       echo "📦 Installing $tool..."
       if command -v brew &>/dev/null; then brew install $tool
@@ -65,28 +65,27 @@ check_tools() {
 }
 
 run_scans() {
-  local output_prefix=$1
+  local prefix=$1
   mkdir -p "$REPORT_DIR"
 
   step "Scanning with Trivy..."
-  trivy image --format json --output "${output_prefix}_trivy.json" "$TARGET"
-  done_msg "Trivy scan saved to ${output_prefix}_trivy.json"
+  trivy image --format json --output "${prefix}_trivy.json" "$TARGET"
+  done_msg "Trivy scan saved to ${prefix}_trivy.json"
 
   step "Scanning with Grype..."
-  grype "$TARGET" -o json > "${output_prefix}_grype.json"
-  done_msg "Grype scan saved to ${output_prefix}_grype.json"
+  grype "$TARGET" -o json > "${prefix}_grype.json"
+  done_msg "Grype scan saved to ${prefix}_grype.json"
 }
 
 compare_results() {
-  local output_prefix=$1
-  local grype_json="${output_prefix}_grype.json"
-  local trivy_json="${output_prefix}_trivy.json"
-  local diff_output="${output_prefix}_diff.json"
+  local prefix=$1
+  local grype_json="${prefix}_grype.json"
+  local trivy_json="${prefix}_trivy.json"
+  local diff_output="${prefix}_diff.json"
 
   step "Comparing scan results..."
   grype_cves=$(jq -r '.matches[].vulnerability.id' "$grype_json" | sort | uniq)
   trivy_cves=$(jq -r '[.Results[].Vulnerabilities[]?.VulnerabilityID] | flatten | .[]' "$trivy_json" | sort | uniq)
-
   echo "$grype_cves" > "$REPORT_DIR/grype.txt"
   echo "$trivy_cves" > "$REPORT_DIR/trivy.txt"
   only_grype=$(comm -23 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
@@ -110,69 +109,50 @@ compare_results() {
       unique_to_trivy: $only_in_trivy,
       common_vulnerabilities: $in_both,
       actions: {
-        suggestion: "Prioritize shared vulnerabilities and consider upgrading base image if available."
+        suggestion: "Address shared vulnerabilities and consider upgrading base image if delta is significant."
       }
     }' > "$diff_output"
-
   done_msg "Diff report saved to $diff_output"
 }
 
 generate_html_report() {
-  local original="${REPORT_DIR}/scan_report_original.json"
-  local upgraded="${REPORT_DIR}/scan_report_upgraded.json"
-  cp "$REPORT_DIR/original_diff.json" "$original"
-  [[ -f "$REPORT_DIR/upgraded_diff.json" ]] && cp "$REPORT_DIR/upgraded_diff.json" "$upgraded"
-
   local timestamp=$(date +"%Y-%m-%d")
   HTML_REPORT="$REPORT_DIR/scan_report_${ORIGINAL_TARGET//[\/:]/_}_$timestamp.html"
 
   {
-    echo "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
-    echo "<title>Scan Report - $ORIGINAL_TARGET</title>"
-    echo "<style>body { font-family: sans-serif; padding: 20px; max-width: 960px; margin: auto; }
-      h1,h2,h3 { color: #2c3e50; }
-      table { border-collapse: collapse; width: 100%; margin-top: 1em; }
-      th,td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-      pre { display: none; background: #f8f8f8; padding: 10px; border-radius: 8px; overflow-x: auto; }
-      button { margin-top: 10px; padding: 6px 12px; background: #2c3e50; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
-    </style>
-    <script>
-      function toggle(id) {
-        const el = document.getElementById(id);
-        el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
-      }
-      function savePDF() { window.print(); }
-    </script>
-    </head><body>
-    <h1>Vulnerability Report for <code>$ORIGINAL_TARGET</code></h1>
-    <p>Date: $timestamp</p>
-    <button onclick='savePDF()'>📄 Download as PDF</button>"
+    echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Scan Report</title>
+    <style>body{font-family:sans-serif;padding:20px;max-width:900px;margin:auto}
+    h1,h2,h3{color:#2c3e50} pre{background:#f4f4f4;padding:10px;border-radius:8px;overflow:auto;}
+    button{margin:10px 0;padding:6px 10px;background:#2c3e50;color:#fff;border:none;border-radius:5px;cursor:pointer}
+    table{border-collapse:collapse;width:100%;margin-top:1em} th,td{border:1px solid #ccc;padding:8px;text-align:left}
+    </style><script>
+    function toggle(id){var el=document.getElementById(id);el.style.display=(el.style.display==='none'||!el.style.display)?'block':'none'}
+    function savePDF(){window.print();}
+    </script></head><body>
+    <h1>Vulnerability Report - $ORIGINAL_TARGET</h1>
+    <button onclick='savePDF()'>📄 Download as PDF</button>
+  "
 
-    echo "<h2>🧪 Original Image</h2>"
-    jq -r '.summary | "<table><tr><th>Tool</th><th>Total</th><th>Only Tool</th><th>Shared</th></tr>" +
-      "<tr><td>Grype</td><td>\(.total_grype)</td><td>\(.only_in_grype)</td><td>\(.shared)</td></tr>" +
-      "<tr><td>Trivy</td><td>\(.total_trivy)</td><td>\(.only_in_trivy)</td><td>\(.shared)</td></tr></table>"' "$original"
+    for type in original upgraded; do
+      local diff_json="$REPORT_DIR/${type}_diff.json"
+      [[ -f "$diff_json" ]] || continue
 
-    echo "<button onclick=\"toggle('raw_original')\">Toggle Original Raw JSON</button>
-    <pre id='raw_original'>"
-    cat "$original"
-    echo "</pre>"
+      echo "<h2>${type^} Image</h2>"
+      jq -r '
+        "<table><tr><th>Tool</th><th>Total</th><th>Only in Tool</th><th>Shared</th></tr>" +
+        "<tr><td>Grype</td><td>\(.summary.total_grype)</td><td>\(.summary.only_in_grype)</td><td>\(.summary.shared)</td></tr>" +
+        "<tr><td>Trivy</td><td>\(.summary.total_trivy)</td><td>\(.summary.only_in_trivy)</td><td>\(.summary.shared)</td></tr></table>" +
+        "<h3>Common Vulnerabilities</h3><ul>" + (.common_vulnerabilities | map("<li>" + . + "</li>") | join("")) + "</ul>" +
+        "<h3>Suggested Action</h3><p>" + .actions.suggestion + "</p>"
+      ' "$diff_json"
 
-    if [[ -f "$upgraded" ]]; then
-      echo "<h2>🔁 Upgraded Base Image</h2>"
-      jq -r '.summary | "<table><tr><th>Tool</th><th>Total</th><th>Only Tool</th><th>Shared</th></tr>" +
-        "<tr><td>Grype</td><td>\(.total_grype)</td><td>\(.only_in_grype)</td><td>\(.shared)</td></tr>" +
-        "<tr><td>Trivy</td><td>\(.total_trivy)</td><td>\(.only_in_trivy)</td><td>\(.shared)</td></tr></table>"' "$upgraded"
-
-      echo "<button onclick=\"toggle('raw_upgraded')\">Toggle Upgraded Raw JSON</button>
-      <pre id='raw_upgraded'>"
-      cat "$upgraded"
+      echo "<button onclick=\"toggle('${type}_raw')\">Toggle Raw JSON</button><pre id='${type}_raw' style='display:none;'>"
+      jq . "$diff_json"
       echo "</pre>"
-    fi
+    done
 
     echo "</body></html>"
   } > "$HTML_REPORT"
-
   echo "✅ HTML report saved: $HTML_REPORT"
 }
 
@@ -185,26 +165,29 @@ open_html() {
   esac
 }
 
-get_base_image() {
-  grep '^FROM' Dockerfile | head -n 1 | awk '{print $2}'
+get_base_image_from_image() {
+  docker inspect "$TARGET" 2>/dev/null | jq -r '.[0].ContainerConfig.Image' || echo ""
 }
 
 check_for_base_image_upgrade() {
   step "Checking for base image upgrade..."
-  base_image=$(get_base_image)
+  base_image=$(get_base_image_from_image)
+  [[ -z "$base_image" ]] && echo "⚠️ Could not detect base image." && return
+
   image_name=$(echo "$base_image" | cut -d':' -f1)
   current_tag=$(echo "$base_image" | cut -d':' -f2)
   tags=$(curl -s "https://registry.hub.docker.com/v1/repositories/$image_name/tags" | jq -r '.[].name')
   latest=$(echo "$tags" | grep -E '^[0-9]+\.[0-9]+' | sort -V | tail -1)
 
   if [[ "$latest" != "$current_tag" ]]; then
-    echo "⬆️  Upgrade found: $current_tag → $latest"
-    sed -i.bak "s|$base_image|$image_name:$latest|" Dockerfile
-    docker build -t "${TARGET}-upgraded" .
-    UPGRADED_IMAGE="${TARGET}-upgraded"
+    echo "⬆️  Upgrade found: $base_image → $image_name:$latest"
+    echo "FROM $image_name:$latest" > Dockerfile
+    echo "RUN echo upgraded base layer" >> Dockerfile
+    docker build -t "${TARGET//[:\/]/_}-upgraded" .
+    UPGRADED_IMAGE="${TARGET//[:\/]/_}-upgraded"
     echo "✅ Rebuilt upgraded image: $UPGRADED_IMAGE"
   else
-    echo "✅ Base image is already latest."
+    echo "✅ Base image already up to date."
   fi
 }
 
@@ -213,17 +196,14 @@ main() {
   echo "🔍 Starting vulnerability scan for image: $TARGET"
 
   check_tools
-  TARGET="$ORIGINAL_TARGET"
   run_scans "$REPORT_DIR/original"
   compare_results "$REPORT_DIR/original"
 
-  if [[ -f Dockerfile ]]; then
-    check_for_base_image_upgrade
-    if [[ -n "$UPGRADED_IMAGE" ]]; then
-      TARGET="$UPGRADED_IMAGE"
-      run_scans "$REPORT_DIR/upgraded"
-      compare_results "$REPORT_DIR/upgraded"
-    fi
+  check_for_base_image_upgrade
+  if [[ -n "$UPGRADED_IMAGE" ]]; then
+    TARGET="$UPGRADED_IMAGE"
+    run_scans "$REPORT_DIR/upgraded"
+    compare_results "$REPORT_DIR/upgraded"
   fi
 
   generate_html_report
