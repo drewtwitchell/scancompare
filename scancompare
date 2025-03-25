@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.1.5"
+VERSION="1.1.6"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -101,7 +101,6 @@ compare_results() {
     }' > "$ORIG_DIFF"
   done_msg "Diff report saved to $ORIG_DIFF"
 
-  # CLI output
   echo -e "\n📊 CLI Summary Report"
   jq -r '
     "Tool       | Total | Only in Tool | Shared\n-----------|-------|---------------|--------" +
@@ -109,6 +108,8 @@ compare_results() {
     "\nTrivy      | \(.summary.total_trivy)    | \(.summary.only_in_trivy)           | \(.summary.shared)\n" +
     "\nShared CVEs:\n" +
     (.common_vulnerabilities | map("- " + .) | join("\n")) +
+    "\n\nUnique to Grype:\n" + (.unique_to_grype | map("- " + .) | join("\n")) +
+    "\n\nUnique to Trivy:\n" + (.unique_to_trivy | map("- " + .) | join("\n")) +
     "\n\nSuggested Action: \(.actions.suggestion)"
   ' "$ORIG_DIFF"
 }
@@ -116,7 +117,7 @@ compare_results() {
 generate_html_report() {
   {
     echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Scan Report</title>
-    <style>body{font-family:sans-serif;padding:20px;max-width:900px;margin:auto} h1,h2,h3{color:#2c3e50} pre{background:#f4f4f4;padding:10px;border-radius:8px;overflow:auto;} button{margin:10px 0;padding:6px 10px;background:#2c3e50;color:#fff;border:none;border-radius:5px;cursor:pointer} table{border-collapse:collapse;width:100%;margin-top:1em} th,td{border:1px solid #ccc;padding:8px;text-align:left}</style><script>function toggle(id){var el=document.getElementById(id);el.style.display=(el.style.display==='none'||!el.style.display)?'block':'none'} function savePDF(){window.print();}</script></head><body>
+    <style>body{font-family:sans-serif;padding:20px;max-width:900px;margin:auto} h1,h2,h3{color:#2c3e50} pre{background:#f4f4f4;padding:10px;border-radius:8px;overflow:auto;} button{margin:10px 0;padding:6px 10px;background:#2c3e50;color:#fff;border:none;border-radius:5px;cursor:pointer} table{border-collapse:collapse;width:100%;margin-top:1em} th,td{border:1px solid #ccc;padding:8px;text-align:left} ul{list-style-type:square;margin-left:20px}</style><script>function toggle(id){var el=document.getElementById(id);el.style.display=(el.style.display==='none'||!el.style.display)?'block':'none'} function savePDF(){window.print();}</script></head><body>
     <h1>Scan Summary for <code>$ORIGINAL_TARGET</code></h1>
     <p><strong>Date:</strong> $TIMESTAMP</p>
     <p>This report shows vulnerabilities detected in the image <code>$ORIGINAL_TARGET</code> using Trivy and Grype. It provides shared vulnerabilities, tool-specific issues, and recommendations.</p>
@@ -129,6 +130,10 @@ generate_html_report() {
       "<tr><td>Trivy</td><td>\(.summary.total_trivy)</td><td>\(.summary.only_in_trivy)</td><td>\(.summary.shared)</td></tr></table>" +
       "<h3>Common Vulnerabilities</h3><ul>" +
       (.common_vulnerabilities | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
+      "</ul><h3>Unique to Grype</h3><ul>" +
+      (.unique_to_grype | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
+      "</ul><h3>Unique to Trivy</h3><ul>" +
+      (.unique_to_trivy | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
       "</ul><h3>Suggested Action</h3><p>" + .actions.suggestion + "</p>"
     ' "$diff_json"
     echo "<button onclick=\"toggle('raw_json')\">Toggle Raw JSON</button><pre id='raw_json' style='display:none;'>"
