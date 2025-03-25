@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.2.0"
+VERSION="1.2.1"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -34,9 +34,9 @@ auto_update_check() {
 }
 
 self_update() {
-  tmp_file=$(mktemp)
+  local tmp_file=$(mktemp)
   curl -fsSL "$REMOTE_URL" -o "$tmp_file" || { echo "❌ Failed to fetch update."; exit 1; }
-  remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
+  local remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
   if [[ "$remote_version" == "$VERSION" ]]; then
     rm -f "$tmp_file"
     return
