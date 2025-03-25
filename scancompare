@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.3.5"
+VERSION="1.3.6"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -18,15 +18,17 @@ ORIG_GRYPE="$REPORT_DIR/original_grype.json"
 ORIG_TRIVY="$REPORT_DIR/original_trivy.json"
 ORIG_DIFF="$REPORT_DIR/original_diff.json"
 
+declare -A SEVERITY_ORDER=( [Critical]=1 [High]=2 [Medium]=3 [Low]=4 [Negligible]=5 [Unknown]=6 )
+
 step() { echo -e "\n🔹 $1"; }
 done_msg() { echo "    ✔ $1"; }
 
 get_remote_version() {
-  curl -fsSL "$REMOTE_URL" | grep 'VERSION=' | head -n1 | cut -d'"' -f2
+  curl -fsSL "$REMOTE_URL" | grep 'VERSION=' | cut -d'"' -f2
 }
 
 auto_update_check() {
-  remote_ver=$(get_remote_version)
+  local remote_ver=$(get_remote_version)
   if [[ "$VERSION" != "$remote_ver" ]]; then
     echo "🔄 New version available: $remote_ver (current: $VERSION)"
     self_update "$@"
@@ -34,9 +36,9 @@ auto_update_check() {
 }
 
 self_update() {
-  tmp_file=$(mktemp)
+  local tmp_file=$(mktemp)
   curl -fsSL "$REMOTE_URL" -o "$tmp_file" || { echo "❌ Failed to fetch update."; exit 1; }
-  remote_version=$(grep '^VERSION=' "$tmp_file" | head -n1 | cut -d'"' -f2)
+  local remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
   if [[ "$remote_version" == "$VERSION" ]]; then rm -f "$tmp_file"; return; fi
   chmod +x "$tmp_file"
   cp "$tmp_file" "$SCRIPT_PATH"
@@ -49,19 +51,19 @@ install_without_brew() {
   mkdir -p ~/.local/bin
   case $1 in
     grype)
-      curl -sL https://github.com/anchore/grype/releases/latest/download/grype_darwin_arm64.zip -o /tmp/grype.zip
-      unzip -o /tmp/grype.zip -d /tmp
+      curl -sL https://github.com/anchore/grype/releases/latest/download/grype_linux_amd64.tar.gz -o /tmp/grype.tar.gz
+      tar -xzf /tmp/grype.tar.gz -C /tmp
       mv /tmp/grype ~/.local/bin/grype
       chmod +x ~/.local/bin/grype
       ;;
     trivy)
-      curl -sL https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.60.0_Darwin-64bit.tar.gz -o /tmp/trivy.tar.gz
+      curl -sL https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.60.0_Linux-64bit.tar.gz -o /tmp/trivy.tar.gz
       tar -xzf /tmp/trivy.tar.gz -C /tmp
       mv /tmp/trivy ~/.local/bin/trivy
       chmod +x ~/.local/bin/trivy
       ;;
     jq)
-      curl -sL https://github.com/stedolan/jq/releases/latest/download/jq-osx-amd64 -o ~/.local/bin/jq
+      curl -sL https://github.com/stedolan/jq/releases/latest/download/jq-linux64 -o ~/.local/bin/jq
       chmod +x ~/.local/bin/jq
       ;;
   esac
@@ -94,65 +96,30 @@ run_scans() {
 
 compare_results() {
   step "Comparing scan results..."
-  trivy_cves=$(jq -r '[.Results[].Vulnerabilities[]? | .VulnerabilityID] | unique | .[]' "$ORIG_TRIVY")
-  grype_cves=$(jq -r '.matches[].vulnerability.id' "$ORIG_GRYPE" | sort -u)
+  trivy_cves=$(jq -r '[.Results[].Vulnerabilities[]? | {id: .VulnerabilityID, severity: .Severity}]' "$ORIG_TRIVY")
+  grype_cves=$(jq -r '[.matches[] | {id: .vulnerability.id, severity: .vulnerability.severity}]' "$ORIG_GRYPE")
 
-  echo "$grype_cves" > "$REPORT_DIR/grype.txt"
-  echo "$trivy_cves" > "$REPORT_DIR/trivy.txt"
-
-  only_grype=$(comm -23 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
-  only_trivy=$(comm -13 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
-  in_both=$(comm -12 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
-
-  jq -n \
-    --argjson only_in_grype "$(jq -R -s 'split("\n") | map(select(length > 0))' <<< "$only_grype")" \
-    --argjson only_in_trivy "$(jq -R -s 'split("\n") | map(select(length > 0))' <<< "$only_trivy")" \
-    --argjson in_both "$(jq -R -s 'split("\n") | map(select(length > 0))' <<< "$in_both")" \
-    '(
-      { summary: {}, unique_to_grype: $only_in_grype, unique_to_trivy: $only_in_trivy, common_vulnerabilities: $in_both, actions: { suggestion: "Review shared CVEs and prioritize those with known fixes." } }
-    )
-    | .summary.total_grype = ($only_in_grype | length) + ($in_both | length)
-    | .summary.total_trivy = ($only_in_trivy | length) + ($in_both | length)
-    | .summary.shared = ($in_both | length)
-    | .summary.only_in_grype = ($only_in_grype | length)
-    | .summary.only_in_trivy = ($only_in_trivy | length)' > "$ORIG_DIFF"
+  jq -n --argjson grype "$grype_cves" --argjson trivy "$trivy_cves" '
+    def group_by_severity(vulns):
+      reduce vulns[] as $v ({};
+        .[$v.severity] += [$v.id] //= [$v.id]
+      );
+    {
+      grype: group_by_severity($grype),
+      trivy: group_by_severity($trivy),
+      common: ($grype | map(.id) as $g | $trivy | map(.id) as $t | ($g & $t)),
+      actions: { suggestion: "Review shared CVEs and prioritize those with known fixes." }
+    }' > "$ORIG_DIFF"
   done_msg "Diff report saved to $ORIG_DIFF"
 
   echo -e "\n📊 CLI Summary Report"
-  jq -r '
-    "Tool       | Total | Only in Tool | Shared\n-----------|-------|---------------|--------" +
-    "\nGrype      | \(.summary.total_grype)    | \(.summary.only_in_grype)           | \(.summary.shared)" +
-    "\nTrivy      | \(.summary.total_trivy)    | \(.summary.only_in_trivy)           | \(.summary.shared)\n" +
-    "\nShared CVEs:\n" + ((.common_vulnerabilities // []) | map("- " + .) | join("\n")) +
-    "\n\nUnique to Grype:\n" + ((.unique_to_grype // []) | map("- " + .) | join("\n")) +
-    "\n\nUnique to Trivy:\n" + ((.unique_to_trivy // []) | map("- " + .) | join("\n")) +
-    "\n\nSuggested Action: \(.actions.suggestion)"
-  ' "$ORIG_DIFF"
+  cat "$ORIG_DIFF"
 }
 
 generate_html_report() {
-  {
-    echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Scan Report</title>
-    <style>body{font-family:sans-serif;padding:20px;max-width:900px;margin:auto} h1,h2,h3{color:#2c3e50} pre{background:#f4f4f4;padding:10px;border-radius:8px;overflow:auto;} button{margin:10px 0;padding:6px 10px;background:#2c3e50;color:#fff;border:none;border-radius:5px;cursor:pointer} table{border-collapse:collapse;width:100%;margin-top:1em} th,td{border:1px solid #ccc;padding:8px;text-align:left} ul{list-style-type:square;margin-left:20px}</style><script>function toggle(id){var el=document.getElementById(id);el.style.display=(el.style.display==='none'||!el.style.display)?'block':'none'} function savePDF(){window.print();}</script></head><body>
-    <h1>Scan Summary for <code>$ORIGINAL_TARGET</code></h1>
-    <p><strong>Date:</strong> $TIMESTAMP</p>
-    <button onclick='savePDF()'>📄 Download as PDF</button>"
-    jq -r '
-      "<table><tr><th>Tool</th><th>Only in Tool</th><th>Shared</th></tr>" +
-      "<tr><td>Grype</td><td><a href=#unique-grype>\(.summary.only_in_grype)</a></td><td><a href=#shared>\(.summary.shared)</a></td></tr>" +
-      "<tr><td>Trivy</td><td><a href=#unique-trivy>\(.summary.only_in_trivy)</a></td><td><a href=#shared>\(.summary.shared)</a></td></tr></table>" +
-      "<h3 id=\"shared\">Common Vulnerabilities</h3><ul>" +
-      ((.common_vulnerabilities // []) | sort | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
-      "</ul><h3 id=\"unique-grype\">Unique to Grype</h3><ul>" +
-      ((.unique_to_grype // []) | sort | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
-      "</ul><h3 id=\"unique-trivy\">Unique to Trivy</h3><ul>" +
-      ((.unique_to_trivy // []) | sort | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
-      "</ul><h3>Suggested Action</h3><p>" + .actions.suggestion + "</p>"
-    ' "$ORIG_DIFF"
-    echo "<button onclick=\"toggle('raw_json')\">Toggle Raw JSON</button><pre id='raw_json' style='display:none;'>"
-    jq . "$ORIG_DIFF"
-    echo "</pre></body></html>"
-  } > "$HTML_REPORT"
+  echo "<html><head><title>Scan Report</title></head><body><h1>Scan Report: $TARGET</h1><pre>" > "$HTML_REPORT"
+  cat "$ORIG_DIFF" >> "$HTML_REPORT"
+  echo "</pre></body></html>" >> "$HTML_REPORT"
   echo "✅ HTML report saved: $HTML_REPORT"
 }
 
