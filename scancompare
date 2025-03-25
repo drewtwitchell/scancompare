@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.3.7"
+VERSION="1.3.8"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -105,7 +105,7 @@ compare_results() {
   jq -n --argjson trivy "$trivy_cves" --argjson grype "$grype_cves" '
     def by_severity(cves):
       reduce cves[] as $v ({};
-        .[$v.severity] += [$v.id] //= [$v.id]
+        .[$v.severity] = (.[$v.severity] // []) + [$v.id]
       );
 
     {
