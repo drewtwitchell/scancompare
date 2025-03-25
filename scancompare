@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.2.7"
+VERSION="1.2.8"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -26,8 +26,7 @@ get_remote_version() {
 }
 
 auto_update_check() {
-  local remote_ver
-  remote_ver=$(get_remote_version)
+  local remote_ver=$(get_remote_version)
   if [[ "$VERSION" != "$remote_ver" ]]; then
     echo "🔄 New version available: $remote_ver (current: $VERSION)"
     self_update "$@"
@@ -35,9 +34,10 @@ auto_update_check() {
 }
 
 self_update() {
-  local tmp_file remote_version
+  local tmp_file
   tmp_file=$(mktemp)
   curl -fsSL "$REMOTE_URL" -o "$tmp_file" || { echo "❌ Failed to fetch update."; exit 1; }
+  local remote_version
   remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
   if [[ "$remote_version" == "$VERSION" ]]; then
     rm -f "$tmp_file"
@@ -103,8 +103,9 @@ run_scans() {
 
 compare_results() {
   step "Comparing scan results..."
-  grype_cves=$(jq -r '.matches[].vulnerability.id' "$ORIG_GRYPE" | sort | uniq)
-  trivy_cves=$(jq -r '[.Results[].Vulnerabilities[]? | .VulnerabilityID] | .[]' "$ORIG_TRIVY" | sort | uniq)
+  trivy_cves=$(jq -r '.Results[].Vulnerabilities[]?.VulnerabilityID' "$ORIG_TRIVY" | sort -u)
+  grype_cves=$(jq -r '.matches[].vulnerability.id' "$ORIG_GRYPE" | sort -u)
+
   echo "$grype_cves" > "$REPORT_DIR/grype.txt"
   echo "$trivy_cves" > "$REPORT_DIR/trivy.txt"
 
@@ -118,19 +119,20 @@ compare_results() {
     --argjson in_both "$(jq -R -s 'split("\n") | map(select(. != ""))' <<< "$in_both")" \
     '{
       summary: {
-        total_grype: ((.only_in_grype | length) + (.in_both | length)),
-        total_trivy: ((.only_in_trivy | length) + (.in_both | length)),
-        shared: (.in_both | length),
-        only_in_grype: (.only_in_grype | length),
-        only_in_trivy: (.only_in_trivy | length)
+        total_grype: ($only_in_grype | length) + ($in_both | length),
+        total_trivy: ($only_in_trivy | length) + ($in_both | length),
+        shared: ($in_both | length),
+        only_in_grype: ($only_in_grype | length),
+        only_in_trivy: ($only_in_trivy | length)
       },
-      unique_to_grype: .only_in_grype,
-      unique_to_trivy: .only_in_trivy,
-      common_vulnerabilities: .in_both,
+      unique_to_grype: $only_in_grype,
+      unique_to_trivy: $only_in_trivy,
+      common_vulnerabilities: $in_both,
       actions: {
         suggestion: "Review shared CVEs and prioritize those with known fixes."
       }
     }' > "$ORIG_DIFF"
+
   done_msg "Diff report saved to $ORIG_DIFF"
 
   echo -e "\n📊 CLI Summary Report"
@@ -139,7 +141,7 @@ compare_results() {
     "\nGrype      | \(.summary.total_grype)    | \(.summary.only_in_grype)           | \(.summary.shared)" +
     "\nTrivy      | \(.summary.total_trivy)    | \(.summary.only_in_trivy)           | \(.summary.shared)\n" +
     "\nShared CVEs:\n" +
-    (.common_vulnerabilities // [] | map("- " + .) | join("\n")) +
+    ((.common_vulnerabilities // []) | map("- " + .) | join("\n")) +
     "\n\nUnique to Grype:\n" + ((.unique_to_grype // []) | map("- " + .) | join("\n")) +
     "\n\nUnique to Trivy:\n" + ((.unique_to_trivy // []) | map("- " + .) | join("\n")) +
     "\n\nSuggested Action: \(.actions.suggestion)"
