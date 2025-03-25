@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.2.2"
+VERSION="1.2.3"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -26,7 +26,8 @@ get_remote_version() {
 }
 
 auto_update_check() {
-  local remote_ver=$(get_remote_version)
+  local remote_ver
+  remote_ver=$(get_remote_version)
   if [[ "$VERSION" != "$remote_ver" ]]; then
     echo "🔄 New version available: $remote_ver (current: $VERSION)"
     self_update "$@"
@@ -34,9 +35,10 @@ auto_update_check() {
 }
 
 self_update() {
-  local tmp_file=$(mktemp)
+  local tmp_file remote_version
+  tmp_file=$(mktemp)
   curl -fsSL "$REMOTE_URL" -o "$tmp_file" || { echo "❌ Failed to fetch update."; exit 1; }
-  local remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
+  remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
   if [[ "$remote_version" == "$VERSION" ]]; then
     rm -f "$tmp_file"
     return
@@ -48,12 +50,43 @@ self_update() {
   exec "$SCRIPT_PATH" --no-update "$@"
 }
 
+install_tool_fallback() {
+  local tool=$1
+  local url=$2
+  local output=$3
+  echo "🌐 Installing $tool via fallback..."
+  mkdir -p "$HOME/.local/bin"
+  curl -L "$url" -o "$output" || wget "$url" -O "$output"
+  chmod +x "$output"
+  mv "$output" "$HOME/.local/bin/$tool"
+  echo "✅ Installed $tool"
+}
+
 check_tools() {
   for tool in grype trivy jq docker; do
-    if ! command -v $tool &>/dev/null; then
+    if ! command -v "$tool" &>/dev/null; then
       echo "📦 Installing $tool..."
-      if command -v brew &>/dev/null; then brew install $tool
-      else echo "❌ Please install $tool manually"; exit 1; fi
+      if command -v brew &>/dev/null; then
+        brew install "$tool"
+      else
+        case "$tool" in
+          grype)
+            install_tool_fallback grype "https://github.com/anchore/grype/releases/latest/download/grype_$(uname -s)_$(uname -m).tar.gz" "/tmp/grype.tar.gz"
+            tar -xzf /tmp/grype.tar.gz -C /tmp && mv /tmp/grype "$HOME/.local/bin/grype"
+            ;;
+          trivy)
+            install_tool_fallback trivy "https://github.com/aquasecurity/trivy/releases/latest/download/trivy_$(uname -s)-$(uname -m).tar.gz" "/tmp/trivy.tar.gz"
+            tar -xzf /tmp/trivy.tar.gz -C /tmp && mv /tmp/trivy "$HOME/.local/bin/trivy"
+            ;;
+          jq)
+            install_tool_fallback jq "https://github.com/stedolan/jq/releases/latest/download/jq-$(uname -s)-$(uname -m)" "/tmp/jq"
+            ;;
+          docker)
+            echo "❌ Please install Docker manually: https://docs.docker.com/get-docker/"
+            exit 1
+            ;;
+        esac
+      fi
     fi
   done
 }
@@ -67,6 +100,7 @@ run_scans() {
   step "Scanning with Trivy..."
   trivy image --format json --output "$ORIG_TRIVY" "$TARGET"
   done_msg "Trivy scan saved to $ORIG_TRIVY"
+
   step "Scanning with Grype..."
   grype "$TARGET" -o json > "$ORIG_GRYPE"
   done_msg "Grype scan saved to $ORIG_GRYPE"
@@ -74,10 +108,13 @@ run_scans() {
 
 compare_results() {
   step "Comparing scan results..."
-  grype_cves=$(jq -r '.matches[].vulnerability.id' "$ORIG_GRYPE" | sort | uniq)
-  trivy_cves=$(jq -r '[.Results[].Vulnerabilities[]?.VulnerabilityID] | flatten | .[]' "$ORIG_TRIVY" | sort | uniq)
+
+  grype_cves=$(jq -r '.matches[].vulnerability.id' "$ORIG_GRYPE" | sort -u)
+  trivy_cves=$(jq -r '[.Results[].Vulnerabilities[]?.VulnerabilityID] | flatten | .[]' "$ORIG_TRIVY" | sort -u)
+
   echo "$grype_cves" > "$REPORT_DIR/grype.txt"
   echo "$trivy_cves" > "$REPORT_DIR/trivy.txt"
+
   only_grype=$(comm -23 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
   only_trivy=$(comm -13 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
   in_both=$(comm -12 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
@@ -140,8 +177,7 @@ generate_html_report() {
     ' "$diff_json"
     echo "<button onclick=\"toggle('raw_json')\">Toggle Raw JSON</button><pre id='raw_json' style='display:none;'>"
     jq . "$diff_json"
-    echo "</pre>"
-    echo "</body></html>"
+    echo "</pre></body></html>"
   } > "$HTML_REPORT"
   echo "✅ HTML report saved: $HTML_REPORT"
 }
