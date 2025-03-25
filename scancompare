@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.3.2"
+VERSION="1.3.4"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -26,7 +26,7 @@ get_remote_version() {
 }
 
 auto_update_check() {
-  local remote_ver=$(get_remote_version)
+  remote_ver=$(get_remote_version)
   if [[ "$VERSION" != "$remote_ver" ]]; then
     echo "🔄 New version available: $remote_ver (current: $VERSION)"
     self_update "$@"
@@ -34,9 +34,9 @@ auto_update_check() {
 }
 
 self_update() {
-  local tmp_file=$(mktemp)
+  tmp_file=$(mktemp)
   curl -fsSL "$REMOTE_URL" -o "$tmp_file" || { echo "❌ Failed to fetch update."; exit 1; }
-  local remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
+  remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
   if [[ "$remote_version" == "$VERSION" ]]; then rm -f "$tmp_file"; return; fi
   chmod +x "$tmp_file"
   cp "$tmp_file" "$SCRIPT_PATH"
@@ -49,36 +49,27 @@ install_without_brew() {
   mkdir -p ~/.local/bin
   case $1 in
     grype)
-      curl -sL https://github.com/anchore/grype/releases/latest/download/grype_linux_amd64.tar.gz -o /tmp/grype.tar.gz
-      tar -xzf /tmp/grype.tar.gz -C /tmp
+      curl -sL https://github.com/anchore/grype/releases/latest/download/grype_darwin_arm64.zip -o /tmp/grype.zip
+      unzip -o /tmp/grype.zip -d /tmp
       mv /tmp/grype ~/.local/bin/grype
       chmod +x ~/.local/bin/grype
       ;;
     trivy)
-      curl -sL https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.60.0_Linux-64bit.tar.gz -o /tmp/trivy.tar.gz
+      curl -sL https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.60.0_Darwin-64bit.tar.gz -o /tmp/trivy.tar.gz
       tar -xzf /tmp/trivy.tar.gz -C /tmp
       mv /tmp/trivy ~/.local/bin/trivy
       chmod +x ~/.local/bin/trivy
       ;;
     jq)
-      curl -sL https://github.com/stedolan/jq/releases/latest/download/jq-linux64 -o ~/.local/bin/jq
+      curl -sL https://github.com/stedolan/jq/releases/latest/download/jq-osx-amd64 -o ~/.local/bin/jq
       chmod +x ~/.local/bin/jq
       ;;
   esac
 }
 
-install_brew_if_missing() {
-  if ! command -v brew &>/dev/null && [[ "$OSTYPE" == "darwin"* ]]; then
-    echo "🍺 Installing Homebrew..."
-    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    eval "$($(brew --prefix)/bin/brew shellenv)"
-  fi
-}
-
 check_tools() {
   mkdir -p ~/.local/bin
   export PATH="$HOME/.local/bin:$PATH"
-  install_brew_if_missing
   for tool in grype trivy jq docker; do
     if ! command -v $tool &>/dev/null; then
       echo "📦 Installing $tool..."
@@ -94,7 +85,7 @@ clear_old_report() { rm -f "$HTML_REPORT"; }
 run_scans() {
   mkdir -p "$REPORT_DIR"
   step "Scanning with Trivy..."
-  trivy image --format json --output "$ORIG_TRIVY" "$TARGET"
+  trivy image --scanners vuln --format json --output "$ORIG_TRIVY" "$TARGET"
   done_msg "Trivy scan saved to $ORIG_TRIVY"
   step "Scanning with Grype..."
   grype "$TARGET" -o json > "$ORIG_GRYPE"
@@ -103,8 +94,9 @@ run_scans() {
 
 compare_results() {
   step "Comparing scan results..."
-  grype_cves=$(jq -r '.matches[].vulnerability.id' "$ORIG_GRYPE" | sort | uniq)
-  trivy_cves=$(jq -r '[.Results[].Vulnerabilities[]? | .VulnerabilityID] | .[]' "$ORIG_TRIVY" | sort | uniq)
+  trivy_cves=$(jq -r '[.Results[].Vulnerabilities[]? | .VulnerabilityID] | unique | .[]' "$ORIG_TRIVY")
+  grype_cves=$(jq -r '.matches[].vulnerability.id' "$ORIG_GRYPE" | sort -u)
+
   echo "$grype_cves" > "$REPORT_DIR/grype.txt"
   echo "$trivy_cves" > "$REPORT_DIR/trivy.txt"
 
@@ -112,25 +104,24 @@ compare_results() {
   only_trivy=$(comm -13 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
   in_both=$(comm -12 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
 
-  jq -n \
-    --argjson only_in_grype "$(jq -R -s 'split("\n") | map(select(. != ""))' <<< "$only_grype")" \
-    --argjson only_in_trivy "$(jq -R -s 'split("\n") | map(select(. != ""))' <<< "$only_trivy")" \
-    --argjson in_both "$(jq -R -s 'split("\n") | map(select(. != ""))' <<< "$in_both")" \
-    '{
-      summary: {
-        total_grype: ((.only_in_grype | length) + (.in_both | length)),
-        total_trivy: ((.only_in_trivy | length) + (.in_both | length)),
-        shared: (.in_both | length),
-        only_in_grype: (.only_in_grype | length),
-        only_in_trivy: (.only_in_trivy | length)
-      },
-      unique_to_grype: .only_in_grype,
-      unique_to_trivy: .only_in_trivy,
-      common_vulnerabilities: .in_both,
-      actions: {
-        suggestion: "Review shared CVEs and prioritize those with known fixes."
-      }
-    }' > "$ORIG_DIFF"
+  jq -n --argjson only_in_grype "$(jq -R -s 'split("\n") | map(select(length > 0))' <<< "$only_grype")" \
+        --argjson only_in_trivy "$(jq -R -s 'split("\n") | map(select(length > 0))' <<< "$only_trivy")" \
+        --argjson in_both "$(jq -R -s 'split("\n") | map(select(length > 0))' <<< "$in_both")" \
+        '{
+          summary: {
+            total_grype: ($only_in_grype | length) + ($in_both | length),
+            total_trivy: ($only_in_trivy | length) + ($in_both | length),
+            shared: ($in_both | length),
+            only_in_grype: ($only_in_grype | length),
+            only_in_trivy: ($only_in_trivy | length)
+          },
+          unique_to_grype: $only_in_grype,
+          unique_to_trivy: $only_in_trivy,
+          common_vulnerabilities: $in_both,
+          actions: {
+            suggestion: "Review shared CVEs and prioritize those with known fixes."
+          }
+        }' > "$ORIG_DIFF"
   done_msg "Diff report saved to $ORIG_DIFF"
 
   echo -e "\n📊 CLI Summary Report"
