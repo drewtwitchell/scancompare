@@ -5,10 +5,10 @@ import sys
 import json
 import subprocess
 import datetime
-import re
+import shutil
 from pathlib import Path
 
-VERSION = "1.5.2"
+VERSION = "1.5.3"
 SCRIPT_NAME = "scancompare"
 INSTALL_PATH = Path.home() / ".local" / "bin" / SCRIPT_NAME
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
@@ -50,35 +50,18 @@ def uninstall():
         print("❌ Not installed via install script.")
     sys.exit(0)
 
-def clean_version(version_output, tool):
-    try:
-        # Specific cleaning for Grype
-        if tool == "grype":
-            # Look for version patterns like "v0.0.0" or "0.0.0"
-            version_match = re.search(r'(?:v)?(\d+\.\d+\.\d+)', version_output)
-            if version_match:
-                return version_match.group(1)
-        
-        # Specific cleaning for Trivy
-        elif tool == "trivy":
-            # Extract version from "Version: x.x.x" or similar formats
-            version_match = re.search(r'(?:Version:)?\s*(\d+\.\d+\.\d+)', version_output, re.IGNORECASE)
-            if version_match:
-                return version_match.group(1)
-        
-        # Fallback if specific parsing fails
-        return version_output.strip().split()[0]
-    except Exception as e:
-        print(f"⚠️ Version parsing error for {tool}: {e}")
-        return "unknown"
-
 def get_version_info(tool):
     try:
-        # Capture full version output
         output = run_command(f"{tool} version", capture_output=True)
-        
-        # Clean and return version
-        return clean_version(output, tool)
+        if tool == "grype":
+            for line in output.splitlines():
+                if "Version:" in line:
+                    return line.split("Version:")[-1].strip()
+        elif tool == "trivy":
+            for line in output.splitlines():
+                if line.lower().startswith("version:"):
+                    return line.split(":")[-1].strip()
+        return output.strip().splitlines()[0]
     except:
         return "unknown"
 
