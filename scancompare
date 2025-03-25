@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.2.4"
+VERSION="1.2.5"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -26,7 +26,8 @@ get_remote_version() {
 }
 
 auto_update_check() {
-  local remote_ver=$(get_remote_version)
+  local remote_ver
+  remote_ver=$(get_remote_version)
   if [[ "$VERSION" != "$remote_ver" ]]; then
     echo "🔄 New version available: $remote_ver (current: $VERSION)"
     self_update "$@"
@@ -34,10 +35,9 @@ auto_update_check() {
 }
 
 self_update() {
-  local tmp_file
+  local tmp_file remote_version
   tmp_file=$(mktemp)
   curl -fsSL "$REMOTE_URL" -o "$tmp_file" || { echo "❌ Failed to fetch update."; exit 1; }
-  local remote_version
   remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
   if [[ "$remote_version" == "$VERSION" ]]; then
     rm -f "$tmp_file"
@@ -145,7 +145,7 @@ compare_results() {
     "\nGrype      | \(.summary.total_grype)    | \(.summary.only_in_grype)           | \(.summary.shared)" +
     "\nTrivy      | \(.summary.total_trivy)    | \(.summary.only_in_trivy)           | \(.summary.shared)\n" +
     "\nShared CVEs:\n" +
-    (.common_vulnerabilities // [] | map("- " + .) | join("\n")) +
+    ((.common_vulnerabilities // []) | map("- " + .) | join("\n")) +
     "\n\nUnique to Grype:\n" + ((.unique_to_grype // []) | map("- " + .) | join("\n")) +
     "\n\nUnique to Trivy:\n" + ((.unique_to_trivy // []) | map("- " + .) | join("\n")) +
     "\n\nSuggested Action: \(.actions.suggestion)"
