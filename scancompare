@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.2.1"
+VERSION="1.2.2"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -26,7 +26,7 @@ get_remote_version() {
 }
 
 auto_update_check() {
-  remote_ver=$(get_remote_version)
+  local remote_ver=$(get_remote_version)
   if [[ "$VERSION" != "$remote_ver" ]]; then
     echo "🔄 New version available: $remote_ver (current: $VERSION)"
     self_update "$@"
@@ -109,9 +109,9 @@ compare_results() {
     "\nGrype      | \(.summary.total_grype)    | \(.summary.only_in_grype)           | \(.summary.shared)" +
     "\nTrivy      | \(.summary.total_trivy)    | \(.summary.only_in_trivy)           | \(.summary.shared)\n" +
     "\nShared CVEs:\n" +
-    (.common_vulnerabilities | map("- " + .) | join("\n")) +
-    "\n\nUnique to Grype:\n" + (.unique_to_grype | map("- " + .) | join("\n")) +
-    "\n\nUnique to Trivy:\n" + (.unique_to_trivy | map("- " + .) | join("\n")) +
+    (.common_vulnerabilities // [] | map("- " + .) | join("\n")) +
+    "\n\nUnique to Grype:\n" + ((.unique_to_grype // []) | map("- " + .) | join("\n")) +
+    "\n\nUnique to Trivy:\n" + ((.unique_to_trivy // []) | map("- " + .) | join("\n")) +
     "\n\nSuggested Action: \(.actions.suggestion)"
   ' "$ORIG_DIFF"
 }
@@ -131,11 +131,11 @@ generate_html_report() {
       "<tr><td>Grype</td><td><a href=#unique-grype>\(.summary.only_in_grype)</a></td><td><a href=#shared>\(.summary.shared)</a></td></tr>" +
       "<tr><td>Trivy</td><td><a href=#unique-trivy>\(.summary.only_in_trivy)</a></td><td><a href=#shared>\(.summary.shared)</a></td></tr></table>" +
       "<h3 id=\"shared\">Common Vulnerabilities</h3><ul>" +
-      (.common_vulnerabilities | sort | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
+      ((.common_vulnerabilities // []) | sort | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
       "</ul><h3 id=\"unique-grype\">Unique to Grype</h3><ul>" +
-      (.unique_to_grype | sort | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
+      ((.unique_to_grype // []) | sort | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
       "</ul><h3 id=\"unique-trivy\">Unique to Trivy</h3><ul>" +
-      (.unique_to_trivy | sort | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
+      ((.unique_to_trivy // []) | sort | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
       "</ul><h3>Suggested Action</h3><p>" + .actions.suggestion + "</p>"
     ' "$diff_json"
     echo "<button onclick=\"toggle('raw_json')\">Toggle Raw JSON</button><pre id='raw_json' style='display:none;'>"
