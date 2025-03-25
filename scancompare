@@ -35,13 +35,15 @@ auto_update_check() {
 
 self_update() {
   tmp_file=$(mktemp)
-  echo "📥 Auto-updating from $REMOTE_URL"
   curl -fsSL "$REMOTE_URL" -o "$tmp_file" || { echo "❌ Failed to fetch update."; exit 1; }
   remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
-  echo "🌐 Fetched remote version: $remote_version"
-  if [[ "$remote_version" == "$VERSION" ]]; then rm -f "$tmp_file"; return; fi
+  if [[ "$remote_version" == "$VERSION" ]]; then
+    rm -f "$tmp_file"
+    return
+  fi
   chmod +x "$tmp_file"
-  mv "$tmp_file" "$SCRIPT_PATH"
+  cp "$tmp_file" "$SCRIPT_PATH"
+  rm -f "$tmp_file"
   echo "✅ scancompare updated to version $remote_version"
   exec "$SCRIPT_PATH" --no-update "$@"
 }
