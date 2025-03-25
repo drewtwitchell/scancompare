@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash 
 set -e
 
 INSTALL_DIR="$HOME/.local/bin"
