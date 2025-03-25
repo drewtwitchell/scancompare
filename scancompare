@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.3.8"
+VERSION="1.3.9"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -34,10 +34,8 @@ auto_update_check() {
 }
 
 self_update() {
-  local tmp_file
   tmp_file=$(mktemp)
   curl -fsSL "$REMOTE_URL" -o "$tmp_file" || { echo "❌ Failed to fetch update."; exit 1; }
-  local remote_version
   remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
   if [[ "$remote_version" == "$VERSION" ]]; then rm -f "$tmp_file"; return; fi
   chmod +x "$tmp_file"
@@ -47,36 +45,17 @@ self_update() {
   exec "$SCRIPT_PATH" --no-update "$@"
 }
 
-install_without_brew() {
-  mkdir -p ~/.local/bin
-  case $1 in
-    grype)
-      curl -sL https://github.com/anchore/grype/releases/latest/download/grype_linux_amd64.tar.gz -o /tmp/grype.tar.gz
-      tar -xzf /tmp/grype.tar.gz -C /tmp
-      mv /tmp/grype ~/.local/bin/grype
-      chmod +x ~/.local/bin/grype
-      ;;
-    trivy)
-      curl -sL https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.60.0_Linux-64bit.tar.gz -o /tmp/trivy.tar.gz
-      tar -xzf /tmp/trivy.tar.gz -C /tmp
-      mv /tmp/trivy ~/.local/bin/trivy
-      chmod +x ~/.local/bin/trivy
-      ;;
-    jq)
-      curl -sL https://github.com/stedolan/jq/releases/latest/download/jq-linux64 -o ~/.local/bin/jq
-      chmod +x ~/.local/bin/jq
-      ;;
-  esac
-}
-
 check_tools() {
   mkdir -p ~/.local/bin
   export PATH="$HOME/.local/bin:$PATH"
   for tool in grype trivy jq docker; do
     if ! command -v $tool &>/dev/null; then
       echo "📦 Installing $tool..."
-      if command -v brew &>/dev/null; then brew install $tool
-      else install_without_brew $tool
+      if command -v brew &>/dev/null; then
+        brew install $tool
+      else
+        echo "⚠️ $tool not found and Homebrew unavailable. Please install $tool manually."
+        exit 1
       fi
     fi
   done
@@ -96,6 +75,7 @@ run_scans() {
 
 compare_results() {
   step "Comparing scan results..."
+
   trivy_cves=$(jq -r '[.Results[].Vulnerabilities[]? | {id: .VulnerabilityID, severity: .Severity}] | unique' "$ORIG_TRIVY")
   grype_cves=$(jq -r '[.matches[] | {id: .vulnerability.id, severity: .vulnerability.severity}] | unique' "$ORIG_GRYPE")
 
@@ -103,35 +83,44 @@ compare_results() {
   echo "$grype_cves" > "$REPORT_DIR/grype.json"
 
   jq -n --argjson trivy "$trivy_cves" --argjson grype "$grype_cves" '
-    def by_severity(cves):
-      reduce cves[] as $v ({};
-        .[$v.severity] = (.[$v.severity] // []) + [$v.id]
+    def group_by_severity(cves):
+      reduce cves[] as $v (
+        {Critical: [], High: [], Medium: [], Low: [], Negligible: [], Unknown: []};
+        .[$v.severity] += [$v.id]
       );
+
+    def extract_ids(cves): cves | map(.id);
+
+    def common(a; b): [a[], b[]] | group_by(.) | map(select(length == 2)) | flatten | unique;
+    def unique_to(a; b): [a[], b[]] | group_by(.) | map(select(length == 1)) | map(.[0]) | unique;
 
     {
       summary: {
         total_grype: ($grype | length),
         total_trivy: ($trivy | length),
-        shared: ($grype | map(.id) | . as $g | ($trivy | map(.id)) | map(select($g | index(.))) | length),
-        only_in_grype: ($grype | map(.id) - ($trivy | map(.id)) | length),
-        only_in_trivy: ($trivy | map(.id) - ($grype | map(.id)) | length)
+        shared: (common(extract_ids($grype); extract_ids($trivy)) | length),
+        only_in_grype: (unique_to(extract_ids($grype); extract_ids($trivy)) | length),
+        only_in_trivy: (unique_to(extract_ids($trivy); extract_ids($grype)) | length)
       },
       breakdown: {
-        grype: by_severity($grype),
-        trivy: by_severity($trivy)
+        grype: group_by_severity($grype),
+        trivy: group_by_severity($trivy)
       },
       actions: {
-        suggestion: "Review shared CVEs and prioritize those with known fixes."
+        suggestion: "Review critical and high severity shared CVEs."
       }
     }' > "$ORIG_DIFF"
 
   done_msg "Diff report saved to $ORIG_DIFF"
+
   echo -e "\n📊 CLI Summary Report"
   jq -r '
     "Tool       | Total | Only in Tool | Shared\n-----------|-------|---------------|--------" +
     "\nGrype      | \(.summary.total_grype)    | \(.summary.only_in_grype)           | \(.summary.shared)" +
     "\nTrivy      | \(.summary.total_trivy)    | \(.summary.only_in_trivy)           | \(.summary.shared)\n" +
-    "\nSuggested Action: \(.actions.suggestion)"
+    "\nShared Critical CVEs:\n" +
+    (.breakdown.grype.Critical | map(select(. as $id | (. == ($breakdown.trivy.Critical[]?)))) | unique | map("- \(.))") | join("\n")) +
+    "\n\nSuggested Action: \(.actions.suggestion)"
   ' "$ORIG_DIFF"
 }
 
