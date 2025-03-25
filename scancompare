@@ -1,207 +1,227 @@
 #!/usr/bin/env python3
-import os
-import sys
 import subprocess
 import json
+import os
+import sys
 import shutil
-from datetime import datetime
 import tempfile
-import webbrowser
+import datetime
+from pathlib import Path
 
-VERSION = "1.4.2"
-REPO_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-INSTALL_PATH = os.path.expanduser("~/.local/bin/scancompare")
-REPORT_DIR = "scan_reports"
-TIMESTAMP = datetime.now().strftime("%Y-%m-%d")
+VERSION = "1.4.3"
+SCRIPT_NAME = "scancompare"
+SCRIPT_PATH = Path.home() / ".local" / "bin" / SCRIPT_NAME
+REMOTE_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
+
+REPORT_DIR = Path("scan_reports")
+REPORT_DIR.mkdir(exist_ok=True)
+TRIVY_JSON = REPORT_DIR / "original_trivy.json"
+GRYPE_JSON = REPORT_DIR / "original_grype.json"
+DIFF_JSON = REPORT_DIR / "original_diff.json"
 
 def run_cmd(cmd):
-    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return result.stdout.strip()
 
 def get_tool_version(tool):
     try:
-        if tool == "trivy":
-            return run_cmd("trivy --version").splitlines()[0]
-        elif tool == "grype":
-            return run_cmd("grype version").splitlines()[0]
+        version_output = run_cmd([tool, "--version"])
+        return version_output.split()[1] if version_output else "Unknown"
     except:
         return "Unknown"
 
-def auto_update():
+def fetch_remote_version():
     try:
-        remote_script = run_cmd(f"curl -fsSL {REPO_URL}")
-        if f'VERSION = "{VERSION}"' not in remote_script:
-            print(f"🔄 New version available (current: {VERSION})")
-            with tempfile.NamedTemporaryFile("w", delete=False) as tmp:
-                tmp.write(remote_script)
-                tmp_path = tmp.name
-            os.chmod(tmp_path, 0o755)
-            shutil.copy(tmp_path, INSTALL_PATH)
-            print(f"✅ scancompare updated to latest version")
-            os.execv(INSTALL_PATH, [INSTALL_PATH] + sys.argv[1:])
+        output = run_cmd(["curl", "-fsSL", REMOTE_URL])
+        for line in output.splitlines():
+            if line.startswith("VERSION"):
+                return line.split("=")[1].strip().replace('"', '')
+    except:
+        return None
+
+def self_update():
+    remote_version = fetch_remote_version()
+    if not remote_version or remote_version == VERSION:
+        return
+    print(f"🔄 New version available: {remote_version} (current: {VERSION})")
+    try:
+        new_script = run_cmd(["curl", "-fsSL", REMOTE_URL])
+        if new_script:
+            SCRIPT_PATH.write_text(new_script)
+            SCRIPT_PATH.chmod(0o755)
+            print(f"✅ scancompare updated to version {remote_version}")
+            os.execv(SCRIPT_PATH, [str(SCRIPT_PATH)] + sys.argv[1:])
     except Exception as e:
-        print(f"⚠️ Auto-update failed: {e}")
+        print(f"❌ Auto-update failed: {e}")
 
 def uninstall():
-    print("🔧 Uninstalling scancompare...")
+    print("🧹 Uninstalling scancompare...")
     try:
-        os.remove(INSTALL_PATH)
-        print("✅ scancompare has been removed.")
-    except FileNotFoundError:
-        print("❌ scancompare not found.")
+        os.remove(SCRIPT_PATH)
+        print("✅ scancompare removed from ~/.local/bin")
+    except:
+        print("⚠️ scancompare was not found or could not be removed.")
+    sys.exit(0)
 
-def scan_image(image):
-    os.makedirs(REPORT_DIR, exist_ok=True)
-    trivy_out = os.path.join(REPORT_DIR, "original_trivy.json")
-    grype_out = os.path.join(REPORT_DIR, "original_grype.json")
+def scan_with_trivy(image):
+    print("🔹 Scanning with Trivy...")
+    subprocess.run(["trivy", "image", "--scanners", "vuln", "--format", "json", "--output", TRIVY_JSON, image])
+    print(f"    ✔ Trivy scan saved to {TRIVY_JSON}")
 
-    print("\n🔹 Scanning with Trivy...")
-    run_cmd(f"trivy image --scanners vuln --format json -o {trivy_out} {image}")
-    print(f"    ✔ Trivy scan saved to {trivy_out}")
+def scan_with_grype(image):
+    print("🔹 Scanning with Grype...")
+    with open(GRYPE_JSON, "w") as f:
+        subprocess.run(["grype", image, "-o", "json"], stdout=f)
+    print(f"    ✔ Grype scan saved to {GRYPE_JSON}")
 
-    print("\n🔹 Scanning with Grype...")
-    run_cmd(f"grype {image} -o json > {grype_out}")
-    print(f"    ✔ Grype scan saved to {grype_out}")
-    return trivy_out, grype_out
+def extract_cves(filepath, tool):
+    try:
+        with open(filepath) as f:
+            data = json.load(f)
+        if tool == "trivy":
+            vulns = [
+                {"id": v["VulnerabilityID"], "severity": v["Severity"]}
+                for result in data.get("Results", [])
+                for v in result.get("Vulnerabilities", [])
+            ]
+        else:
+            vulns = [
+                {"id": match["vulnerability"]["id"], "severity": match["vulnerability"]["severity"]}
+                for match in data.get("matches", [])
+            ]
+        return vulns
+    except:
+        return []
 
-def extract_vulns(json_file, tool):
-    with open(json_file) as f:
-        data = json.load(f)
-
-    results = []
-    if tool == "trivy":
-        for result in data.get("Results", []):
-            for vuln in result.get("Vulnerabilities", []):
-                results.append((vuln["VulnerabilityID"], vuln.get("Severity", "Unknown")))
-    elif tool == "grype":
-        for match in data.get("matches", []):
-            vuln = match.get("vulnerability", {})
-            results.append((vuln.get("id"), vuln.get("severity", "Unknown")))
-    return results
-
-def group_by_severity(vulns):
+def group_by_severity(cves):
     grouped = {}
-    for cve, severity in vulns:
-        severity = severity.capitalize()
-        grouped.setdefault(severity, []).append(cve)
+    for item in cves:
+        sev = item["severity"]
+        grouped.setdefault(sev, []).append(item["id"])
     return grouped
 
-def generate_diff_report(trivy_vulns, grype_vulns):
-    trivy_set = set([v[0] for v in trivy_vulns])
-    grype_set = set([v[0] for v in grype_vulns])
-    shared = trivy_set & grype_set
-    only_trivy = trivy_set - grype_set
-    only_grype = grype_set - trivy_set
+def compare_cves(trivy, grype):
+    t_ids = {v["id"] for v in trivy}
+    g_ids = {v["id"] for v in grype}
+    shared = t_ids & g_ids
+    only_t = t_ids - g_ids
+    only_g = g_ids - t_ids
 
-    def filter_group(vulns, filter_set):
-        return group_by_severity([v for v in vulns if v[0] in filter_set])
+    def filter_ids(source, ids):
+        return [v for v in source if v["id"] in ids]
 
     return {
-        "shared": filter_group(trivy_vulns + grype_vulns, shared),
-        "trivy": filter_group(trivy_vulns, only_trivy),
-        "grype": filter_group(grype_vulns, only_grype)
+        "shared": group_by_severity(filter_ids(trivy, shared)),
+        "trivy_only": group_by_severity(filter_ids(trivy, only_t)),
+        "grype_only": group_by_severity(filter_ids(grype, only_g))
     }
 
-def print_report(image, trivy_vulns, grype_vulns, grouped):
-    print(f"\n📊 CLI Summary Report")
-    print(f"Tool       | Total | Only in Tool | Shared")
-    print(f"-----------|-------|---------------|--------")
-    print(f"Grype      | {len(grype_vulns):<5} | {sum(len(v) for v in grouped['grype'].values()):<13} | {sum(len(v) for v in grouped['shared'].values())}")
-    print(f"Trivy      | {len(trivy_vulns):<5} | {sum(len(v) for v in grouped['trivy'].values()):<13} | {sum(len(v) for v in grouped['shared'].values())}")
-    print("\n🔍 CVEs by Severity\n")
+def print_cli_report(summary, trivy_version, grype_version):
+    print(f"\n🔧 Tool Versions:\n  Trivy: {trivy_version}\n  Grype: {grype_version}")
+    print("\n📊 CLI Summary Report")
+    print("Tool       | Total | Only in Tool | Shared")
+    print("-----------|-------|---------------|--------")
+    print(f"Grype      | {summary['grype_total']:<5} | {summary['grype_only_count']:<13} | {summary['shared_count']}")
+    print(f"Trivy      | {summary['trivy_total']:<5} | {summary['trivy_only_count']:<13} | {summary['shared_count']}")
 
-    for section in ["grype", "trivy", "shared"]:
-        label = {
-            "grype": "🔸 Unique to Grype",
-            "trivy": "🔸 Unique to Trivy",
-            "shared": "🔸 Shared CVEs"
-        }[section]
-        print(label)
-        for severity in ["Critical", "High", "Medium", "Low", "Negligible", "Unknown"]:
-            vulns = grouped[section].get(severity, [])
-            if vulns:
-                print(f"  {severity} ({len(vulns)}):")
-                for cve in sorted(set(vulns)):
-                    print(f"    - {cve}")
-        print()
+def print_grouped_cves(grouped, label):
+    print(f"\n🔸 {label}")
+    for severity in ["Critical", "High", "Medium", "Low", "Negligible", "Unknown"]:
+        ids = grouped.get(severity, [])
+        if ids:
+            print(f"  {severity} ({len(ids)}):")
+            for cve in sorted(set(ids)):
+                print(f"    - {cve}")
 
-def generate_html_report(image, grouped, trivy_version, grype_version):
-    filename = f"{REPORT_DIR}/scan_report_{image.replace(':', '_')}_{TIMESTAMP}.html"
-    with open(filename, "w") as f:
-        f.write(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>Scan Report</title>
-<style>
-body {{ font-family: Arial, sans-serif; padding: 20px; }}
-h2 {{ margin-top: 2em; }}
-table {{ border-collapse: collapse; width: 100%; }}
-th, td {{ border: 1px solid #ccc; padding: 8px; text-align: left; }}
-.toggle {{ cursor: pointer; color: blue; text-decoration: underline; }}
-.hidden {{ display: none; }}
-</style>
-<script>
-function toggle(id) {{
-  var e = document.getElementById(id);
-  e.className = e.className === "hidden" ? "" : "hidden";
-}}
-</script>
-</head><body>
-<h1>Vulnerability Report for <code>{image}</code></h1>
-<p><strong>Date:</strong> {TIMESTAMP}</p>
-<p><strong>Grype:</strong> {grype_version} | <strong>Trivy:</strong> {trivy_version}</p>
-""")
+def generate_html_report(summary, trivy_version, grype_version, timestamp, image):
+    html_path = REPORT_DIR / f"scan_report_{image.replace('/', '_').replace(':', '_')}_{timestamp}.html"
+    with open(html_path, "w") as f:
+        f.write(f"""<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Scan Report</title>
+        <style>body{{font-family:sans-serif;padding:20px;max-width:900px;margin:auto}}
+        h1,h2,h3{{color:#2c3e50}} pre{{background:#f4f4f4;padding:10px;border-radius:8px;overflow:auto;}}
+        button{{margin:10px 0;padding:6px 10px;background:#2c3e50;color:#fff;border:none;border-radius:5px;cursor:pointer}}
+        table{{border-collapse:collapse;width:100%;margin-top:1em}} th,td{{border:1px solid #ccc;padding:8px;text-align:left}}
+        ul{{list-style-type:square;margin-left:20px}}</style>
+        <script>function toggle(id){{var el=document.getElementById(id);el.style.display=(el.style.display==='none')?'block':'none';}}
+        function savePDF(){{window.print();}}</script></head><body>
+        <h1>Scan Report for <code>{image}</code></h1>
+        <p><strong>Date:</strong> {timestamp}</p>
+        <p><strong>Trivy Version:</strong> {trivy_version} &nbsp;&nbsp; <strong>Grype Version:</strong> {grype_version}</p>
+        <button onclick='savePDF()'>📄 Download as PDF</button>
+        <h2>Summary</h2>
+        <table><tr><th>Tool</th><th>Total</th><th>Only in Tool</th><th>Shared</th></tr>
+        <tr><td>Grype</td><td>{summary['grype_total']}</td><td>{summary['grype_only_count']}</td><td>{summary['shared_count']}</td></tr>
+        <tr><td>Trivy</td><td>{summary['trivy_total']}</td><td>{summary['trivy_only_count']}</td><td>{summary['shared_count']}</td></tr></table>
+        """)
 
-        for section in ["grype", "trivy", "shared"]:
-            label = {
-                "grype": "Unique to Grype",
-                "trivy": "Unique to Trivy",
-                "shared": "Shared CVEs"
-            }[section]
-            f.write(f"<h2>{label}</h2>\n")
+        for label, data in [
+            ("Unique to Grype", summary["grype_only"]),
+            ("Unique to Trivy", summary["trivy_only"]),
+            ("Shared CVEs", summary["shared"])]:
+            f.write(f"<h2>{label}</h2>")
             for severity in ["Critical", "High", "Medium", "Low", "Negligible", "Unknown"]:
-                vulns = grouped[section].get(severity, [])
-                if vulns:
-                    f.write(f"<h3>{severity} ({len(vulns)})</h3><ul>")
-                    for cve in sorted(set(vulns)):
-                        f.write(f"<li><a href='https://nvd.nist.gov/vuln/detail/{cve}' target='_blank'>{cve}</a></li>")
-                    f.write("</ul>\n")
+                ids = data.get(severity, [])
+                if ids:
+                    f.write(f"<h3>{severity} ({len(ids)})</h3><ul>")
+                    for cve in sorted(set(ids)):
+                        f.write(f"<li>{cve}</li>")
+                    f.write("</ul>")
 
-        f.write(f"""
-<h2 class="toggle" onclick="toggle('raw')">Toggle Raw JSON</h2>
-<pre id="raw" class="hidden">{json.dumps(grouped, indent=2)}</pre>
-</body></html>""")
-    print(f"✅ HTML report saved: {filename}")
-    return filename
+        f.write(f"""<button onclick="toggle('raw')">Toggle Raw JSON</button>
+        <pre id="raw" style="display:none;">""")
+        with open(DIFF_JSON) as j:
+            f.write(json.dumps(json.load(j), indent=2))
+        f.write("</pre></body></html>")
+    print(f"\n✅ HTML report saved to {html_path}")
+    return html_path
+
+def prompt_open_html(path):
+    choice = input("📁 Would you like to open the HTML report in your browser? (y/n): ").lower()
+    if choice == "y":
+        subprocess.run(["open" if sys.platform == "darwin" else "xdg-open", str(path)])
 
 def main():
-    if len(sys.argv) == 2:
-        if sys.argv[1] in ("--version", "-v"):
-            print(f"scancompare version {VERSION}")
-            return
-        elif sys.argv[1] in ("--uninstall", "uninstall"):
-            uninstall()
-            return
-
-    if len(sys.argv) != 2:
+    if "--version" in sys.argv:
+        print(f"{SCRIPT_NAME} version {VERSION}")
+        sys.exit(0)
+    if "uninstall" in sys.argv:
+        uninstall()
+    if len(sys.argv) < 2:
         print("❌ Usage: scancompare <image>")
-        return
+        sys.exit(1)
+
+    self_update()
 
     image = sys.argv[1]
-    auto_update()
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
+    scan_with_trivy(image)
+    scan_with_grype(image)
+
+    trivy_cves = extract_cves(TRIVY_JSON, "trivy")
+    grype_cves = extract_cves(GRYPE_JSON, "grype")
+    grouped = compare_cves(trivy_cves, grype_cves)
+
+    summary = {
+        "trivy_total": len(trivy_cves),
+        "grype_total": len(grype_cves),
+        "shared_count": sum(len(v) for v in grouped["shared"].values()),
+        "trivy_only_count": sum(len(v) for v in grouped["trivy_only"].values()),
+        "grype_only_count": sum(len(v) for v in grouped["grype_only"].values()),
+        "trivy_only": grouped["trivy_only"],
+        "grype_only": grouped["grype_only"],
+        "shared": grouped["shared"]
+    }
 
     trivy_ver = get_tool_version("trivy")
     grype_ver = get_tool_version("grype")
 
-    trivy_out, grype_out = scan_image(image)
-    trivy_vulns = extract_vulns(trivy_out, "trivy")
-    grype_vulns = extract_vulns(grype_out, "grype")
-    grouped = generate_diff_report(trivy_vulns, grype_vulns)
+    print_cli_report(summary, trivy_ver, grype_ver)
+    print_grouped_cves(grouped["grype_only"], "Unique to Grype")
+    print_grouped_cves(grouped["trivy_only"], "Unique to Trivy")
+    print_grouped_cves(grouped["shared"], "Shared CVEs")
 
-    print_report(image, trivy_vulns, grype_vulns, grouped)
-    html_file = generate_html_report(image, grouped, trivy_ver, grype_ver)
-
-    choice = input("\n📁 Would you like to open the HTML report in your browser? (y/n): ").strip().lower()
-    if choice == "y":
-        webbrowser.open(f"file://{os.path.abspath(html_file)}")
+    html_path = generate_html_report(summary, trivy_ver, grype_ver, timestamp, image)
+    prompt_open_html(html_path)
 
 if __name__ == "__main__":
     main()
