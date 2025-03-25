@@ -1,55 +1,70 @@
 #!/bin/bash
-
 set -e
 
+VERSION="2.0.0"
 INSTALL_DIR="$HOME/.local/bin"
 SCRIPT_NAME="scancompare"
+SCRIPT_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare.py"
 SCRIPT_PATH="$INSTALL_DIR/$SCRIPT_NAME"
-REPO_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare.py"
 
+echo "📦 Installing $SCRIPT_NAME v$VERSION to $SCRIPT_PATH"
 mkdir -p "$INSTALL_DIR"
 
-echo "📥 Downloading scancompare CLI..."
-curl -fsSL "$REPO_URL" -o "$SCRIPT_PATH"
-
+curl -fsSL "$SCRIPT_URL" -o "$SCRIPT_PATH"
 chmod +x "$SCRIPT_PATH"
 
-echo "✅ Installed scancompare to $SCRIPT_PATH"
-echo "ℹ️  Add the following line to your shell profile if needed:"
-echo 'export PATH="$HOME/.local/bin:$PATH"'
+# Add to PATH in shell profile
+SHELL_RC=""
+if [[ -n "$ZSH_VERSION" && -f "$HOME/.zshrc" ]]; then
+  SHELL_RC="$HOME/.zshrc"
+elif [[ -n "$BASH_VERSION" && -f "$HOME/.bashrc" ]]; then
+  SHELL_RC="$HOME/.bashrc"
+elif [[ -f "$HOME/.profile" ]]; then
+  SHELL_RC="$HOME/.profile"
+fi
 
-echo "📦 Checking dependencies..."
+if [[ -n "$SHELL_RC" && ! $(grep "$INSTALL_DIR" "$SHELL_RC") ]]; then
+  echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC"
+  echo "✅ Added $INSTALL_DIR to PATH in $SHELL_RC"
+fi
 
-# Function to install a tool
-install_tool() {
-    TOOL=$1
-    if command -v brew >/dev/null 2>&1; then
-        brew install "$TOOL"
+# Update PATH for current session
+export PATH="$HOME/.local/bin:$PATH"
+
+# Install tools
+TOOLS=(grype trivy jq docker)
+echo "🔍 Checking for required tools..."
+
+for tool in "${TOOLS[@]}"; do
+  if ! command -v $tool &> /dev/null; then
+    echo "📦 Installing $tool..."
+    if command -v brew &> /dev/null; then
+      brew install "$tool"
     else
-        echo "❌ Homebrew not found. Attempting to install $TOOL manually..."
-        case "$TOOL" in
-            trivy)
-                curl -sL https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.60.0_macOS-64bit.tar.gz -o /tmp/trivy.tar.gz
-                tar -xzf /tmp/trivy.tar.gz -C /tmp
-                mv /tmp/trivy "$INSTALL_DIR/trivy"
-                chmod +x "$INSTALL_DIR/trivy"
-                ;;
-            grype)
-                curl -sL https://github.com/anchore/grype/releases/latest/download/grype_macos_amd64.tar.gz -o /tmp/grype.tar.gz
-                tar -xzf /tmp/grype.tar.gz -C /tmp
-                mv /tmp/grype "$INSTALL_DIR/grype"
-                chmod +x "$INSTALL_DIR/grype"
-                ;;
-        esac
+      case $tool in
+        grype)
+          curl -sL https://github.com/anchore/grype/releases/latest/download/grype_$(uname -s)_$(uname -m).tar.gz -o /tmp/grype.tar.gz
+          tar -xzf /tmp/grype.tar.gz -C /tmp
+          mv /tmp/grype "$INSTALL_DIR"
+          chmod +x "$INSTALL_DIR/grype"
+          ;;
+        trivy)
+          curl -sL https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.60.0_$(uname -s)-64bit.tar.gz -o /tmp/trivy.tar.gz
+          tar -xzf /tmp/trivy.tar.gz -C /tmp
+          mv /tmp/trivy "$INSTALL_DIR"
+          chmod +x "$INSTALL_DIR/trivy"
+          ;;
+        jq)
+          curl -sL https://github.com/stedolan/jq/releases/latest/download/jq-$(uname -s | tr A-Z a-z)64 -o "$INSTALL_DIR/jq"
+          chmod +x "$INSTALL_DIR/jq"
+          ;;
+        docker)
+          echo "⚠️ Docker is required but not found. Please install Docker manually: https://docs.docker.com/get-docker/"
+          ;;
+      esac
     fi
-}
-
-for tool in trivy grype docker; do
-    if ! command -v $tool >/dev/null 2>&1; then
-        echo "🔧 Installing missing tool: $tool"
-        install_tool "$tool"
-    fi
+  fi
 done
 
-echo "🎉 Installation complete. Run with:"
-echo "   scancompare <docker-image>"
+echo "🎉 Installation complete!"
+echo "➡️ Try running: scancompare <docker-image>"
