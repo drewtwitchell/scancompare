@@ -1,198 +1,168 @@
-#!/usr/bin/env bash
-VERSION="1.3.9"
-SCRIPT_NAME="scancompare"
-SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
-REPO_USER="drewtwitchell"
-REPO_NAME="scancompare"
-REMOTE_URL="https://raw.githubusercontent.com/$REPO_USER/$REPO_NAME/main/$SCRIPT_NAME"
+#!/usr/bin/env python3
 
-if [[ "$1" == "--no-update" ]]; then SKIP_UPDATE=true; shift; else SKIP_UPDATE=false; fi
+import json
+import os
+import platform
+import subprocess
+import sys
+import tempfile
+from datetime import datetime
+from pathlib import Path
 
-TARGET="$1"
-ORIGINAL_TARGET="$TARGET"
-REPORT_DIR="scan_reports"
-TIMESTAMP=$(date +"%Y-%m-%d")
-HTML_REPORT="$REPORT_DIR/scan_report_${ORIGINAL_TARGET//[\/:]/_}_$TIMESTAMP.html"
+VERSION = "1.3.9"
+REPO = "drewtwitchell/scancompare"
+SCRIPT_URL = f"https://raw.githubusercontent.com/{REPO}/main/scancompare"
+INSTALL_PATH = Path.home() / ".local" / "bin" / "scancompare"
+REPORT_DIR = Path("scan_reports")
+REPORT_DIR.mkdir(exist_ok=True)
 
-ORIG_GRYPE="$REPORT_DIR/original_grype.json"
-ORIG_TRIVY="$REPORT_DIR/original_trivy.json"
-ORIG_DIFF="$REPORT_DIR/original_diff.json"
+def log(msg): print(f"🔹 {msg}")
+def success(msg): print(f"    ✔ {msg}")
 
-step() { echo -e "\n🔹 $1"; }
-done_msg() { echo "    ✔ $1"; }
+def check_tool(tool):
+    if shutil.which(tool): return
+    log(f"{tool} not found. Attempting install...")
+    if shutil.which("brew"):
+        subprocess.run(["brew", "install", tool], check=True)
+    else:
+        log(f"❌ Install {tool} manually (Homebrew not found)."); sys.exit(1)
 
-get_remote_version() {
-  curl -fsSL "$REMOTE_URL" | grep 'VERSION=' | cut -d'"' -f2
-}
+def auto_update(args):
+    try:
+        remote = subprocess.check_output(["curl", "-fsSL", SCRIPT_URL], text=True)
+        remote_version = next((line.split('"')[1] for line in remote.splitlines() if line.startswith("VERSION")), VERSION)
+        if remote_version != VERSION:
+            print(f"🔄 New version available: {remote_version} (current: {VERSION})")
+            tmp = tempfile.NamedTemporaryFile(delete=False)
+            tmp.write(remote.encode())
+            tmp.close()
+            os.chmod(tmp.name, 0o755)
+            os.replace(tmp.name, INSTALL_PATH)
+            print(f"✅ scancompare updated to version {remote_version}")
+            os.execv(INSTALL_PATH, [INSTALL_PATH, "--no-update"] + args)
+    except Exception as e:
+        log(f"Update check failed: {e}")
 
-auto_update_check() {
-  remote_ver=$(get_remote_version)
-  if [[ "$VERSION" != "$remote_ver" ]]; then
-    echo "🔄 New version available: $remote_ver (current: $VERSION)"
-    self_update "$@"
-  fi
-}
+def run_cmd(cmd, outfile):
+    with open(outfile, "w") as f:
+        subprocess.run(cmd, stdout=f, stderr=subprocess.DEVNULL, check=True)
 
-self_update() {
-  local tmp_file
-  tmp_file=$(mktemp)
-  curl -fsSL "$REMOTE_URL" -o "$tmp_file" || { echo "❌ Failed to fetch update."; exit 1; }
-  local remote_version
-  remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
-  if [[ "$remote_version" == "$VERSION" ]]; then rm -f "$tmp_file"; return; fi
-  chmod +x "$tmp_file"
-  cp "$tmp_file" "$SCRIPT_PATH"
-  rm -f "$tmp_file"
-  echo "✅ scancompare updated to version $remote_version"
-  exec "$SCRIPT_PATH" --no-update "$@"
-}
+def parse_cves(file, tool):
+    with open(file) as f:
+        data = json.load(f)
+    if tool == "trivy":
+        vulns = [v for r in data.get("Results", []) for v in r.get("Vulnerabilities", [])]
+        return [{"id": v["VulnerabilityID"], "severity": v["Severity"]} for v in vulns]
+    else:
+        return [{"id": m["vulnerability"]["id"], "severity": m["vulnerability"]["severity"]} for m in data.get("matches", [])]
 
-check_tools() {
-  mkdir -p ~/.local/bin
-  export PATH="$HOME/.local/bin:$PATH"
-  for tool in grype trivy jq docker; do
-    if ! command -v $tool &>/dev/null; then
-      echo "📦 Installing $tool..."
-      if command -v brew &>/dev/null; then
-        brew install $tool
-      else
-        echo "⚠️ Please install '$tool' manually or via curl if brew is unavailable."
-        exit 1
-      fi
-    fi
-  done
-}
+def group_by_severity(cves):
+    result = {}
+    for cve in cves:
+        sev = cve["severity"].capitalize()
+        result.setdefault(sev, []).append(cve["id"])
+    return result
 
-clear_old_report() { rm -f "$HTML_REPORT"; }
-
-run_scans() {
-  mkdir -p "$REPORT_DIR"
-  step "Scanning with Trivy..."
-  trivy image --scanners vuln --format json --output "$ORIG_TRIVY" "$TARGET"
-  done_msg "Trivy scan saved to $ORIG_TRIVY"
-  step "Scanning with Grype..."
-  grype "$TARGET" -o json > "$ORIG_GRYPE"
-  done_msg "Grype scan saved to $ORIG_GRYPE"
-}
-
-compare_results() {
-  step "Comparing scan results..."
-  jq -r '[.Results[].Vulnerabilities[]? | {id: .VulnerabilityID, severity: .Severity}] | unique' "$ORIG_TRIVY" > "$REPORT_DIR/trivy.json"
-  jq -r '[.matches[] | {id: .vulnerability.id, severity: .vulnerability.severity}] | unique' "$ORIG_GRYPE" > "$REPORT_DIR/grype.json"
-
-  jq -n \
-    --slurpfile trivy "$REPORT_DIR/trivy.json" \
-    --slurpfile grype "$REPORT_DIR/grype.json" '
-    def group_by_severity(cves):
-      reduce cves[] as $v (
-        {"Critical": [], "High": [], "Medium": [], "Low": [], "Unknown": []};
-        .[$v.severity] += [$v.id]
-      );
-
-    def id_set(arr): arr | map(.id);
-
-    def intersect(a; b): [a[] | select(b | index(.))];
-    def diff(a; b): [a[] | select(b | index(.) | not)];
-
-    {
-      summary: {
-        total_grype: ($grype[0] | length),
-        total_trivy: ($trivy[0] | length),
-        shared: (intersect(id_set($grype[0]); id_set($trivy[0])) | length),
-        only_in_grype: (diff(id_set($grype[0]); id_set($trivy[0])) | length),
-        only_in_trivy: (diff(id_set($trivy[0]); id_set($grype[0])) | length)
-      },
-      shared: group_by_severity([
-        ($grype[0] + $trivy[0])[]
-        | select((id_set($grype[0]) | index(.id)) and (id_set($trivy[0]) | index(.id)))
-      ]),
-      unique_grype: group_by_severity(diff($grype[0]; $trivy[0])),
-      unique_trivy: group_by_severity(diff($trivy[0]; $grype[0])),
-      actions: {
-        suggestion: "Review shared CVEs and prioritize those with known fixes."
-      }
+def compare(trivy_cves, grype_cves):
+    t_ids = set(c["id"] for c in trivy_cves)
+    g_ids = set(c["id"] for c in grype_cves)
+    shared = sorted(t_ids & g_ids)
+    only_trivy = sorted(t_ids - g_ids)
+    only_grype = sorted(g_ids - t_ids)
+    return {
+        "summary": {
+            "total_grype": len(grype_cves),
+            "total_trivy": len(trivy_cves),
+            "shared": len(shared),
+            "only_in_grype": len(only_grype),
+            "only_in_trivy": len(only_trivy)
+        },
+        "breakdown": {
+            "shared": group_by_severity([c for c in trivy_cves if c["id"] in shared]),
+            "trivy_only": group_by_severity([c for c in trivy_cves if c["id"] in only_trivy]),
+            "grype_only": group_by_severity([c for c in grype_cves if c["id"] in only_grype]),
+        },
+        "ids": {
+            "shared": shared,
+            "trivy_only": only_trivy,
+            "grype_only": only_grype,
+        },
+        "suggestion": "Review shared CVEs and prioritize those with known fixes."
     }
-  ' > "$ORIG_DIFF"
-  done_msg "Diff report saved to $ORIG_DIFF"
 
-  echo -e "\n📊 CLI Summary Report"
-  jq -r '
-    "Tool       | Total | Only in Tool | Shared\n-----------|-------|--------------|--------" +
-    "\nGrype      | \(.summary.total_grype)    | \(.summary.only_in_grype)           | \(.summary.shared)" +
-    "\nTrivy      | \(.summary.total_trivy)    | \(.summary.only_in_trivy)           | \(.summary.shared)\n"
-  ' "$ORIG_DIFF"
+def print_summary(diff):
+    print("\n📊 CLI Summary Report")
+    print("Tool       | Total | Only in Tool | Shared")
+    print("-----------|-------|---------------|--------")
+    print(f"Grype      | {diff['summary']['total_grype']:>5} | {diff['summary']['only_in_grype']:>13} | {diff['summary']['shared']}")
+    print(f"Trivy      | {diff['summary']['total_trivy']:>5} | {diff['summary']['only_in_trivy']:>13} | {diff['summary']['shared']}\n")
+    print("Suggested Action:", diff["suggestion"])
 
-  jq -r '
-    def print_group(title; data):
-      if ([data[]] | flatten | length) > 0 then
-        "\n" + title + ":\n" +
-        (data | to_entries[] | select(.value | length > 0) | "\(.key): " + (.value | join(", ")))
-      else ""
-      end;
-    print_group("🔐 Shared CVEs by Severity"; .shared),
-    print_group("🟢 Unique to Trivy"; .unique_trivy),
-    print_group("🔵 Unique to Grype"; .unique_grype),
-    "\nSuggested Action: \(.actions.suggestion)"
-  ' "$ORIG_DIFF"
-}
+def generate_html(image_name, diff, output_path):
+    def section(title, sev_dict):
+        html = f"<h2>{title}</h2>"
+        for sev, ids in sorted(sev_dict.items(), key=lambda x: ["Critical", "High", "Medium", "Low", "Unknown"].index(x[0])):
+            html += f"<h3>{sev} ({len(ids)})</h3><ul>"
+            for cve in ids:
+                html += f"<li><a href='https://nvd.nist.gov/vuln/detail/{cve}' target='_blank'>{cve}</a></li>"
+            html += "</ul>"
+        return html
 
-generate_html_report() {
-  {
-    echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Scan Report</title>
-    <style>body{font-family:sans-serif;padding:20px;max-width:900px;margin:auto} h1,h2,h3{color:#2c3e50} pre{background:#f4f4f4;padding:10px;border-radius:8px;overflow:auto;} button{margin:10px 0;padding:6px 10px;background:#2c3e50;color:#fff;border:none;border-radius:5px;cursor:pointer} table{border-collapse:collapse;width:100%;margin-top:1em} th,td{border:1px solid #ccc;padding:8px;text-align:left} ul{list-style-type:square;margin-left:20px}</style>
-    <script>function toggle(id){var el=document.getElementById(id);el.style.display=(el.style.display==='none'||!el.style.display)?'block':'none'} function savePDF(){window.print();}</script></head><body>
-    <h1>Scan Summary for <code>$ORIGINAL_TARGET</code></h1>
-    <p><strong>Date:</strong> $TIMESTAMP</p>
-    <button onclick='savePDF()'>📄 Download as PDF</button>"
-    jq -r '
-      "<table><tr><th>Tool</th><th>Total</th><th>Only in Tool</th><th>Shared</th></tr>" +
-      "<tr><td>Grype</td><td>\(.summary.total_grype)</td><td>\(.summary.only_in_grype)</td><td>\(.summary.shared)</td></tr>" +
-      "<tr><td>Trivy</td><td>\(.summary.total_trivy)</td><td>\(.summary.only_in_trivy)</td><td>\(.summary.shared)</td></tr></table>" +
-      "<h3>Suggested Action</h3><p>\(.actions.suggestion)</p>"
-    ' "$ORIG_DIFF"
+    with open(output_path, "w") as f:
+        f.write(f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+        <title>Scan Report - {image_name}</title>
+        <style>body{{font-family:sans-serif;max-width:900px;margin:auto;padding:1em}}h2{{color:#2c3e50}}ul{{margin-left:2em}}button{{padding:5px 10px;margin:10px}}pre{{background:#eee;padding:10px;overflow-x:auto}}</style>
+        <script>function savePDF(){{window.print();}}</script></head><body>
+        <h1>Scan Report for <code>{image_name}</code></h1>
+        <p><strong>Generated:</strong> {datetime.now().strftime("%Y-%m-%d %H:%M")}</p>
+        <button onclick="savePDF()">📄 Download as PDF</button>
+        <table border="1" cellspacing="0" cellpadding="6">
+        <tr><th>Tool</th><th>Total</th><th>Only in Tool</th><th>Shared</th></tr>
+        <tr><td>Grype</td><td>{diff['summary']['total_grype']}</td><td>{diff['summary']['only_in_grype']}</td><td>{diff['summary']['shared']}</td></tr>
+        <tr><td>Trivy</td><td>{diff['summary']['total_trivy']}</td><td>{diff['summary']['only_in_trivy']}</td><td>{diff['summary']['shared']}</td></tr>
+        </table><p><strong>Action:</strong> {diff['suggestion']}</p>
+        {section("Shared Vulnerabilities", diff["breakdown"]["shared"])}
+        {section("Unique to Grype", diff["breakdown"]["grype_only"])}
+        {section("Unique to Trivy", diff["breakdown"]["trivy_only"])}
+        <hr><pre>{json.dumps(diff, indent=2)}</pre>
+        </body></html>""")
 
-    for section in shared unique_grype unique_trivy; do
-      label=$(echo "$section" | sed 's/_/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)}1')
-      echo "<h3>$label CVEs</h3>"
-      jq -r --arg sec "$section" '
-        .[$sec] | to_entries[] | select(.value | length > 0) |
-        "<h4>" + .key + "</h4><ul>" + (.value[] | "<li><a href=\"https://nvd.nist.gov/vuln/detail/\(.)\" target=\"_blank\">\(.)</a></li>") + "</ul>"
-      ' "$ORIG_DIFF"
-    done
+def open_html(path):
+    if input("📁 Would you like to open the HTML report in your browser? (y/n) ").lower() == "y":
+        if platform.system() == "Darwin": subprocess.run(["open", path])
+        elif platform.system() == "Linux": subprocess.run(["xdg-open", path])
+        else: print(f"Open manually: {path}")
+    else:
+        print(f"📎 You can view it later at: {path}")
 
-    echo "<button onclick=\"toggle('raw_json')\">Toggle Raw JSON</button><pre id='raw_json' style='display:none;'>"
-    jq . "$ORIG_DIFF"
-    echo "</pre></body></html>"
-  } > "$HTML_REPORT"
-  echo "✅ HTML report saved: $HTML_REPORT"
-}
+def main():
+    args = sys.argv[1:]
+    if not args or args[0].startswith("-"):
+        print("❌ Usage: scancompare <docker-image>")
+        return
 
-prompt_open_html() {
-  echo -e "\n📁 Would you like to open the HTML report in your browser? (y/n)"
-  read -r choice
-  if [[ "$choice" == "y" ]]; then
-    case "$OSTYPE" in
-      darwin*) open "$HTML_REPORT" ;;
-      linux*) xdg-open "$HTML_REPORT" ;;
-      *) echo "View at: $HTML_REPORT" ;;
-    esac
-  else
-    echo "📎 You can view it later at: $HTML_REPORT"
-  fi
-}
+    if "--no-update" not in args:
+        auto_update(args)
 
-main() {
-  [[ -z "$TARGET" ]] && echo "❌ Usage: scancompare <image>" && exit 1
-  echo "🔍 Starting vulnerability scan for image: $TARGET"
-  check_tools
-  clear_old_report
-  run_scans
-  compare_results
-  generate_html_report
-  prompt_open_html
-}
+    image = args[0]
+    log(f"Starting vulnerability scan for image: {image}")
+    trivy_out = REPORT_DIR / "original_trivy.json"
+    grype_out = REPORT_DIR / "original_grype.json"
+    report_out = REPORT_DIR / f"scan_report_{image.replace(':','_').replace('/','_')}_{datetime.now().date()}.html"
 
-[[ "$1" == "update" ]] && self_update "$@" && exit 0
-$SKIP_UPDATE || auto_update_check "$@"
+    run_cmd(["trivy", "image", "--scanners", "vuln", "--format", "json", image], trivy_out)
+    success(f"Trivy scan saved to {trivy_out}")
+    run_cmd(["grype", image, "-o", "json"], grype_out)
+    success(f"Grype scan saved to {grype_out}")
 
-main "$@"
+    trivy = parse_cves(trivy_out, "trivy")
+    grype = parse_cves(grype_out, "grype")
+    diff = compare(trivy, grype)
+    print_summary(diff)
+    generate_html(image, diff, report_out)
+    print(f"✅ HTML report saved: {report_out}")
+    open_html(report_out)
+
+if __name__ == "__main__":
+    import shutil
+    main()
