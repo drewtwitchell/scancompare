@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.2.6"
+VERSION="1.2.7"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -18,9 +18,6 @@ ORIG_GRYPE="$REPORT_DIR/original_grype.json"
 ORIG_TRIVY="$REPORT_DIR/original_trivy.json"
 ORIG_DIFF="$REPORT_DIR/original_diff.json"
 
-declare -A severity_counts_trivy
-declare -A severity_counts_grype
-
 step() { echo -e "\n🔹 $1"; }
 done_msg() { echo "    ✔ $1"; }
 
@@ -29,7 +26,8 @@ get_remote_version() {
 }
 
 auto_update_check() {
-  local remote_ver=$(get_remote_version)
+  local remote_ver
+  remote_ver=$(get_remote_version)
   if [[ "$VERSION" != "$remote_ver" ]]; then
     echo "🔄 New version available: $remote_ver (current: $VERSION)"
     self_update "$@"
@@ -37,10 +35,9 @@ auto_update_check() {
 }
 
 self_update() {
-  local tmp_file
+  local tmp_file remote_version
   tmp_file=$(mktemp)
   curl -fsSL "$REMOTE_URL" -o "$tmp_file" || { echo "❌ Failed to fetch update."; exit 1; }
-  local remote_version
   remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
   if [[ "$remote_version" == "$VERSION" ]]; then
     rm -f "$tmp_file"
@@ -121,8 +118,8 @@ compare_results() {
     --argjson in_both "$(jq -R -s 'split("\n") | map(select(. != ""))' <<< "$in_both")" \
     '{
       summary: {
-        total_grype: (.only_in_grype | length + .in_both | length),
-        total_trivy: (.only_in_trivy | length + .in_both | length),
+        total_grype: ((.only_in_grype | length) + (.in_both | length)),
+        total_trivy: ((.only_in_trivy | length) + (.in_both | length)),
         shared: (.in_both | length),
         only_in_grype: (.only_in_grype | length),
         only_in_trivy: (.only_in_trivy | length)
