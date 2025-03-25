@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.1.7"
+VERSION="1.1.8"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -72,29 +72,33 @@ run_scans() {
 
 compare_results() {
   step "Comparing scan results..."
-  grype_cves=$(jq -r '.matches[].vulnerability.id' "$ORIG_GRYPE" | sort | uniq)
-  trivy_cves=$(jq -r '[.Results[].Vulnerabilities[]?.VulnerabilityID] | flatten | .[]' "$ORIG_TRIVY" | sort | uniq)
-  echo "$grype_cves" > "$REPORT_DIR/grype.txt"
-  echo "$trivy_cves" > "$REPORT_DIR/trivy.txt"
-  only_grype=$(comm -23 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
-  only_trivy=$(comm -13 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
-  in_both=$(comm -12 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
-  jq -n \
-    --argjson only_in_grype "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$only_grype")" \
-    --argjson only_in_trivy "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$only_trivy")" \
-    --argjson in_both "$(jq -R -s -c 'split("\n") | map(select(. != ""))' <<< "$in_both")" '
-    def count(a): a | length;
+  grype_cves=$(jq -r '.matches[].vulnerability | {id: .id, severity: .severity}' "$ORIG_GRYPE")
+  trivy_cves=$(jq -r '[.Results[].Vulnerabilities[]? | {id: .VulnerabilityID, severity: .Severity}] | .[]' "$ORIG_TRIVY")
+
+  function group_by_severity() {
+    jq -s 'group_by(.severity) | from_entries' <<< "[${1//$'\n'/,}]"
+  }
+
+  g_ids=$(echo "$grype_cves" | jq -r '.id')
+  t_ids=$(echo "$trivy_cves" | jq -r '.id')
+  common=$(comm -12 <(echo "$g_ids" | sort) <(echo "$t_ids" | sort))
+  only_grype=$(comm -23 <(echo "$g_ids" | sort) <(echo "$t_ids" | sort))
+  only_trivy=$(comm -13 <(echo "$g_ids" | sort) <(echo "$t_ids" | sort))
+
+  jq -n --argjson common "$(jq -nR '[inputs] | map(select(. != ""))' <<< "$common")" \
+        --argjson only_grype "$(jq -nR '[inputs] | map(select(. != ""))' <<< "$only_grype")" \
+        --argjson only_trivy "$(jq -nR '[inputs] | map(select(. != ""))' <<< "$only_trivy")" '
     {
       summary: {
-        total_grype: (count($only_in_grype) + count($in_both)),
-        total_trivy: (count($only_in_trivy) + count($in_both)),
-        shared: count($in_both),
-        only_in_grype: count($only_in_grype),
-        only_in_trivy: count($only_in_trivy)
+        total_grype: ($only_grype | length + $common | length),
+        total_trivy: ($only_trivy | length + $common | length),
+        shared: ($common | length),
+        only_in_grype: ($only_grype | length),
+        only_in_trivy: ($only_trivy | length)
       },
-      unique_to_grype: $only_in_grype,
-      unique_to_trivy: $only_in_trivy,
-      common_vulnerabilities: $in_both,
+      unique_to_grype: $only_grype,
+      unique_to_trivy: $only_trivy,
+      common_vulnerabilities: $common,
       actions: {
         suggestion: "Review shared CVEs and prioritize those with known fixes."
       }
@@ -106,10 +110,10 @@ compare_results() {
     "Tool       | Total | Only in Tool | Shared\n-----------|-------|---------------|--------" +
     "\nGrype      | \(.summary.total_grype)    | \(.summary.only_in_grype)           | \(.summary.shared)" +
     "\nTrivy      | \(.summary.total_trivy)    | \(.summary.only_in_trivy)           | \(.summary.shared)\n" +
-    "\nShared CVEs:\n" +
-    (.common_vulnerabilities | map("- " + .) | join("\n")) +
-    "\n\nUnique to Grype:\n" + (.unique_to_grype | map("- " + .) | join("\n")) +
-    "\n\nUnique to Trivy:\n" + (.unique_to_trivy | map("- " + .) | join("\n")) +
+    "\nShared CVEs by Severity:\n" +
+    (.common_vulnerabilities | group_by(.) | map("- " + .[0]) | join("\n")) +
+    "\n\nUnique to Grype:\n" + (.unique_to_grype | group_by(.) | map("- " + .[0]) | join("\n")) +
+    "\n\nUnique to Trivy:\n" + (.unique_to_trivy | group_by(.) | map("- " + .[0]) | join("\n")) +
     "\n\nSuggested Action: \(.actions.suggestion)"
   ' "$ORIG_DIFF"
 }
@@ -125,15 +129,15 @@ generate_html_report() {
     diff_json="$ORIG_DIFF"
     echo "<h2>Vulnerability Summary</h2>"
     jq -r '
-      "<table><tr><th>Tool</th><th>Total</th><th>Only in Tool</th><th>Shared</th></tr>" +
-      "<tr><td>Grype</td><td><a href=#grype>\(.summary.total_grype)</a></td><td><a href=#unique-grype>\(.summary.only_in_grype)</a></td><td><a href=#shared>\(.summary.shared)</a></td></tr>" +
-      "<tr><td>Trivy</td><td><a href=#trivy>\(.summary.total_trivy)</a></td><td><a href=#unique-trivy>\(.summary.only_in_trivy)</a></td><td><a href=#shared>\(.summary.shared)</a></td></tr></table>" +
+      "<table><tr><th>Tool</th><th>Only in Tool</th><th>Shared</th></tr>" +
+      "<tr><td>Grype</td><td><a href=#unique-grype>\(.summary.only_in_grype)</a></td><td><a href=#shared>\(.summary.shared)</a></td></tr>" +
+      "<tr><td>Trivy</td><td><a href=#unique-trivy>\(.summary.only_in_trivy)</a></td><td><a href=#shared>\(.summary.shared)</a></td></tr></table>" +
       "<h3 id=\"shared\">Common Vulnerabilities</h3><ul>" +
-      (.common_vulnerabilities | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
+      (.common_vulnerabilities | sort | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
       "</ul><h3 id=\"unique-grype\">Unique to Grype</h3><ul>" +
-      (.unique_to_grype | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
+      (.unique_to_grype | sort | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
       "</ul><h3 id=\"unique-trivy\">Unique to Trivy</h3><ul>" +
-      (.unique_to_trivy | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
+      (.unique_to_trivy | sort | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
       "</ul><h3>Suggested Action</h3><p>" + .actions.suggestion + "</p>"
     ' "$diff_json"
     echo "<button onclick=\"toggle('raw_json')\">Toggle Raw JSON</button><pre id='raw_json' style='display:none;'>"
