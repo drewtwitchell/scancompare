@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.1.6"
+VERSION="1.1.7"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -126,13 +126,13 @@ generate_html_report() {
     echo "<h2>Vulnerability Summary</h2>"
     jq -r '
       "<table><tr><th>Tool</th><th>Total</th><th>Only in Tool</th><th>Shared</th></tr>" +
-      "<tr><td>Grype</td><td>\(.summary.total_grype)</td><td>\(.summary.only_in_grype)</td><td>\(.summary.shared)</td></tr>" +
-      "<tr><td>Trivy</td><td>\(.summary.total_trivy)</td><td>\(.summary.only_in_trivy)</td><td>\(.summary.shared)</td></tr></table>" +
-      "<h3>Common Vulnerabilities</h3><ul>" +
+      "<tr><td>Grype</td><td><a href=#grype>\(.summary.total_grype)</a></td><td><a href=#unique-grype>\(.summary.only_in_grype)</a></td><td><a href=#shared>\(.summary.shared)</a></td></tr>" +
+      "<tr><td>Trivy</td><td><a href=#trivy>\(.summary.total_trivy)</a></td><td><a href=#unique-trivy>\(.summary.only_in_trivy)</a></td><td><a href=#shared>\(.summary.shared)</a></td></tr></table>" +
+      "<h3 id=\"shared\">Common Vulnerabilities</h3><ul>" +
       (.common_vulnerabilities | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
-      "</ul><h3>Unique to Grype</h3><ul>" +
+      "</ul><h3 id=\"unique-grype\">Unique to Grype</h3><ul>" +
       (.unique_to_grype | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
-      "</ul><h3>Unique to Trivy</h3><ul>" +
+      "</ul><h3 id=\"unique-trivy\">Unique to Trivy</h3><ul>" +
       (.unique_to_trivy | map("<li><a href=\"https://nvd.nist.gov/vuln/detail/" + . + "\" target=\"_blank\">" + . + "</a></li>") | join("")) +
       "</ul><h3>Suggested Action</h3><p>" + .actions.suggestion + "</p>"
     ' "$diff_json"
