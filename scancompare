@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.3.4"
+VERSION="1.3.5"
 SCRIPT_NAME="scancompare"
 SCRIPT_PATH="$HOME/.local/bin/$SCRIPT_NAME"
 REPO_USER="drewtwitchell"
@@ -22,7 +22,7 @@ step() { echo -e "\n🔹 $1"; }
 done_msg() { echo "    ✔ $1"; }
 
 get_remote_version() {
-  curl -fsSL "$REMOTE_URL" | grep 'VERSION=' | cut -d'"' -f2
+  curl -fsSL "$REMOTE_URL" | grep 'VERSION=' | head -n1 | cut -d'"' -f2
 }
 
 auto_update_check() {
@@ -36,7 +36,7 @@ auto_update_check() {
 self_update() {
   tmp_file=$(mktemp)
   curl -fsSL "$REMOTE_URL" -o "$tmp_file" || { echo "❌ Failed to fetch update."; exit 1; }
-  remote_version=$(grep '^VERSION=' "$tmp_file" | cut -d'"' -f2)
+  remote_version=$(grep '^VERSION=' "$tmp_file" | head -n1 | cut -d'"' -f2)
   if [[ "$remote_version" == "$VERSION" ]]; then rm -f "$tmp_file"; return; fi
   chmod +x "$tmp_file"
   cp "$tmp_file" "$SCRIPT_PATH"
@@ -104,24 +104,18 @@ compare_results() {
   only_trivy=$(comm -13 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
   in_both=$(comm -12 "$REPORT_DIR/grype.txt" "$REPORT_DIR/trivy.txt")
 
-  jq -n --argjson only_in_grype "$(jq -R -s 'split("\n") | map(select(length > 0))' <<< "$only_grype")" \
-        --argjson only_in_trivy "$(jq -R -s 'split("\n") | map(select(length > 0))' <<< "$only_trivy")" \
-        --argjson in_both "$(jq -R -s 'split("\n") | map(select(length > 0))' <<< "$in_both")" \
-        '{
-          summary: {
-            total_grype: ($only_in_grype | length) + ($in_both | length),
-            total_trivy: ($only_in_trivy | length) + ($in_both | length),
-            shared: ($in_both | length),
-            only_in_grype: ($only_in_grype | length),
-            only_in_trivy: ($only_in_trivy | length)
-          },
-          unique_to_grype: $only_in_grype,
-          unique_to_trivy: $only_in_trivy,
-          common_vulnerabilities: $in_both,
-          actions: {
-            suggestion: "Review shared CVEs and prioritize those with known fixes."
-          }
-        }' > "$ORIG_DIFF"
+  jq -n \
+    --argjson only_in_grype "$(jq -R -s 'split("\n") | map(select(length > 0))' <<< "$only_grype")" \
+    --argjson only_in_trivy "$(jq -R -s 'split("\n") | map(select(length > 0))' <<< "$only_trivy")" \
+    --argjson in_both "$(jq -R -s 'split("\n") | map(select(length > 0))' <<< "$in_both")" \
+    '(
+      { summary: {}, unique_to_grype: $only_in_grype, unique_to_trivy: $only_in_trivy, common_vulnerabilities: $in_both, actions: { suggestion: "Review shared CVEs and prioritize those with known fixes." } }
+    )
+    | .summary.total_grype = ($only_in_grype | length) + ($in_both | length)
+    | .summary.total_trivy = ($only_in_trivy | length) + ($in_both | length)
+    | .summary.shared = ($in_both | length)
+    | .summary.only_in_grype = ($only_in_grype | length)
+    | .summary.only_in_trivy = ($only_in_trivy | length)' > "$ORIG_DIFF"
   done_msg "Diff report saved to $ORIG_DIFF"
 
   echo -e "\n📊 CLI Summary Report"
