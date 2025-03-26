@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.1.7 
+# scancompare version 2.1.8 
 
 import os
 import sys
@@ -18,7 +18,7 @@ import re
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.1.7"
+VERSION = "2.1.8"
 
 import tempfile
 
@@ -500,13 +500,14 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
         upload_sarif(diff_sarif_path, "scancompare")
 
 def main():
-    parser = argparse.ArgumentParser(description="Compare container image scan results between Trivy and Grype.")
-    parser.add_argument("image", nargs="?", help="Docker image to scan (e.g., ubuntu:latest)")
-    parser.add_argument("--repo-url", help="GitHub repository URL to clone and analyze")
+    parser = argparse.ArgumentParser(description="Compare Trivy and Grype scans for a Docker image.")
+    parser.add_argument("image", nargs="?", help="Docker image to scan")
+    parser.add_argument("--repo-url", help="GitHub repo URL containing Dockerfile for image build")
+    parser.add_argument("--version", action="store_true", help="Show scancompare version")
     args = parser.parse_args()
 
     if not args.image and not args.repo_url:
-        print("Usage: scancompare <image> [--repo-url <repo>]")
+        print("Usage: scancompare <image> [--repo-url <repo>, --version]")
         sys.exit(1)
 
     check_latest_version()
