@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.3.5 
+# scancompare version 2.3.6 
 
 import os
 import sys
@@ -21,7 +21,7 @@ import uuid
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.3.5"
+VERSION = "2.3.6"
 
 args = None  # global placeholder
 
@@ -502,21 +502,6 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
         except Exception:
             return False
 
-    def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo):
-    from pathlib import Path
-    import json, base64, tempfile, subprocess
-
-    ensure_gh_installed()
-    ensure_gh_authenticated()
-
-    def is_valid_sarif(sarif_path):
-        try:
-            with open(sarif_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return all(key in data for key in ["version", "runs"])
-        except Exception:
-            return False
-
     def upload_sarif(sarif_path, tool_name):
         if not sarif_path.exists() or not is_valid_sarif(sarif_path):
             print(f"⚠️ Skipping {tool_name} SARIF upload: file not found or invalid.")
@@ -601,7 +586,6 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
 
     if diff_sarif_path.exists():
         upload_sarif(diff_sarif_path, "scancompare")
-
 
 def main(args):
     if not args.image and not args.repo_url:
