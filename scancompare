@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.3.9 
+# scancompare version 2.4.0 
 
 import os
 import sys
@@ -21,7 +21,7 @@ import uuid
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.3.9"
+VERSION = "2.4.0"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -490,7 +490,7 @@ def ensure_gh_authenticated():
 
 def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo):
     from pathlib import Path
-    import json, base64, tempfile, subprocess
+    import json, base64, tempfile, subprocess, gzip
 
     ensure_gh_installed()
     ensure_gh_authenticated()
@@ -508,11 +508,11 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
             print(f"⚠️ Skipping {tool_name} SARIF upload: file not found or invalid.")
             return
 
-        global cloned_repo_dir
         temp_repo_dir = Path("scan_reports").resolve()
 
-        if cloned_repo_dir and Path(cloned_repo_dir).exists():
-            temp_repo_dir = Path(cloned_repo_dir)
+        if args.repo_url:
+            repo_name = args.repo_url.split("/")[-1].replace(".git", "")
+            temp_repo_dir = Path(tempfile.gettempdir()) / repo_name
             if not temp_repo_dir.exists():
                 print(f"⚠️ Could not find local clone directory at {temp_repo_dir}, using fallback for commit info.")
 
@@ -533,8 +533,10 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
             print("⚠️ Invalid or missing Git ref, using default 'refs/heads/main'.")
             ref = "refs/heads/main"
 
-        with open(sarif_path, "rb") as f:
-            encoded_sarif = base64.b64encode(f.read()).decode("utf-8")
+        # Gzip compress the SARIF file before base64 encoding
+        with open(sarif_path, "rb") as f_in:
+            compressed_data = gzip.compress(f_in.read())
+        encoded_sarif = base64.b64encode(compressed_data).decode("utf-8")
 
         payload = {
             "commit_sha": commit_sha,
