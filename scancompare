@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.8.7
+# scancompare version 1.8.8
 
 import os
 import sys
@@ -13,7 +13,7 @@ import shutil
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.8.7"
+VERSION = "1.8.8"
 
 def check_latest_version(only_check=False):
     try:
@@ -104,16 +104,28 @@ def extract_cves_with_severity(file_path):
     try:
         with open(file_path) as f:
             data = json.load(f)
+
         severity_map = {}
-        for result in data.get("Results", []):
-            for vuln in result.get("Vulnerabilities", []):
-                cve = vuln.get("VulnerabilityID")
-                severity = vuln.get("Severity", "UNKNOWN").capitalize()
+        if "Results" in data:  # Trivy format
+            for result in data.get("Results", []):
+                for vuln in result.get("Vulnerabilities", []):
+                    cve = vuln.get("VulnerabilityID")
+                    severity = vuln.get("Severity", "UNKNOWN").capitalize()
+                    if cve:
+                        severity_map[cve] = severity
+        elif "matches" in data:  # Grype format
+            for match in data.get("matches", []):
+                vuln = match.get("vulnerability", {})
+                cve = vuln.get("id")
+                severity = vuln.get("severity", "UNKNOWN").capitalize()
                 if cve:
                     severity_map[cve] = severity
+
         return severity_map
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ Failed to parse {file_path}: {e}")
         return {}
+
 
 def group_by_severity(cve_map):
     grouped = {}
