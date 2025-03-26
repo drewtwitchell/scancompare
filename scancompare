@@ -49,21 +49,24 @@ def check_latest_version(only_check=False):
         latest = latest_match.group(1)
         current = get_current_version()
 
-        if latest == current and only_check:
-            print(f"📦 scancompare version {current}")
-            sys.exit(0)
+        if latest == current:
+            if only_check:
+                print(f"📦 scancompare version {current}")
+                sys.exit(0)
+            else:
+                print(f"📦 Already using latest version ({current})")
+                return
 
-        if latest != current:
-            print(f"🔄 New version detected. Updating scancompare script...")
-            update_script(new_code)
-            print(f"✅ scancompare updated to version {latest}")
-            print("♻️ Restarting with updated version...")
+        print(f"🔄 New version detected. Updating scancompare script...")
+        update_script(new_code)
+        print(f"✅ scancompare updated to version {latest}")
+        print("♻️ Restarting with updated version...")
 
-            os.execve(
-                sys.executable,
-                [sys.executable, str(get_script_path())] + sys.argv[1:],
-                {**os.environ, "SCANCOMPARE_UPDATED": "1"}
-            )
+        os.execve(
+            sys.executable,
+            [sys.executable, str(get_script_path())] + sys.argv[1:],
+            {**os.environ, "SCANCOMPARE_UPDATED": "1"}
+        )
 
     except Exception as e:
         print(f"⚠️ Auto-update check failed: {e}")
@@ -591,6 +594,7 @@ def main(args):
         print(f"🐳 Building Docker image '{image_tag}' from {dockerfile_path}...")
         try:
             subprocess.run(["docker", "build", "-t", image_tag, os.path.dirname(dockerfile_path)], check=True)
+            print(f"✅ Docker image '{image_tag}' built successfully. Starting scans...")
         except subprocess.CalledProcessError:
             explain_exit(f"Docker build failed. Please check the Dockerfile and try building manually with 'docker build -t {image_tag} .' to debug.")
 
@@ -619,6 +623,8 @@ def main(args):
     if not run_scan("grype", image, grype_path):
         explain_exit("Grype scan failed or image not found.")
     print(f"    ✔ Grype scan saved to {grype_path}")
+
+    print("🚀 Preparing to upload results to GitHub Advanced Security (GHAS)...")
 
     trivy_data = extract_cves_with_severity(trivy_path)
     grype_data = extract_cves_with_severity(grype_path)
