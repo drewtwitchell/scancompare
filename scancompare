@@ -1,25 +1,19 @@
 #!/usr/bin/env python3
-# scancompare version 1.6.8
+# scancompare version 1.6.9
 
 import os
 import sys
 import json
 import subprocess
 import platform
-import shutil
-import webbrowser
 from datetime import datetime
 from urllib.request import urlopen
 from pathlib import Path
+import webbrowser
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.6.8"
-
-INSTALL_BIN = Path.home() / ".local/bin"
-INSTALL_LIB = Path.home() / ".local/lib/scancompare"
-WRAPPER_PATH = INSTALL_BIN / SCRIPT_NAME
-SCRIPT_PATH = INSTALL_LIB / SCRIPT_NAME
+VERSION = "1.6.9"
 
 def check_latest_version(only_check=False):
     try:
@@ -43,7 +37,8 @@ def check_latest_version(only_check=False):
 def update_script():
     try:
         new_code = urlopen(SCRIPT_URL).read().decode("utf-8")
-        Path(__file__).write_text(new_code)
+        script_path = Path(__file__)
+        script_path.write_text(new_code)
     except Exception as e:
         print("❌ Failed to update script:", e)
 
@@ -51,25 +46,11 @@ def get_version(tool):
     try:
         result = subprocess.run([tool, "version"], capture_output=True, text=True)
         for line in result.stdout.splitlines():
-            if tool.lower() in line.lower() or "Version" in line:
+            if tool.lower() in line.lower() or "Version" in line or "Application:" in line:
                 return line.strip().split()[-1]
     except Exception:
         return "unknown"
     return "unknown"
-
-def check_image_exists(image_name):
-    try:
-        subprocess.run(["docker", "image", "inspect", image_name], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return True
-    except subprocess.CalledProcessError:
-        try:
-            subprocess.run(["docker", "manifest", "inspect", image_name], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            return True
-        except subprocess.CalledProcessError:
-            return False
-    except FileNotFoundError:
-        print("❌ Docker is not installed or not in PATH.")
-        return False
 
 def run_scan(tool, image, output_path):
     with open(output_path, "w") as outfile:
@@ -104,6 +85,17 @@ def explain_exit(msg):
     print(f"⚠️ {msg}")
     sys.exit(1)
 
+def validate_image_exists(image):
+    try:
+        subprocess.run(["docker", "manifest", "inspect", image], check=True, capture_output=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        if "no such manifest" in str(e.stderr).lower():
+            return False
+    except FileNotFoundError:
+        print("❌ Docker not found. Please install Docker.")
+    return False
+
 def generate_html_report(image, trivy_json, grype_json, shared, only_trivy, only_grype):
     timestamp = datetime.now().strftime("%Y-%m-%d")
     report_name = f"scan_report_{image.replace(':', '_')}_{timestamp}.html"
@@ -111,68 +103,49 @@ def generate_html_report(image, trivy_json, grype_json, shared, only_trivy, only
     trivy_data = json.load(open(trivy_json)) if Path(trivy_json).stat().st_size > 0 else {}
     grype_data = json.load(open(grype_json)) if Path(grype_json).stat().st_size > 0 else {}
 
-    def cve_details_section(cves, source_data):
-        out = ""
-        for cve in sorted(cves):
-            details = find_cve_details(cve, source_data)
-            out += f"<li><b>{cve}</b>{details}</li>"
-        return "<ul>" + out + "</ul>" if out else "<p>No CVEs found.</p>"
+    def html_section(title, cves):
+        if not cves:
+            return f"<h3>{title}</h3><p>No CVEs found.</p>"
+        return f"<h3>{title}</h3><ul>" + "".join(f"<li>{cve}</li>" for cve in sorted(cves)) + "</ul>"
 
-    def find_cve_details(cve_id, data):
-        try:
-            details = []
-            for result in data.get("Results", []):
-                for vuln in result.get("Vulnerabilities", []):
-                    if vuln.get("VulnerabilityID") == cve_id:
-                        pkg = vuln.get("PkgName", "")
-                        sev = vuln.get("Severity", "")
-                        desc = vuln.get("Description", "")[:200]
-                        link = vuln.get("PrimaryURL", "")
-                        json_blob = json.dumps(vuln, indent=2)
-                        details.append(f"<br>🧪 {pkg} — {sev}<br>{desc}<br><a href='{link}' target='_blank'>{link}</a><br><details><summary>Raw JSON</summary><pre>{json_blob}</pre></details>")
-            return "".join(details)
-        except Exception:
-            return ""
-        
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>ScanCompare Report</title>
-  <style>
-    body {{ font-family: Arial, sans-serif; padding: 20px; }}
-    h1, h2, h3 {{ color: #333; }}
-    ul {{ line-height: 1.6; }}
-    .toc a {{ display: block; text-decoration: none; }}
-    details {{ margin: 0.5em 0; }}
-  </style>
+    <meta charset="UTF-8">
+    <title>ScanCompare Report</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; padding: 20px; }}
+        h1, h2, h3 {{ color: #333; }}
+        ul {{ line-height: 1.6; }}
+        .toc a {{ text-decoration: none; display: block; }}
+    </style>
 </head>
 <body>
-  <h1>Scan Report for {image}</h1>
-  <h2>Table of Contents</h2>
-  <div class="toc">
-    <a href="#summary">Summary</a>
-    <a href="#shared">Shared CVEs</a>
-    <a href="#trivy">Unique to Trivy</a>
-    <a href="#grype">Unique to Grype</a>
-  </div>
-  <hr>
-  <h2 id="summary">Summary</h2>
-  <pre>
+    <h1>Scan Report for {image}</h1>
+    <h2>Table of Contents</h2>
+    <div class="toc">
+        <a href="#summary">CLI Summary</a>
+        <a href="#shared">Shared CVEs</a>
+        <a href="#trivy">Unique to Trivy</a>
+        <a href="#grype">Unique to Grype</a>
+    </div>
+    <hr>
+    <h2 id="summary">CLI Summary</h2>
+    <pre>
 Tool       | Total | Only in Tool | Shared
 -----------|-------|---------------|--------
 Grype      | {len(only_grype) + len(shared)}   | {len(only_grype)}             | {len(shared)}
 Trivy      | {len(only_trivy) + len(shared)}   | {len(only_trivy)}            | {len(shared)}
-  </pre>
-  <h2 id="shared">Shared CVEs</h2>
-  {cve_details_section(shared, trivy_data)}
-  <h2 id="trivy">Unique to Trivy</h2>
-  {cve_details_section(only_trivy, trivy_data)}
-  <h2 id="grype">Unique to Grype</h2>
-  {cve_details_section(only_grype, grype_data)}
+    </pre>
+    <h2 id="shared">Shared CVEs</h2>
+    {html_section("Shared CVEs", shared)}
+    <h2 id="trivy">Unique to Trivy</h2>
+    {html_section("Unique to Trivy", only_trivy)}
+    <h2 id="grype">Unique to Grype</h2>
+    {html_section("Unique to Grype", only_grype)}
 </body>
 </html>
-"""  # noqa: E501
+"""
 
     report_path.write_text(html)
     print(f"✅ HTML report saved: {report_path}")
@@ -189,34 +162,28 @@ Trivy      | {len(only_trivy) + len(shared)}   | {len(only_trivy)}            | 
     if open_html == "y":
         webbrowser.open(f"file://{report_path.absolute()}")
 
-def uninstall_scancompare():
-    print("🧹 Uninstalling scancompare...")
-    try:
-        WRAPPER_PATH.unlink(missing_ok=True)
-        SCRIPT_PATH.unlink(missing_ok=True)
-        shutil.rmtree("scan_reports", ignore_errors=True)
-
-        for file in [".bashrc", ".zshrc", ".profile"]:
-            profile_path = Path.home() / file
-            if profile_path.exists():
-                content = profile_path.read_text()
-                if 'export PATH="$HOME/.local/bin:$PATH"' in content:
-                    content = content.replace('export PATH="$HOME/.local/bin:$PATH"\n', "")
-                    profile_path.write_text(content)
-    except Exception as e:
-        print("⚠️ Error during uninstall:", e)
-    print("✅ scancompare uninstalled.")
-
 def main():
-    if len(sys.argv) == 2:
-        if sys.argv[1] in ("--version", "version"):
-            print(f"📦 scancompare version {VERSION}")
-            sys.exit(0)
-        elif sys.argv[1] in ("uninstall", "--uninstall"):
-            uninstall_scancompare()
-            sys.exit(0)
-        elif sys.argv[1] == "update":
-            check_latest_version(only_check=True)
+    if len(sys.argv) == 2 and sys.argv[1] in ("--version", "version"):
+        print(f"📦 scancompare version {VERSION}")
+        sys.exit(0)
+    if len(sys.argv) == 2 and sys.argv[1] == "update":
+        check_latest_version(only_check=True)
+    if len(sys.argv) == 2 and sys.argv[1] in ("--uninstall", "uninstall"):
+        print("🧹 Uninstalling scancompare...")
+        try:
+            os.remove(Path(__file__))
+            lib_dir = Path(__file__).parent
+            report_dir = Path("scan_reports")
+            wrapper = Path.home() / ".local/bin/scancompare"
+            if report_dir.exists():
+                import shutil
+                shutil.rmtree(report_dir)
+            if wrapper.exists():
+                wrapper.unlink()
+            print("✅ scancompare uninstalled.")
+        except Exception as e:
+            print("❌ Failed to uninstall:", e)
+        sys.exit(0)
 
     if len(sys.argv) < 2:
         print("Usage: scancompare <image>")
@@ -225,8 +192,8 @@ def main():
     image = sys.argv[1]
     check_latest_version()
 
-    if not check_image_exists(image):
-        explain_exit(f"Image '{image}' could not be found locally or remotely.")
+    if not validate_image_exists(image):
+        explain_exit(f"Image '{image}' not found locally or remotely.")
 
     scan_dir = Path("scan_reports")
     scan_dir.mkdir(exist_ok=True)
