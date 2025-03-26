@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.1.8 
+# scancompare version 2.1.9 
 
 import os
 import sys
@@ -18,7 +18,7 @@ import re
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.1.8"
+VERSION = "2.1.9"
 
 import tempfile
 
