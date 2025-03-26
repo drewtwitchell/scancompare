@@ -23,30 +23,13 @@ ADDED_LINE='export PATH="$HOME/.local/bin:$PATH"'
 
 # Make available in current shell session
 if [[ ":$PATH:" != *:"$INSTALL_BIN":* ]]; then
-  echo "🔧 Adding $INSTALL_BIN to current shell session"
   export PATH="$INSTALL_BIN:$PATH"
 fi
-
-# De-duplicate PATH entries (non-destructive, shell-safe)
-de_dupe_path() {
-  local deduped=""
-  local seen=""
-  IFS=':' read -ra entries <<< "$PATH"
-  for entry in "${entries[@]}"; do
-    if [[ ":$seen:" != *":$entry:"* ]]; then
-      deduped+="$entry:"
-      seen+="$entry:"
-    fi
-  done
-  export PATH="${deduped%:}"
-}
-de_dupe_path
 
 # Function to safely append to profile files
 append_if_missing() {
   local file="$1"
   if [[ -f "$file" && ! $(grep -Fx "$ADDED_LINE" "$file") ]]; then
-    echo "🔧 Adding $INSTALL_BIN to PATH in $file"
     echo "$ADDED_LINE" >> "$file"
   fi
 }
@@ -61,19 +44,10 @@ append_if_missing "$HOME/.zprofile"
 # WSL-specific (if .bashrc didn't exist before)
 if grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null; then
   if [[ ! -f "$HOME/.bashrc" ]]; then
-    echo "🔧 Creating $HOME/.bashrc for WSL"
     echo "# WSL profile" > "$HOME/.bashrc"
     echo "$ADDED_LINE" >> "$HOME/.bashrc"
   fi
 fi
-
-# User reminder for shells that won’t automatically re-source
-echo "ℹ️ If scancompare is still not available, run:"
-echo ""
-echo "   source ~/.bashrc    # or ~/.zshrc, ~/.profile depending on your shell"
-echo ""
-echo "🔁 Then try: scancompare --version"
-
 
 # Ensure install directories exist
 mkdir -p "$INSTALL_BIN"
@@ -122,6 +96,10 @@ fi
 echo "⬇️  Downloading $SCRIPT_NAME..."
 curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT"
 
+# Extract version from script
+VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
+echo "   📦 Installing version: $VERSION"
+
 # Ensure Python shebang
 if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
   sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null || sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
@@ -136,4 +114,13 @@ EOF
 chmod +x "$WRAPPER_SCRIPT"
 
 echo "✅ Installed $SCRIPT_NAME"
+
+# Show reminder only if scancompare still not found in PATH
+if ! command -v scancompare &> /dev/null; then
+  echo ""
+  echo "⚠️  scancompare was installed but isn't available in this shell session."
+  echo "➡️  Try running: export PATH=\"\$HOME/.local/bin:\$PATH\""
+  echo "   or close and reopen your terminal."
+fi
+
 echo "🎉 You can now run: $SCRIPT_NAME <image-name>"
