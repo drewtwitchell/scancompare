@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.0.9 
+# scancompare version 2.1.0 
 
 import os
 import sys
@@ -18,7 +18,7 @@ import re
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.0.9"
+VERSION = "2.1.0"
 
 import tempfile
 
@@ -387,24 +387,18 @@ def ensure_gh_installed():
     print("✅ GitHub CLI installed.")
   
 
-def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype):
-    import shutil
-    import subprocess
-    import json
+def get_repo_from_url(repo_url):
+    match = re.match(r"https?://github.com/([^/]+/[^/]+)(?:\\.git)?", repo_url)
+    if match:
+        return match.group(1)
+    explain_exit("Invalid GitHub repository URL format.")
+
+def choose_or_create_repo():
+    explain_exit("Repo selection is now automatic. Please provide a GitHub repo URL via --repo-url.")
+
+def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo):
     import base64
     import datetime
-    import tempfile
-    from pathlib import Path
-
-    def ensure_gh_installed():
-        if shutil.which("gh"):
-            return
-        print("🔧 GitHub CLI (gh) not found. Attempting to install...")
-        if shutil.which("brew"):
-            subprocess.run(["brew", "install", "gh"], check=True)
-        else:
-            subprocess.run(["curl", "-fsSL", "https://cli.github.com/install.sh"], check=True)
-        print("✅ GitHub CLI installed.")
 
     def ensure_gh_authenticated():
         try:
@@ -429,7 +423,7 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
         except Exception:
             return False
 
-    def upload_sarif(sarif_path, tool_name, repo):
+    def upload_sarif(sarif_path, tool_name):
         if not sarif_path.exists() or not is_valid_sarif(sarif_path):
             print(f"⚠️ Skipping {tool_name} SARIF upload: file not found or invalid.")
             return
@@ -473,33 +467,24 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
 
     ensure_gh_installed()
     ensure_gh_authenticated()
-    repo = choose_or_create_repo()
 
     scan_dir = Path("scan_reports")
     scan_dir.mkdir(exist_ok=True)
 
     # Generate Grype SARIF
     grype_sarif_path = scan_dir / "ghas_upload_grype.sarif"
-    if not only_trivy:
-        generate_sarif("grype", grype_sarif_path)
-        upload_sarif(grype_sarif_path, "grype", repo)
+    generate_sarif("grype", grype_sarif_path)
+    upload_sarif(grype_sarif_path, "grype")
 
     # Generate Trivy SARIF
     trivy_sarif_path = scan_dir / "ghas_upload_trivy.sarif"
-    if not only_grype:
-        generate_sarif("trivy", trivy_sarif_path)
-        upload_sarif(trivy_sarif_path, "trivy", repo)
+    generate_sarif("trivy", trivy_sarif_path)
+    upload_sarif(trivy_sarif_path, "trivy")
 
     # Upload SARIF diff file if it exists
     diff_sarif_path = scan_dir / "ghas_diff.sarif"
     if diff_sarif_path.exists():
-        upload_sarif(diff_sarif_path, "scancompare", repo)
-
-def get_repo_from_url(repo_url):
-    match = re.match(r"https?://github.com/([^/]+/[^/]+)(?:\.git)?", repo_url)
-    if match:
-        return match.group(1)
-    explain_exit("Invalid GitHub repository URL format.")
+        upload_sarif(diff_sarif_path, "scancompare")
 
 def main():
     parser = argparse.ArgumentParser(description="Compare container image scan results between Trivy and Grype.")
@@ -532,12 +517,12 @@ def main():
         if not dockerfile_path:
             explain_exit("No Dockerfile found in the provided repository.")
 
-        image_tag = f"scancompare-temp-{int(datetime.now().timestamp())}"
+        image_tag = f"scancompare-temp-{abs(hash(args.repo_url)) % (10 ** 10)}"
         print(f"🐳 Building Docker image '{image_tag}' from {dockerfile_path}...")
         try:
             subprocess.run(["docker", "build", "-t", image_tag, os.path.dirname(dockerfile_path)], check=True)
         except subprocess.CalledProcessError:
-            explain_exit("Docker build failed. Please check the Dockerfile and try building manually to debug.")
+            explain_exit(f"Docker build failed. Please check the Dockerfile and try building manually with 'docker build -t {image_tag} .' to debug.")
 
         image = image_tag
         repo = get_repo_from_url(args.repo_url)
@@ -575,7 +560,7 @@ def main():
     print_cves_by_severity("Shared CVEs", {c: trivy_data.get(c, grype_data.get(c, "Unknown")) for c in shared})
 
     if repo:
-        upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype)
+        upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo)
         open_html = input("📁 Open HTML report in browser after upload? (y/n): ").strip().lower()
         if open_html == "y":
             generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
