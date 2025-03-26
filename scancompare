@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.9.4
+# scancompare version 1.9.5
 
 import os
 import sys
@@ -11,10 +11,11 @@ from pathlib import Path
 import webbrowser
 import shutil
 import tempfile
+import html
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.9.4"
+VERSION = "1.9.5"
 
 import tempfile
 
@@ -173,7 +174,9 @@ def display_summary(trivy_cves, grype_cves):
 
     return shared, only_trivy, only_grype
 
-def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only_grype):
+import html  # make sure this is at the top of your file
+
+def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only_grype, trivy_version, grype_version):
     def format_cves(cve_map):
         grouped = group_by_severity(cve_map)
         sections = ""
@@ -194,11 +197,11 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     report_name = f"scan_report_{image.replace(':', '_')}_{timestamp}.html"
     report_path = Path("scan_reports") / report_name
 
-    # Load raw JSON for collapsible sections
-    trivy_raw = json.dumps(json.load(open("scan_reports/original_trivy.json")), indent=2)
-    grype_raw = json.dumps(json.load(open("scan_reports/original_grype.json")), indent=2)
+    # Properly escape raw JSON
+    trivy_raw = html.escape(json.dumps(json.load(open("scan_reports/original_trivy.json")), indent=2))
+    grype_raw = html.escape(json.dumps(json.load(open("scan_reports/original_grype.json")), indent=2))
 
-    html = f"""<!DOCTYPE html>
+    html_report = f"""<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -269,10 +272,16 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
       background-color: #f1f1f1;
       margin-bottom: 20px;
     }}
+    .content pre {{
+      max-height: 400px;
+      overflow: auto;
+    }}
   </style>
 </head>
 <body>
   <h1>Scan Report for {image}</h1>
+  <p><strong>Trivy version:</strong> {trivy_version} &nbsp;&nbsp;&nbsp; 
+     <strong>Grype version:</strong> {grype_version}</p>
 
   <table>
     <tr>
@@ -283,13 +292,13 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     </tr>
     <tr>
       <td>Grype</td>
-      <td><a href="#grype">{len(grype_cves)}</a></td>
+      <td>{len(grype_cves)}</td>
       <td><a href="#grype">{len(only_grype)}</a></td>
       <td><a href="#shared">{len(shared)}</a></td>
     </tr>
     <tr>
       <td>Trivy</td>
-      <td><a href="#trivy">{len(trivy_cves)}</a></td>
+      <td>{len(trivy_cves)}</td>
       <td><a href="#trivy">{len(only_trivy)}</a></td>
       <td><a href="#shared">{len(shared)}</a></td>
     </tr>
@@ -329,7 +338,7 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
 </body>
 </html>
 """
-    report_path.write_text(html)
+    report_path.write_text(html_report)
     print(f"✅ HTML report saved: {report_path}")
 
     open_html = input("📁 Open report in browser? (y/n): ").strip().lower()
@@ -447,7 +456,7 @@ def main():
     print_cves_by_severity("Unique to Trivy", {c: trivy_data[c] for c in only_trivy})
     print_cves_by_severity("Shared CVEs", {c: trivy_data.get(c, grype_data.get(c, "Unknown")) for c in shared})
 
-    generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype)
+    generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
 
 
 if __name__ == "__main__":
