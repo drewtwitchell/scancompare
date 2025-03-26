@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.4.3 
+# scancompare version 2.4.4 
 
 import os
 import sys
@@ -21,7 +21,7 @@ import uuid
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.4.3"
+VERSION = "2.4.4"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -519,11 +519,18 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
 
         temp_repo_dir = Path("scan_reports").resolve()
 
-        if args.repo_url:
+        # Use the actual cloned repo path if available
+        if hasattr(args, "cloned_repo_path"):
+            temp_repo_dir = Path(args.cloned_repo_path)
+            print(f"📁 Using cloned repo at {temp_repo_dir} for Git commit info.")
+        elif args.repo_url:
             repo_name = args.repo_url.split("/")[-1].replace(".git", "")
-            temp_repo_dir = Path.home() / ".scancompare_clones" / repo_name
-            if not temp_repo_dir.exists():
-                print(f"⚠️ Could not find local clone directory at {temp_repo_dir}, using fallback for commit info.")
+            guessed_path = Path.home() / ".scancompare_clones" / repo_name
+            if guessed_path.exists():
+                temp_repo_dir = guessed_path
+                print(f"📁 Using guessed repo path: {temp_repo_dir}")
+            else:
+                print(f"⚠️ Could not find local clone directory at {guessed_path}, using fallback for commit info.")
 
         def run_git(cmd):
             try:
@@ -576,20 +583,6 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
     scan_dir = Path("scan_reports")
     scan_dir.mkdir(exist_ok=True)
 
-    if args.repo_url:
-        repo_name = args.repo_url.split("/")[-1].replace(".git", "")
-        persisted_repo = Path.home() / ".scancompare_clones" / repo_name
-        persisted_repo.mkdir(parents=True, exist_ok=True)
-
-        # Persist the repo if it wasn't already
-        if not (persisted_repo / ".git").exists():
-            print(f"📥 Cloning {args.repo_url} into persistent directory {persisted_repo}...")
-            subprocess.run(["git", "clone", args.repo_url, str(persisted_repo)], check=True)
-
-        working_dir = persisted_repo
-    else:
-        working_dir = scan_dir
-
     grype_sarif_path = scan_dir / "ghas_upload_grype.sarif"
     trivy_sarif_path = scan_dir / "ghas_upload_trivy.sarif"
     diff_sarif_path = scan_dir / "ghas_diff.sarif"
@@ -597,13 +590,13 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
     print("📦 Generating SARIF files for GHAS upload...")
 
     try:
-        subprocess.run(["grype", image, "-o", "sarif", "--file", str(grype_sarif_path)], check=True, cwd=working_dir)
+        subprocess.run(["grype", image, "-o", "sarif", "--file", str(grype_sarif_path)], check=True)
         upload_sarif(grype_sarif_path, "grype")
     except Exception as e:
         print(f"⚠️ Failed to generate SARIF with grype: {e}")
 
     try:
-        subprocess.run(["trivy", "image", "-f", "sarif", "-o", str(trivy_sarif_path), image], check=True, cwd=working_dir)
+        subprocess.run(["trivy", "image", "-f", "sarif", "-o", str(trivy_sarif_path), image], check=True)
         upload_sarif(trivy_sarif_path, "trivy")
     except Exception as e:
         print(f"⚠️ Failed to generate SARIF with trivy: {e}")
@@ -624,9 +617,7 @@ def main(args):
         temp_dir = tempfile.mkdtemp()
         print(f"📥 Cloning {args.repo_url} into temporary directory...")
         subprocess.run(["git", "clone", args.repo_url, temp_dir], check=True)
-
-        global cloned_repo_dir
-        cloned_repo_dir = temp_dir
+        args.cloned_repo_path = temp_dir  # persist path for use in GHAS upload
 
         dockerfile_path = None
         for root, _, files in os.walk(temp_dir):
