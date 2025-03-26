@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.0.5 
+# scancompare version 2.0.6 
 
 import os
 import sys
@@ -13,10 +13,12 @@ import shutil
 import tempfile
 import html
 import base64
+import argparse
+import re
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.0.5"
+VERSION = "2.0.6"
 
 import tempfile
 
@@ -380,25 +382,7 @@ def ensure_gh_installed():
     else:
         subprocess.run(["curl", "-fsSL", "https://cli.github.com/install.sh"], check=True)
     print("✅ GitHub CLI installed.")
-
-def choose_or_create_repo():
-    result = subprocess.run(["gh", "repo", "list", "--limit", "100", "--json", "name,owner"], capture_output=True, text=True)
-    repos = json.loads(result.stdout)
-
-    print("\n📁 Select a repository to upload scan results to:")
-    for idx, repo in enumerate(repos):
-        print(f"[{idx + 1}] {repo['owner']['login']}/{repo['name']}")
-    print(f"[{len(repos) + 1}] Create a new repository")
-
-    selection = int(input("Enter the number of the repo to use: "))
-    if selection == len(repos) + 1:
-        owner = subprocess.run(["gh", "api", "/user", "--jq", ".login"], capture_output=True, text=True).stdout.strip()
-        new_repo_name = input("Enter name for the new repository: ").strip()
-        subprocess.run(["gh", "repo", "create", f"{owner}/{new_repo_name}", "--public", "--confirm"], check=True)
-        return f"{owner}/{new_repo_name}"
-    else:
-        return f"{repos[selection - 1]['owner']['login']}/{repos[selection - 1]['name']}"
-    
+  
 
 def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype):
     import shutil
@@ -426,23 +410,11 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
             print("🔐 GitHub authentication required.")
             subprocess.run(["gh", "auth", "login"], check=True)
 
-    def choose_or_create_repo():
-        result = subprocess.run(["gh", "repo", "list", "--limit", "100", "--json", "name,owner"], capture_output=True, text=True)
-        repos = json.loads(result.stdout)
-
-        print("\n📁 Select a repository to upload scan results to:")
-        for idx, repo in enumerate(repos):
-            print(f"[{idx + 1}] {repo['owner']['login']}/{repo['name']}")
-        print(f"[{len(repos) + 1}] Create a new repository")
-
-        selection = int(input("Enter the number of the repo to use: "))
-        if selection == len(repos) + 1:
-            owner = subprocess.run(["gh", "api", "/user", "--jq", ".login"], capture_output=True, text=True).stdout.strip()
-            new_repo_name = input("Enter name for the new repository: ").strip()
-            subprocess.run(["gh", "repo", "create", f"{owner}/{new_repo_name}", "--public", "--confirm"], check=True)
-            return f"{owner}/{new_repo_name}"
-        else:
-            return f"{repos[selection - 1]['owner']['login']}/{repos[selection - 1]['name']}"
+    def get_repo_from_url(repo_url):
+        match = re.match(r"https?://github.com/([^/]+/[^/]+)(?:\.git)?", repo_url)
+        if match:
+            return match.group(1)
+        explain_exit("Invalid GitHub repository URL format.")
 
     def generate_sarif(tool_name, output_path):
         try:
@@ -527,64 +499,47 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
         upload_sarif(diff_sarif_path, "scancompare", repo)
 
 def main():
-    if len(sys.argv) == 2 and sys.argv[1] in ("--version", "version"):
-        print(f"📦 scancompare version {VERSION}")
-        sys.exit(0)
+    parser = argparse.ArgumentParser(description="Compare container image scan results between Trivy and Grype.")
+    parser.add_argument("image", nargs="?", help="Docker image to scan (e.g., ubuntu:latest)")
+    parser.add_argument("--repo-url", help="GitHub repository URL to clone and analyze")
+    args = parser.parse_args()
 
-    if len(sys.argv) == 2 and sys.argv[1] in ("--uninstall", "uninstall"):
-        print("🧹 Uninstalling scancompare...")
-
-        paths_removed = False
-
-        # Remove scancompare lib and wrapper
-        lib_path = Path.home() / ".local" / "lib" / "scancompare" / "scancompare"
-        bin_path = Path.home() / ".local" / "bin" / "scancompare"
-
-        for path in [lib_path, bin_path]:
-            if path.exists():
-                path.unlink()
-                print(f"🗑️ Removed {path}")
-                paths_removed = True
-
-        # Remove scan_reports
-        reports_dir = Path("scan_reports")
-        if reports_dir.exists():
-            shutil.rmtree(reports_dir)
-            print("🗑️ Removed scan_reports directory")
-
-        # Attempt to remove PATH export line
-        profile_files = [".zshrc", ".bashrc", ".profile"]
-        for profile in profile_files:
-            full_path = Path.home() / profile
-            if full_path.exists():
-                content = full_path.read_text()
-                if 'export PATH="$HOME/.local/bin:$PATH"' in content:
-                    new_content = "\n".join(
-                        line for line in content.splitlines()
-                        if 'export PATH="$HOME/.local/bin:$PATH"' not in line
-                    )
-                    full_path.write_text(new_content)
-                    print(f"🧽 Cleaned PATH entry in {full_path}")
-
-        if paths_removed:
-            print("✅ scancompare successfully uninstalled.")
-        else:
-            print("ℹ️ scancompare was not found or already uninstalled.")
-        sys.exit(0)
-
-    if len(sys.argv) < 2:
-        print("Usage: scancompare <image>")
+    if not args.image and not args.repo_url:
+        print("Usage: scancompare <image> [--repo-url <repo>]")
         sys.exit(1)
 
-    image = sys.argv[1]
     check_latest_version()
+    scan_dir = Path("scan_reports")
+    scan_dir.mkdir(exist_ok=True)
+
+    if args.repo_url:
+        temp_dir = tempfile.mkdtemp()
+        print(f"📥 Cloning {args.repo_url} into temporary directory...")
+        subprocess.run(["git", "clone", args.repo_url, temp_dir], check=True)
+
+        dockerfile_path = None
+        for root, _, files in os.walk(temp_dir):
+            for file in files:
+                if file.lower().startswith("dockerfile"):
+                    dockerfile_path = os.path.join(root, file)
+                    break
+            if dockerfile_path:
+                break
+
+        if not dockerfile_path:
+            explain_exit("No Dockerfile found in the provided repository.")
+
+        print(f"🐳 Building Docker image from {dockerfile_path}...")
+        image_tag = "scancompare-temp"
+        subprocess.run(["docker", "build", "-t", image_tag, os.path.dirname(dockerfile_path)], check=True)
+        image = image_tag
+        repo = get_repo_from_url(args.repo_url)
+    else:
+        image = args.image
+        repo = None
 
     if not validate_image_exists(image):
         explain_exit(f"Docker image '{image}' could not be found locally or remotely.")
-
-
-    scan_dir = Path("scan_reports")
-    scan_dir.mkdir(exist_ok=True)
 
     trivy_path = scan_dir / "original_trivy.json"
     grype_path = scan_dir / "original_grype.json"
@@ -612,9 +567,13 @@ def main():
     print_cves_by_severity("Unique to Trivy", {c: trivy_data[c] for c in only_trivy})
     print_cves_by_severity("Shared CVEs", {c: trivy_data.get(c, grype_data.get(c, "Unknown")) for c in shared})
 
-    upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype)
-    generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
-    
+    if repo:
+        upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype)
+        open_html = input("📁 Open HTML report in browser after upload? (y/n): ").strip().lower()
+        if open_html == "y":
+            generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
+    else:
+        generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
 
 if __name__ == "__main__":
     main()
