@@ -1,5 +1,5 @@
-# 🔍 Scancompare
-Scancompare is a cross-platform CLI tool that scans Docker images using both Grype and Trivy, compares the vulnerability findings, groups CVEs by criticality, and generates shareable HTML reports.
+# 🔍 Scan Compare
+Scan Compare is a cross-platform CLI tool that scans Docker images using both Grype and Trivy, compares the vulnerability findings, groups CVEs by criticality, builds and tests Docker images via GitHub URL (when using defined CLI arg), uploads and generates GitHub Advanced Security alerts (GHAS) [for that defined repo], and produces shareable HTML/PDF reports.
 
 Built for macOS, Linux, and Windows (via WSL or Git Bash), it runs securely and independently with automatic tooling installs and self-updates.
 
@@ -49,13 +49,14 @@ scancompare alpine:3.14
 | Command               | Description                                                                 |
 |-----------------------|-----------------------------------------------------------------------------|
 | `scancompare <image>` | Runs a vulnerability scan, compares Grype and Trivy, and generates a report |
-| `scancompare update`  | Manually forces a script update from GitHub (auto-checks on every run)      |
-| `scancompare uninstall`  | Removes the scancompare binary and cleans PATH from shell profiles       |
+| `scancompare --repo-url <your repo URL>`  | Runs a docker build for repos using Dockerfiles and executes scans     |
+| `scancompare --update`  | Manually forces a script update from GitHub (auto-checks on every run)      |
+| `scancompare --version`  | Lists your current working version     |
+| `scancompare --uninstall`  | Removes the scancompare binary and cleans PATH from shell profiles       |
 
 ---
 
 ## ✨ Features
-✨ Features
 ✅ Dual vulnerability scan with Grype + Trivy
 
 📊 CLI summary: shared CVEs, tool-specific differences, and recommended action
@@ -68,6 +69,20 @@ scancompare alpine:3.14
 
  - PDF download button
 
+🐳 Auto-builds Docker images from GitHub repos and scans them
+
+ - Clone a GitHub repo with --repo-url
+
+ - Builds the Docker image from the repo's Dockerfile
+
+ - Runs full analysis using Grype + Trivy
+
+📦 Uploads alerts to GitHub Advanced Security (GHAS)
+
+ - Generates SARIF files for each scan
+
+ - Uploads findings to your repo's Code Scanning tab via GitHub CLI
+
 ⚙️ Auto-installs required tools (grype, trivy, jq, docker)
 
 🔁 Auto-updates from GitHub before each run
@@ -79,10 +94,12 @@ scancompare alpine:3.14
 |-----------------------|-----------------------------------------------------------------------------|
 | `scan_reports/original_grype.json` | Raw Grype scan result|
 | `scan_reports/original_trivy.json`  | Raw Trivy scan result      |
+| `scan_reports/ghas_upload_grype.sarif` | Grype SARIF file|
+| `scan_reports/ghas_upload_trivy.sarif`  | Trivy SARIF file      |
 | `scan_reports/scan_report_<image>_<date>.html`  | Human-readable HTML report      |
 
 ---
-📎 Report Example
+📎 Example
 After running scancompare, you’ll see:
 ```bash
 scancompare postgres:15
