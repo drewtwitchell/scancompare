@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.7.0
+# scancompare version 1.7.1
 
 import os
 import sys
@@ -13,7 +13,7 @@ import webbrowser
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.7.0"
+VERSION = "1.7.1"
 
 def check_latest_version(only_check=False):
     try:
@@ -44,13 +44,10 @@ def update_script():
 
 def get_version(tool):
     try:
-        result = subprocess.run([tool, "version"], capture_output=True, text=True)
-        for line in result.stdout.splitlines():
-            if tool.lower() in line.lower() or "Version" in line:
-                return line.strip().split()[-1]
+        result = subprocess.run([tool, "--version"], capture_output=True, text=True)
+        return result.stdout.strip().split("\n")[0]
     except Exception:
         return "unknown"
-    return "unknown"
 
 def run_scan(tool, image, output_path):
     try:
@@ -68,7 +65,17 @@ def extract_cves(file_path):
     try:
         with open(file_path) as f:
             data = json.load(f)
-        return {item["VulnerabilityID"] for result in data.get("Results", []) for item in result.get("Vulnerabilities", [])}
+        vulns = set()
+        if "matches" in data:  # Grype
+            for match in data["matches"]:
+                vuln = match.get("vulnerability", {})
+                if "id" in vuln:
+                    vulns.add(vuln["id"])
+        elif "Results" in data:  # Trivy
+            for result in data["Results"]:
+                for vuln in result.get("Vulnerabilities", []):
+                    vulns.add(vuln["VulnerabilityID"])
+        return vulns
     except Exception:
         return set()
 
@@ -92,65 +99,70 @@ def generate_html_report(image, trivy_json, grype_json, shared, only_trivy, only
     timestamp = datetime.now().strftime("%Y-%m-%d")
     report_name = f"scan_report_{image.replace(':', '_')}_{timestamp}.html"
     report_path = Path("scan_reports") / report_name
-    trivy_data = json.load(open(trivy_json)) if Path(trivy_json).stat().st_size > 0 else {}
-    grype_data = json.load(open(grype_json)) if Path(grype_json).stat().st_size > 0 else {}
 
-    def html_section(title, cves):
-        if not cves:
+    def make_html_block(title, items):
+        if not items:
             return f"<h3>{title}</h3><p>No CVEs found.</p>"
-        return f"<h3>{title}</h3><ul>" + "".join(f"<li>{cve}</li>" for cve in sorted(cves)) + "</ul>"
+        grouped = {"Critical": [], "High": [], "Medium": [], "Low": [], "Unknown": []}
+        for cve in sorted(items):
+            sev = "Unknown"
+            if "CRIT" in cve.upper():
+                sev = "Critical"
+            elif "HIGH" in cve.upper():
+                sev = "High"
+            elif "MED" in cve.upper():
+                sev = "Medium"
+            elif "LOW" in cve.upper():
+                sev = "Low"
+            grouped[sev].append(cve)
+        block = f"<h3 id='{title.lower().replace(' ', '_')}'>{title}</h3>"
+        for sev in ["Critical", "High", "Medium", "Low", "Unknown"]:
+            if grouped[sev]:
+                block += f"<details><summary>{sev} ({len(grouped[sev])})</summary><ul>"
+                for cve in grouped[sev]:
+                    block += f"<li>{cve}</li>"
+                block += "</ul></details>"
+        return block
 
     html = f"""<!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
-    <title>ScanCompare Report</title>
+    <title>ScanCompare Report for {image}</title>
     <style>
         body {{ font-family: Arial, sans-serif; padding: 20px; }}
-        h1, h2, h3 {{ color: #333; }}
-        ul {{ line-height: 1.6; }}
-        .toc a {{ text-decoration: none; display: block; }}
+        h1, h2 {{ color: #333; }}
+        .toc a {{ display: block; margin-bottom: 4px; }}
+        pre {{ background: #f4f4f4; padding: 10px; }}
     </style>
 </head>
 <body>
     <h1>Scan Report for {image}</h1>
+    <button onclick="window.print()">🖨️ Export as PDF</button>
     <h2>Table of Contents</h2>
     <div class="toc">
-        <a href="#summary">CLI Summary</a>
-        <a href="#shared">Shared CVEs</a>
-        <a href="#trivy">Unique to Trivy</a>
-        <a href="#grype">Unique to Grype</a>
+        <a href="#summary">Summary</a>
+        <a href="#shared_cves">Shared CVEs</a>
+        <a href="#trivy_unique">Unique to Trivy</a>
+        <a href="#grype_unique">Unique to Grype</a>
     </div>
     <hr>
-    <h2 id="summary">CLI Summary</h2>
+    <h2 id="summary">Summary</h2>
     <pre>
 Tool       | Total | Only in Tool | Shared
 -----------|-------|---------------|--------
 Grype      | {len(only_grype) + len(shared)}   | {len(only_grype)}             | {len(shared)}
 Trivy      | {len(only_trivy) + len(shared)}   | {len(only_trivy)}            | {len(shared)}
     </pre>
-    <h2 id="shared">Shared CVEs</h2>
-    {html_section("Shared CVEs", shared)}
-    <h2 id="trivy">Unique to Trivy</h2>
-    {html_section("Unique to Trivy", only_trivy)}
-    <h2 id="grype">Unique to Grype</h2>
-    {html_section("Unique to Grype", only_grype)}
+    {make_html_block("Shared CVEs", shared)}
+    {make_html_block("Unique to Trivy", only_trivy)}
+    {make_html_block("Unique to Grype", only_grype)}
 </body>
 </html>
 """
-
     report_path.write_text(html)
     print(f"✅ HTML report saved: {report_path}")
-
-    try:
-        import pdfkit
-        pdf_path = str(report_path).replace(".html", ".pdf")
-        pdfkit.from_file(str(report_path), pdf_path)
-        print(f"✅ PDF export saved: {pdf_path}")
-    except Exception:
-        print("⚠️ PDF export skipped (pdfkit not available)")
-
-    open_html = input("📁 Would you like to open the HTML report in your browser? (y/n): ").strip().lower()
+    open_html = input("📁 Open report in browser? (y/n): ").strip().lower()
     if open_html == "y":
         webbrowser.open(f"file://{report_path.absolute()}")
 
@@ -170,7 +182,6 @@ def main():
 
     scan_dir = Path("scan_reports")
     scan_dir.mkdir(exist_ok=True)
-
     trivy_path = scan_dir / "original_trivy.json"
     grype_path = scan_dir / "original_grype.json"
 
@@ -190,7 +201,6 @@ def main():
 
     trivy_cves = extract_cves(trivy_path)
     grype_cves = extract_cves(grype_path)
-
     shared, only_trivy, only_grype = display_summary(trivy_cves, grype_cves)
 
     print("\n🔍 CVEs by Severity")
