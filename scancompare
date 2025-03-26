@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.4.4 
+# scancompare version 2.4.5 
 
 import os
 import sys
@@ -21,7 +21,7 @@ import uuid
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.4.4"
+VERSION = "2.4.5"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -499,14 +499,14 @@ def ensure_gh_authenticated():
 
 def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo):
     from pathlib import Path
-    import json, base64, tempfile, subprocess, gzip
+    import json, base64, tempfile, subprocess
 
     ensure_gh_installed()
     ensure_gh_authenticated()
 
     def is_valid_sarif(sarif_path):
         try:
-            with gzip.open(sarif_path, "rt", encoding="utf-8") as f:
+            with open(sarif_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return all(key in data for key in ["version", "runs"])
         except Exception:
@@ -519,7 +519,6 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
 
         temp_repo_dir = Path("scan_reports").resolve()
 
-        # Use the actual cloned repo path if available
         if hasattr(args, "cloned_repo_path"):
             temp_repo_dir = Path(args.cloned_repo_path)
             print(f"📁 Using cloned repo at {temp_repo_dir} for Git commit info.")
@@ -528,7 +527,7 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
             guessed_path = Path.home() / ".scancompare_clones" / repo_name
             if guessed_path.exists():
                 temp_repo_dir = guessed_path
-                print(f"📁 Using guessed repo path: {temp_repo_dir}")
+                print(f"📁 Using guessed repo path: {guessed_path}")
             else:
                 print(f"⚠️ Could not find local clone directory at {guessed_path}, using fallback for commit info.")
 
