@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.1.3 
+# scancompare version 2.1.4 
 
 import os
 import sys
@@ -18,55 +18,47 @@ import re
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.1.3"
+VERSION = "2.1.4"
 
 import tempfile
 
 def check_latest_version(only_check=False):
-    import hashlib
+    if os.environ.get("SCANCOMPARE_UPDATED") == "1":
+        return  # Skip redundant check after update + restart
 
+    print("🔎 Checking for updates...")
     try:
-        print("🔎 Checking for updates...")
         response = urlopen(SCRIPT_URL)
         new_code = response.read().decode("utf-8")
 
-        # Calculate SHA of the current script and remote script
-        current_code = Path(get_script_path()).read_text(encoding="utf-8")
-        current_sha = hashlib.sha256(current_code.encode()).hexdigest()
-        new_sha = hashlib.sha256(new_code.encode()).hexdigest()
+        latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
+        if not latest_match:
+            raise ValueError("Could not determine latest version from script.")
 
-        if current_sha != new_sha:
-            print("🔄 New version detected. Updating scancompare script...")
+        latest = latest_match.group(1)
+        current = get_current_version()
 
+        if latest != current:
+            print(f"🔄 New version available: {current} → {latest}")
             update_script(new_code)
 
-            # Verify update by checking new file content hash
-            updated_code = Path(get_script_path()).read_text(encoding="utf-8")
-            updated_sha = hashlib.sha256(updated_code.encode()).hexdigest()
-
-            if updated_sha != new_sha:
-                raise RuntimeError("Script update failed: checksum mismatch after update.")
-
-            # Extract version for display
-            match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
-            updated_version = match.group(1) if match else "latest"
-            print(f"✅ scancompare updated to version {updated_version}")
-            if only_check:
-                sys.exit(0)
-
+            print("✅ scancompare updated to latest version")
             print("♻️ Restarting with updated version...")
-            os.execv(sys.executable, [sys.executable, str(get_script_path())] + sys.argv[1:])
+
+            os.execve(
+                sys.executable,
+                [sys.executable, str(get_script_path())] + sys.argv[1:],
+                {**os.environ, "SCANCOMPARE_UPDATED": "1"}
+            )
 
         elif only_check:
-            match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
-            version_str = match.group(1) if match else VERSION
-            print(f"📦 scancompare version {version_str}")
+            print(f"📦 scancompare version {current}")
             sys.exit(0)
 
     except Exception as e:
         print(f"⚠️ Auto-update check failed: {e}")
         if only_check:
-            print(f"📦 scancompare version {VERSION}")
+            print(f"📦 scancompare version {get_current_version()}")
             sys.exit(0)
 
 
