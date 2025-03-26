@@ -4,6 +4,7 @@ INSTALL_DIR="$HOME/.local/bin"
 SCRIPT_NAME="scancompare"
 SCRIPT_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
 INSTALL_PATH="$INSTALL_DIR/$SCRIPT_NAME"
+WRAPPER_PATH="/usr/local/bin/scancompare"
 
 echo "🛠️  Starting $SCRIPT_NAME installation..."
 
@@ -94,6 +95,25 @@ install_grype_manual() {
   chmod +x "$INSTALL_DIR/grype"
 }
 
+# Create a wrapper script to ensure direct execution
+create_wrapper_script() {
+  echo "🔧 Creating wrapper script for direct execution..."
+  
+  # Ensure /usr/local/bin exists and is writable
+  sudo mkdir -p /usr/local/bin
+  
+  # Create wrapper script
+  sudo tee "$WRAPPER_PATH" > /dev/null << 'EOF'
+#!/bin/bash
+python3 "$HOME/.local/bin/scancompare" "$@"
+EOF
+
+  # Make wrapper executable
+  sudo chmod +x "$WRAPPER_PATH"
+  
+  echo "✅ Wrapper script created at $WRAPPER_PATH"
+}
+
 # Dependency checks and installations
 # Check for Python
 if ! command -v python3 &> /dev/null; then
@@ -165,6 +185,10 @@ if ! grep -q "^#!/usr/bin/env python3" "$INSTALL_PATH"; then
 fi
 
 chmod +x "$INSTALL_PATH"
+
+# Create wrapper script
+create_wrapper_script
+
 echo "✅ Installed $SCRIPT_NAME to $INSTALL_PATH"
 echo "🎉 Installation complete!"
 echo "You can now run: $SCRIPT_NAME <image-name>"
