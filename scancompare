@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.8.3
+# scancompare version 1.8.4
 
 import os
 import sys
@@ -13,7 +13,7 @@ import shutil
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.8.3"
+VERSION = "1.8.4"
 
 def check_latest_version(only_check=False):
     try:
@@ -53,23 +53,21 @@ def update_script():
 def get_version(tool):
     try:
         result = subprocess.run([tool, "version"], capture_output=True, text=True)
-        if tool.lower() == "grype":
-            for line in result.stdout.splitlines():
-                if "Application:" in line:
-                    parts = line.split()
-                    if len(parts) > 1:
-                        return parts[-1].strip()
-        else:
-            for line in result.stdout.splitlines():
-                if tool.lower() in line.lower() or "Version" in line:
-                    return line.strip()
+        for line in result.stdout.splitlines():
+            line_lower = line.lower()
+            if tool.lower() in line_lower or "version" in line_lower:
+                parts = line.split()
+                for i, part in enumerate(parts):
+                    if part.lower() in ["version", f"{tool.lower()}"]:
+                        if i + 1 < len(parts):
+                            return parts[i + 1].strip()
+        return result.stdout.strip().splitlines()[0]  # fallback
     except FileNotFoundError:
         print(f"⚠️ {tool} is not installed or not in PATH.")
         return "not installed"
     except Exception as e:
         print(f"⚠️ Error getting version for {tool}: {e}")
         return "unknown"
-    return "unknown"
 
 def run_scan(tool, image, output_path):
     try:
