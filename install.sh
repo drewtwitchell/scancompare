@@ -18,26 +18,61 @@ install_homebrew() {
   fi
 }
 
-# Ensure ~/.local/bin is in PATH
 INSTALL_BIN="$HOME/.local/bin"
+ADDED_LINE='export PATH="$HOME/.local/bin:$PATH"'
 
-if [[ ":$PATH:" != *:$INSTALL_BIN:* ]]; then
-  if [[ -f "$HOME/.zshrc" ]]; then
-    PROFILE="$HOME/.zshrc"
-  elif [[ -f "$HOME/.bashrc" ]]; then
-    PROFILE="$HOME/.bashrc"
-  elif [[ -f "$HOME/.profile" ]]; then
-    PROFILE="$HOME/.profile"
-  else
-    PROFILE="$HOME/.profile"
-    echo "ℹ️ No shell profile found. Creating $PROFILE"
-    touch "$PROFILE"
-  fi
-
-  echo "🔧 Adding $INSTALL_BIN to PATH in $PROFILE"
-  echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$PROFILE"
-  export PATH="$HOME/.local/bin:$PATH"
+# Make available in current shell session
+if [[ ":$PATH:" != *:"$INSTALL_BIN":* ]]; then
+  echo "🔧 Adding $INSTALL_BIN to current shell session"
+  export PATH="$INSTALL_BIN:$PATH"
 fi
+
+# De-duplicate PATH entries (non-destructive, shell-safe)
+de_dupe_path() {
+  local deduped=""
+  local seen=""
+  IFS=':' read -ra entries <<< "$PATH"
+  for entry in "${entries[@]}"; do
+    if [[ ":$seen:" != *":$entry:"* ]]; then
+      deduped+="$entry:"
+      seen+="$entry:"
+    fi
+  done
+  export PATH="${deduped%:}"
+}
+de_dupe_path
+
+# Function to safely append to profile files
+append_if_missing() {
+  local file="$1"
+  if [[ -f "$file" && ! $(grep -Fx "$ADDED_LINE" "$file") ]]; then
+    echo "🔧 Adding $INSTALL_BIN to PATH in $file"
+    echo "$ADDED_LINE" >> "$file"
+  fi
+}
+
+# Handle shell profile persistence (macOS, Linux, WSL)
+append_if_missing "$HOME/.profile"
+append_if_missing "$HOME/.bashrc"
+append_if_missing "$HOME/.bash_profile"
+append_if_missing "$HOME/.zshrc"
+append_if_missing "$HOME/.zprofile"
+
+# WSL-specific (if .bashrc didn't exist before)
+if grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null; then
+  if [[ ! -f "$HOME/.bashrc" ]]; then
+    echo "🔧 Creating $HOME/.bashrc for WSL"
+    echo "# WSL profile" > "$HOME/.bashrc"
+    echo "$ADDED_LINE" >> "$HOME/.bashrc"
+  fi
+fi
+
+# User reminder for shells that won’t automatically re-source
+echo "ℹ️ If scancompare is still not available, run:"
+echo ""
+echo "   source ~/.bashrc    # or ~/.zshrc, ~/.profile depending on your shell"
+echo ""
+echo "🔁 Then try: scancompare --version"
 
 
 # Ensure install directories exist
