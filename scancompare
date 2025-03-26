@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.8.4
+# scancompare version 1.8.5
 
 import os
 import sys
@@ -13,21 +13,25 @@ import shutil
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.8.4"
+VERSION = "1.8.5"
 
 def check_latest_version(only_check=False):
     try:
         latest = urlopen(SCRIPT_URL).read().decode("utf-8").split("VERSION = ")[1].split("\n")[0].strip('"')
+
         if latest != VERSION:
             print(f"🔄 New version available: {VERSION} → {latest}")
             update_script()
-            print("✅ scancompare updated to latest version")
-            if only_check:
-                sys.exit(0)
-            if f'VERSION = "{latest}"' in Path(__file__).read_text():
+
+            # Confirm the update before relaunch
+            updated_code = Path(get_script_path()).read_text()
+            if f'VERSION = "{latest}"' in updated_code:
+                print("✅ scancompare updated to latest version")
+                if only_check:
+                    sys.exit(0)
                 os.execv(sys.executable, [sys.executable] + sys.argv)
             else:
-                raise RuntimeError("Script update failed. Please check the script file.")
+                raise RuntimeError("Script update failed. Please check file permissions.")
         elif only_check:
             print(f"📦 scancompare version {VERSION}")
             sys.exit(0)
@@ -40,15 +44,24 @@ def check_latest_version(only_check=False):
 def update_script():
     try:
         new_code = urlopen(SCRIPT_URL).read().decode("utf-8")
-        if f'VERSION = "{VERSION}"' in new_code:
-            raise ValueError("Downloaded script has the same version. No update needed.")
-        script_path = Path(__file__)
+        script_path = get_script_path()
+
+        # Check write permissions
         if not os.access(script_path, os.W_OK):
-            raise PermissionError(f"Cannot write to {script_path}. Check file permissions.")
-        script_path.write_text(new_code)
+            raise PermissionError(f"Cannot write to {script_path}. Check permissions.")
+
+        Path(script_path).write_text(new_code)
     except Exception as e:
         print("❌ Failed to update script:", e)
         sys.exit(1)
+
+def get_script_path():
+    """Handles __file__ resolution even if script is wrapped or symlinked"""
+    try:
+        return os.path.realpath(__file__)
+    except NameError:
+        # Fallback if __file__ is not defined
+        return sys.argv[0]
 
 def get_version(tool):
     try:
