@@ -19,15 +19,26 @@ install_homebrew() {
 }
 
 # Ensure ~/.local/bin is in PATH
-if [[ ":$PATH:" != *":$INSTALL_BIN:"* ]]; then
-  PROFILE=""
-  [[ -f "$HOME/.zshrc" ]] && PROFILE="$HOME/.zshrc"
-  [[ -f "$HOME/.bashrc" ]] && PROFILE="$HOME/.bashrc"
-  [[ -f "$HOME/.profile" ]] && PROFILE="$HOME/.profile"
+INSTALL_BIN="$HOME/.local/bin"
+
+if [[ ":$PATH:" != *:$INSTALL_BIN:* ]]; then
+  if [[ -f "$HOME/.zshrc" ]]; then
+    PROFILE="$HOME/.zshrc"
+  elif [[ -f "$HOME/.bashrc" ]]; then
+    PROFILE="$HOME/.bashrc"
+  elif [[ -f "$HOME/.profile" ]]; then
+    PROFILE="$HOME/.profile"
+  else
+    PROFILE="$HOME/.profile"
+    echo "ℹ️ No shell profile found. Creating $PROFILE"
+    touch "$PROFILE"
+  fi
+
   echo "🔧 Adding $INSTALL_BIN to PATH in $PROFILE"
   echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$PROFILE"
   export PATH="$HOME/.local/bin:$PATH"
 fi
+
 
 # Ensure install directories exist
 mkdir -p "$INSTALL_BIN"
