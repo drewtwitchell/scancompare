@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.3.1 
+# scancompare version 2.3.2 
 
 import os
 import sys
@@ -21,7 +21,7 @@ import uuid
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.3.1"
+VERSION = "2.3.2"
 
 args = None  # global placeholder
 
@@ -465,34 +465,26 @@ def ensure_gh_authenticated():
     try:
         subprocess.run(["gh", "auth", "status"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        # Check if token has access to the repo
+        # Check if token has access to the GitHub repo installations
         repo_owner = args.repo_url.split("github.com/")[-1].split("/")[0]
         installations = subprocess.run(["gh", "api", "user/installations"], capture_output=True, text=True)
         if repo_owner not in installations.stdout:
             print("⚠️ Token may not have access to required installations or private repositories.")
             print("🔁 You may need to re-authenticate or grant additional permissions.")
-            raise RuntimeError("Insufficient token access")
+            print("⚠️ Attempting to refresh token with necessary scopes...")
 
-        # Now check scopes (fallback from --show-token-scopes)
+        # Check required scopes (fallback from --show-token)
         scopes_result = subprocess.run(["gh", "auth", "status", "--show-token"], capture_output=True, text=True)
-        if "admin:repo_hook" not in scopes_result.stdout or "write:code" not in scopes_result.stdout:
-            print("🔐 GitHub token is missing required scopes for SARIF upload (admin:repo_hook, write:code).")
-            print("⚠️ Refreshing token with necessary scopes...")
-            subprocess.run(["gh", "auth", "refresh", "-h", "github.com", "-s", "admin:repo_hook,write:code"], check=True)
+        missing_scopes = []
+        if "admin:repo_hook" not in scopes_result.stdout:
+            missing_scopes.append("admin:repo_hook")
+        if "write:code" not in scopes_result.stdout:
+            missing_scopes.append("write:code")
 
-    except subprocess.CalledProcessError:
-        print("🔐 GitHub authentication required.")
-        subprocess.run(["gh", "auth", "login"], check=True)
-    except Exception as e:
-        print(f"❌ Failed to validate GitHub auth: {e}")
-        sys.exit(1)
-
-    except subprocess.CalledProcessError:
-        print("🔐 GitHub authentication required.")
-        subprocess.run(["gh", "auth", "login"], check=True)
-    except Exception as e:
-        print(f"❌ Failed to validate GitHub auth: {e}")
-        sys.exit(1)
+        if missing_scopes:
+            scopes_str = ",".join(missing_scopes)
+            print(f"🔐 GitHub token is missing required scopes: {scopes_str}")
+            subprocess.run(["gh", "auth", "refresh", "-h", "github.com", "-s", scopes_str], check=True)
 
     except subprocess.CalledProcessError:
         print("🔐 GitHub authentication required.")
