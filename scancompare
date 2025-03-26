@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.8.8
+# scancompare version 1.8.9
 
 import os
 import sys
@@ -10,50 +10,68 @@ from urllib.request import urlopen
 from pathlib import Path
 import webbrowser
 import shutil
+import tempfile
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.8.8"
+VERSION = "1.8.9"
+
+import tempfile
 
 def check_latest_version(only_check=False):
     try:
-        latest = urlopen(SCRIPT_URL).read().decode("utf-8").split("VERSION = ")[1].split("\n")[0].strip('"')
+        response = urlopen(SCRIPT_URL)
+        new_code = response.read().decode("utf-8")
+
+        # Extract latest version from downloaded code
+        for line in new_code.splitlines():
+            if "VERSION =" in line:
+                latest = line.split("VERSION =")[1].strip().strip('"').strip("'")
+                break
+        else:
+            raise ValueError("Could not determine latest version from downloaded script")
 
         if latest != VERSION:
             print(f"🔄 New version available: {VERSION} → {latest}")
-            update_script()
+            update_script(new_code)
 
-            # Confirm the update before relaunch
-            updated_code = Path(get_script_path()).read_text()
-            if f'VERSION = "{latest}"' in updated_code:
+            # Confirm update by reading current file
+            current_script = Path(get_script_path()).read_text()
+            if f'VERSION = "{latest}"' in current_script or f"VERSION = '{latest}'" in current_script:
                 print("✅ scancompare updated to latest version")
                 if only_check:
                     sys.exit(0)
                 os.execv(sys.executable, [sys.executable] + sys.argv)
             else:
-                raise RuntimeError("Script update failed. Please check file permissions.")
+                raise RuntimeError("Script update failed. Version mismatch after update.")
         elif only_check:
             print(f"📦 scancompare version {VERSION}")
             sys.exit(0)
+
     except Exception as e:
         print(f"⚠️ Could not determine remote version or update failed: {e}")
         if only_check:
             print(f"📦 scancompare version {VERSION}")
             sys.exit(0)
 
-def update_script():
-    try:
-        new_code = urlopen(SCRIPT_URL).read().decode("utf-8")
-        script_path = get_script_path()
 
-        # Check write permissions
+def update_script(new_code=None):
+    try:
+        if new_code is None:
+            new_code = urlopen(SCRIPT_URL).read().decode("utf-8")
+
+        script_path = Path(get_script_path())
+
         if not os.access(script_path, os.W_OK):
             raise PermissionError(f"Cannot write to {script_path}. Check permissions.")
 
-        Path(script_path).write_text(new_code)
+        # Write the new version
+        script_path.write_text(new_code)
+
     except Exception as e:
         print("❌ Failed to update script:", e)
         sys.exit(1)
+
 
 def get_script_path():
     """Handles __file__ resolution even if script is wrapped or symlinked"""
