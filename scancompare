@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.3.3 
+# scancompare version 2.3.4 
 
 import os
 import sys
@@ -21,7 +21,7 @@ import uuid
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.3.3"
+VERSION = "2.3.4"
 
 args = None  # global placeholder
 
@@ -503,48 +503,65 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
             return False
 
     def upload_sarif(sarif_path, tool_name):
-        if not sarif_path.exists() or not is_valid_sarif(sarif_path):
-            print(f"⚠️ Skipping {tool_name} SARIF upload: file not found or invalid.")
-            return
+    if not sarif_path.exists() or not is_valid_sarif(sarif_path):
+        print(f"⚠️ Skipping {tool_name} SARIF upload: file not found or invalid.")
+        return
 
-        commit_sha = subprocess.getoutput("git rev-parse HEAD").strip()
-        if "fatal" in commit_sha or not commit_sha:
-            commit_sha = "0000000000000000000000000000000000000000"
+    temp_repo_dir = Path("scan_reports").resolve()  # fallback location
 
-        ref = subprocess.getoutput("git symbolic-ref -q HEAD || echo refs/heads/main").strip()
-        if "fatal" in ref or not ref.startswith("refs/"):
-            ref = "refs/heads/main"
+    if args.repo_url:
+        repo_name = args.repo_url.split("/")[-1].replace(".git", "")
+        temp_repo_dir = Path(tempfile.gettempdir()) / repo_name
+        if not temp_repo_dir.exists():
+            print(f"⚠️ Could not find local clone directory at {temp_repo_dir}, using fallback for commit info.")
 
-        with open(sarif_path, "rb") as f:
-            encoded_sarif = base64.b64encode(f.read()).decode("utf-8")
-
-        payload = {
-            "commit_sha": commit_sha,
-            "ref": ref,
-            "sarif": encoded_sarif,
-            "tool_name": tool_name,
-            "checkout_uri": ".",
-            "started_at": datetime.now(timezone.utc).isoformat()
-        }
-
-        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".json") as tmp:
-            json.dump(payload, tmp)
-            tmp_path = tmp.name
-
-        print(f"📤 Uploading {tool_name} SARIF to GitHub Advanced Security in {repo}...")
+    def run_git(cmd):
         try:
-            subprocess.run([
-                "gh", "api", f"repos/{repo}/code-scanning/sarifs",
-                "--method", "POST",
-                "--input", tmp_path
-            ], check=True)
-            print(f"✅ Uploaded {tool_name} SARIF to GitHub Advanced Security.")
-        except subprocess.CalledProcessError as e:
-            print(f"❌ GH CLI failed for {tool_name}: {e}")
-            if e.stderr:
-                print(e.stderr.decode())
-        except Exception as e:
-            print(f"❌ Unexpected error for {tool_name}: {e}")
+            return subprocess.check_output(cmd, cwd=temp_repo_dir, text=True).strip()
+        except subprocess.CalledProcessError:
+            return None
+
+    commit_sha = run_git(["git", "rev-parse", "HEAD"]) or "0000000000000000000000000000000000000000"
+    ref = run_git(["git", "symbolic-ref", "-q", "HEAD"]) or "refs/heads/main"
+
+    if commit_sha.startswith("fatal") or len(commit_sha) != 40:
+        print("⚠️ Unable to retrieve a valid commit SHA from repo, using fallback.")
+        commit_sha = "0000000000000000000000000000000000000000"
+
+    if not ref.startswith("refs/"):
+        print("⚠️ Invalid or missing Git ref, using default 'refs/heads/main'.")
+        ref = "refs/heads/main"
+
+    with open(sarif_path, "rb") as f:
+        encoded_sarif = base64.b64encode(f.read()).decode("utf-8")
+
+    payload = {
+        "commit_sha": commit_sha,
+        "ref": ref,
+        "sarif": encoded_sarif,
+        "tool_name": tool_name,
+        "checkout_uri": ".",
+        "started_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".json") as tmp:
+        json.dump(payload, tmp)
+        tmp_path = tmp.name
+
+    print(f"📤 Uploading {tool_name} SARIF to GitHub Advanced Security in {repo}...")
+    try:
+        subprocess.run([
+            "gh", "api", f"repos/{repo}/code-scanning/sarifs",
+            "--method", "POST",
+            "--input", tmp_path
+        ], check=True)
+        print(f"✅ Uploaded {tool_name} SARIF to GitHub Advanced Security.")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ GH CLI failed for {tool_name}: {e}")
+        if e.stderr:
+            print(e.stderr.decode())
+    except Exception as e:
+        print(f"❌ Unexpected error for {tool_name}: {e}")
 
     scan_dir = Path("scan_reports")
     scan_dir.mkdir(exist_ok=True)
