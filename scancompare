@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.2.7 
+# scancompare version 2.2.8 
 
 import os
 import sys
@@ -17,10 +17,11 @@ import argparse
 import re
 import time
 import random
+import uuid
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.2.7"
+VERSION = "2.2.8"
 
 args = None  # global placeholder
 
@@ -37,17 +38,21 @@ def check_latest_version(only_check=False):
         print("🔎 Checking for updates...")
 
     try:
-        # GitHub CDN cache busting with timestamp + User-Agent to bypass potential cache
-        timestamp = int(time.time())
+        # Advanced cache busting: use high-precision timestamp, random nonce, UUID
+        timestamp = int(time.time() * 1000)
         nonce = random.randint(100000, 999999)
-        cache_bust_url = f"{SCRIPT_URL}?ts={timestamp}&r={nonce}&cb=1"
+        uid = uuid.uuid4().hex
+        cache_bust_url = f"{SCRIPT_URL}?ts={timestamp}&r={nonce}&uuid={uid}&cb=1"
+
         req = Request(
             cache_bust_url,
             headers={
-                "User-Agent": f"scancompare-updater/{timestamp}-{nonce}",
-                "Cache-Control": "no-cache"
+                "User-Agent": f"scancompare-updater/{timestamp}-{nonce}-{uid}",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache"
             }
         )
+
         with urlopen(req) as response:
             new_code = response.read().decode("utf-8")
 
