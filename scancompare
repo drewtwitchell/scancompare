@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# scancompare version 2.1.0 
+# scancompare version 2.1.1 
 
 import os
 import sys
 import json
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.request import urlopen
 from pathlib import Path
 import webbrowser
@@ -18,7 +18,7 @@ import re
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 
 import tempfile
 
@@ -376,6 +376,13 @@ def validate_image_exists(image):
         print(f"⚠️ Unexpected error while validating image: {e}")
         return False
 
+def get_repo_from_url(repo_url):
+    match = re.match(r"https?://github.com/([^/]+/[^/]+)(?:\\.git)?", repo_url)
+    if match:
+        return match.group(1)
+    print("❌ Invalid GitHub repository URL format.")
+    sys.exit(1)
+
 def ensure_gh_installed():
     if shutil.which("gh"):
         return
@@ -385,35 +392,20 @@ def ensure_gh_installed():
     else:
         subprocess.run(["curl", "-fsSL", "https://cli.github.com/install.sh"], check=True)
     print("✅ GitHub CLI installed.")
-  
 
-def get_repo_from_url(repo_url):
-    match = re.match(r"https?://github.com/([^/]+/[^/]+)(?:\\.git)?", repo_url)
-    if match:
-        return match.group(1)
-    explain_exit("Invalid GitHub repository URL format.")
-
-def choose_or_create_repo():
-    explain_exit("Repo selection is now automatic. Please provide a GitHub repo URL via --repo-url.")
+def ensure_gh_authenticated():
+    try:
+        subprocess.run(["gh", "auth", "status"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        print("🔐 GitHub authentication required.")
+        subprocess.run(["gh", "auth", "login"], check=True)
 
 def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo):
-    import base64
-    import datetime
+    from pathlib import Path
+    import json, base64, tempfile, subprocess
 
-    def ensure_gh_authenticated():
-        try:
-            subprocess.run(["gh", "auth", "status"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except subprocess.CalledProcessError:
-            print("🔐 GitHub authentication required.")
-            subprocess.run(["gh", "auth", "login"], check=True)
-
-    def generate_sarif(tool_name, output_path):
-        try:
-            subprocess.run([tool_name, image, "-o", "sarif", "--file", str(output_path)], check=True)
-            return True
-        except Exception as e:
-            print(f"⚠️ Failed to generate SARIF with {tool_name}: {e}")
-            return False
+    ensure_gh_installed()
+    ensure_gh_authenticated()
 
     def is_valid_sarif(sarif_path):
         try:
@@ -445,15 +437,15 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
             "sarif": encoded_sarif,
             "tool_name": tool_name,
             "checkout_uri": ".",
-            "started_at": datetime.datetime.utcnow().isoformat() + "Z"
+            "started_at": datetime.now(timezone.utc).isoformat()
         }
 
         with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".json") as tmp:
             json.dump(payload, tmp)
             tmp_path = tmp.name
 
+        print(f"📤 Uploading {tool_name} SARIF to GitHub Advanced Security in {repo}...")
         try:
-            print(f"📤 Uploading {tool_name} SARIF to GitHub Advanced Security in {repo}...")
             subprocess.run([
                 "gh", "api", f"repos/{repo}/code-scanning/sarifs",
                 "--method", "POST",
@@ -462,27 +454,32 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
             print(f"✅ Uploaded {tool_name} SARIF to GitHub Advanced Security.")
         except subprocess.CalledProcessError as e:
             print(f"❌ GH CLI failed for {tool_name}: {e}")
+            if e.stderr:
+                print(e.stderr.decode())
         except Exception as e:
             print(f"❌ Unexpected error for {tool_name}: {e}")
-
-    ensure_gh_installed()
-    ensure_gh_authenticated()
 
     scan_dir = Path("scan_reports")
     scan_dir.mkdir(exist_ok=True)
 
-    # Generate Grype SARIF
     grype_sarif_path = scan_dir / "ghas_upload_grype.sarif"
-    generate_sarif("grype", grype_sarif_path)
-    upload_sarif(grype_sarif_path, "grype")
-
-    # Generate Trivy SARIF
     trivy_sarif_path = scan_dir / "ghas_upload_trivy.sarif"
-    generate_sarif("trivy", trivy_sarif_path)
-    upload_sarif(trivy_sarif_path, "trivy")
-
-    # Upload SARIF diff file if it exists
     diff_sarif_path = scan_dir / "ghas_diff.sarif"
+
+    print("📦 Generating SARIF files for GHAS upload...")
+
+    try:
+        subprocess.run(["grype", image, "-o", "sarif", "--file", str(grype_sarif_path)], check=True)
+        upload_sarif(grype_sarif_path, "grype")
+    except Exception as e:
+        print(f"⚠️ Failed to generate SARIF with grype: {e}")
+
+    try:
+        subprocess.run(["trivy", "image", "-f", "sarif", "-o", str(trivy_sarif_path), image], check=True)
+        upload_sarif(trivy_sarif_path, "trivy")
+    except Exception as e:
+        print(f"⚠️ Failed to generate SARIF with trivy: {e}")
+
     if diff_sarif_path.exists():
         upload_sarif(diff_sarif_path, "scancompare")
 
