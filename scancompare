@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.0.8 
+# scancompare version 2.0.9 
 
 import os
 import sys
@@ -18,7 +18,7 @@ import re
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.0.8"
+VERSION = "2.0.9"
 
 import tempfile
 
@@ -27,54 +27,57 @@ def check_latest_version(only_check=False):
         response = urlopen(SCRIPT_URL)
         new_code = response.read().decode("utf-8")
 
-        # Extract latest version from downloaded code
-        latest = None
-        for line in new_code.splitlines():
-            if line.strip().startswith("VERSION ="):
-                latest = line.split("=", 1)[1].strip().strip('"').strip("'")
-                break
-        if not latest:
-            raise ValueError("Could not determine latest version from script.")
+        # Extract the latest version
+        match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
+        if not match:
+            raise ValueError("Could not find VERSION in the downloaded script.")
+
+        latest = match.group(1)
 
         if latest != VERSION:
             print(f"🔄 New version available: {VERSION} → {latest}")
             update_script(new_code)
 
-            # Re-read and confirm
-            current_code = Path(get_script_path()).read_text()
-            if f'VERSION = "{latest}"' in current_code or f"VERSION = '{latest}'" in current_code:
-                print("✅ scancompare updated to latest version")
-                if only_check:
-                    sys.exit(0)
-                os.execv(sys.executable, [sys.executable] + sys.argv)
-            else:
-                raise RuntimeError("Script update failed. Version mismatch after update.")
+            # Re-read the file and double-verify the version
+            script_path = Path(get_script_path())
+            current_code = script_path.read_text()
+            match_post = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', current_code)
+            if not match_post or match_post.group(1) != latest:
+                raise RuntimeError(f"Script update failed: expected version {latest}, but got {match_post.group(1) if match_post else 'none'}")
+
+            print("✅ scancompare updated to latest version")
+            if only_check:
+                sys.exit(0)
+
+            # Relaunch the updated script
+            print("♻️ Restarting with updated version...")
+            os.execv(sys.executable, [sys.executable, str(script_path)] + sys.argv[1:])
+
         elif only_check:
             print(f"📦 scancompare version {VERSION}")
             sys.exit(0)
 
     except Exception as e:
-        print(f"⚠️ Could not determine remote version or update failed: {e}")
+        print(f"⚠️ Auto-update check failed: {e}")
         if only_check:
             print(f"📦 scancompare version {VERSION}")
             sys.exit(0)
 
 
-def update_script(new_code=None):
+def update_script(new_code):
     try:
-        if new_code is None:
-            new_code = urlopen(SCRIPT_URL).read().decode("utf-8")
-
         script_path = Path(get_script_path())
         if not os.access(script_path, os.W_OK):
-            raise PermissionError(f"Cannot write to {script_path}. Check permissions.")
+            raise PermissionError(f"Cannot write to {script_path}. Try using sudo or adjusting permissions.")
 
-        # Replace script contents safely
-        with open(script_path, "w", encoding="utf-8") as f:
-            f.write(new_code)
+        # Write to a temp file first, then atomically replace
+        with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tmp:
+            tmp.write(new_code)
+            temp_path = tmp.name
 
+        os.replace(temp_path, script_path)
     except Exception as e:
-        print("❌ Failed to update script:", e)
+        print(f"❌ Critical: failed to update script: {e}")
         sys.exit(1)
 
 
