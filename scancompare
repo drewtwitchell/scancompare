@@ -86,8 +86,7 @@ def group_by_severity(cve_map):
     return grouped
 
 def print_cves_by_severity(title, cve_map):
-    print(f"
-🔸 {title}")
+    print(f"🔸 {title}")  # Removed the newline character at the start
     grouped = group_by_severity(cve_map)
     for severity in sorted(grouped.keys(), key=lambda s: ["Critical", "High", "Medium", "Low", "Unknown"].index(s.capitalize()) if s.capitalize() in ["Critical", "High", "Medium", "Low", "Unknown"] else 99):
         print(f"  {severity} ({len(grouped[severity])}):")
