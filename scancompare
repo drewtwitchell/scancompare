@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.0.3 
+# scancompare version 2.0.4 
 
 import os
 import sys
@@ -15,7 +15,7 @@ import html
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.0.3"
+VERSION = "2.0.4"
 
 import tempfile
 
@@ -380,13 +380,6 @@ def ensure_gh_installed():
         subprocess.run(["curl", "-fsSL", "https://cli.github.com/install.sh"], check=True)
     print("✅ GitHub CLI installed.")
 
-def prompt_gh_auth():
-    try:
-        subprocess.run(["gh", "auth", "status"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except subprocess.CalledProcessError:
-        print("🔐 GitHub authentication required.")
-        subprocess.run(["gh", "auth", "login"], check=True)
-
 def choose_or_create_repo():
     result = subprocess.run(["gh", "repo", "list", "--limit", "100", "--json", "name,owner"], capture_output=True, text=True)
     repos = json.loads(result.stdout)
@@ -430,34 +423,49 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
     import json
     from pathlib import Path
 
-    def ensure_gh():
+    def ensure_gh_installed():
         if shutil.which("gh"):
             return
+        print("🔧 GitHub CLI (gh) not found. Attempting to install...")
         if shutil.which("brew"):
             subprocess.run(["brew", "install", "gh"], check=True)
         else:
             subprocess.run(["curl", "-fsSL", "https://cli.github.com/install.sh"], check=True)
+        print("✅ GitHub CLI installed.")
 
-    ensure_gh()
-    subprocess.run(["gh", "auth", "login"])
-    owner = subprocess.run(["gh", "api", "/user", "--jq", ".login"], capture_output=True, text=True).stdout.strip()
-    result = subprocess.run(["gh", "repo", "list", "--json", "name,owner"], capture_output=True, text=True)
-    repos = json.loads(result.stdout)
-    for i, repo in enumerate(repos):
-        print(f"[{i+1}] {repo['owner']['login']}/{repo['name']}")
-    print(f"[{len(repos)+1}] Create new repo")
-    choice = int(input("Select repo: "))
-    if choice == len(repos) + 1:
-        new_name = input("Enter new repo name: ")
-        subprocess.run(["gh", "repo", "create", f"{owner}/{new_name}", "--public", "--confirm"])
-        repo = f"{owner}/{new_name}"
-    else:
-        repo = f"{repos[choice-1]['owner']['login']}/{repos[choice-1]['name']}"
+    def ensure_gh_authenticated():
+        try:
+            subprocess.run(["gh", "auth", "status"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError:
+            print("🔐 GitHub authentication required.")
+            subprocess.run(["gh", "auth", "login"], check=True)
+
+    def choose_or_create_repo():
+        result = subprocess.run(["gh", "repo", "list", "--limit", "100", "--json", "name,owner"], capture_output=True, text=True)
+        repos = json.loads(result.stdout)
+
+        print("\n📁 Select a repository to upload scan results to:")
+        for idx, repo in enumerate(repos):
+            print(f"[{idx + 1}] {repo['owner']['login']}/{repo['name']}")
+        print(f"[{len(repos) + 1}] Create a new repository")
+
+        selection = int(input("Enter the number of the repo to use: "))
+        if selection == len(repos) + 1:
+            owner = subprocess.run(["gh", "api", "/user", "--jq", ".login"], capture_output=True, text=True).stdout.strip()
+            new_repo_name = input("Enter name for the new repository: ").strip()
+            subprocess.run(["gh", "repo", "create", f"{owner}/{new_repo_name}", "--public", "--confirm"], check=True)
+            return f"{owner}/{new_repo_name}"
+        else:
+            return f"{repos[selection - 1]['owner']['login']}/{repos[selection - 1]['name']}"
+
+    ensure_gh_installed()
+    ensure_gh_authenticated()
+
+    repo = choose_or_create_repo()
 
     scan_dir = Path("scan_reports")
     scan_dir.mkdir(exist_ok=True)
 
-    # Convert Grype output to SARIF using syft/grype support
     sarif_path = scan_dir / "ghas_upload_grype.sarif"
     try:
         subprocess.run([
@@ -467,15 +475,29 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
         print(f"⚠️ Failed to generate SARIF: {e}")
         return
 
-    # Upload SARIF to GHAS
     try:
+        # Dummy commit and ref if not in a git repo
+        commit_sha = subprocess.getoutput("git rev-parse HEAD")
+        if "fatal" in commit_sha:
+            commit_sha = "0000000000000000000000000000000000000000"
+
+        ref = subprocess.getoutput("git symbolic-ref -q HEAD || echo refs/heads/main")
+        if "fatal" in ref:
+            ref = "refs/heads/main"
+
+        with sarif_path.open("rb") as f:
+            sarif_data = f.read()
+
+        print(f"📤 Uploading SARIF to GitHub Advanced Security in {repo}...")
         subprocess.run([
-            "gh", "code-scanning", "upload",
-            "--repo", repo,
-            "--sarif", str(sarif_path),
-            "--commit", subprocess.getoutput("git rev-parse HEAD"),
-            "--ref", subprocess.getoutput("git symbolic-ref -q HEAD || echo refs/heads/main"),
-            "--checkout-path", "."
+            "gh", "api", f"repos/{repo}/code-scanning/sarifs",
+            "--method", "POST",
+            "--field", f"commit_sha={commit_sha}",
+            "--field", f"ref={ref}",
+            "--field", "checkout_uri=.",
+            "--field", f"started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "--raw-field", "tool_name=grype",
+            "--input", str(sarif_path)
         ], check=True)
         print("✅ Uploaded SARIF to GitHub Advanced Security dashboard.")
     except Exception as e:
