@@ -35,10 +35,11 @@ def check_latest_version(only_check=False):
         print("🔎 Checking for updates...")
 
     try:
-        # Add timestamp to avoid GitHub CDN caching the raw file
+        # GitHub CDN cache busting with timestamp + User-Agent to bypass potential cache
         cache_bust_url = f"{SCRIPT_URL}?t={int(time.time())}"
-        response = urlopen(cache_bust_url)
-        new_code = response.read().decode("utf-8")
+        req = Request(cache_bust_url, headers={"User-Agent": "scancompare-updater"})
+        with urlopen(req) as response:
+            new_code = response.read().decode("utf-8")
 
         latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
         if not latest_match:
