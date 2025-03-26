@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.3.2 
+# scancompare version 2.3.3 
 
 import os
 import sys
@@ -21,7 +21,7 @@ import uuid
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.3.2"
+VERSION = "2.3.3"
 
 args = None  # global placeholder
 
@@ -465,26 +465,20 @@ def ensure_gh_authenticated():
     try:
         subprocess.run(["gh", "auth", "status"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        # Check if token has access to the GitHub repo installations
+        # Check if the current token has access to required GitHub installations
         repo_owner = args.repo_url.split("github.com/")[-1].split("/")[0]
         installations = subprocess.run(["gh", "api", "user/installations"], capture_output=True, text=True)
         if repo_owner not in installations.stdout:
             print("⚠️ Token may not have access to required installations or private repositories.")
             print("🔁 You may need to re-authenticate or grant additional permissions.")
-            print("⚠️ Attempting to refresh token with necessary scopes...")
 
-        # Check required scopes (fallback from --show-token)
-        scopes_result = subprocess.run(["gh", "auth", "status", "--show-token"], capture_output=True, text=True)
-        missing_scopes = []
-        if "admin:repo_hook" not in scopes_result.stdout:
-            missing_scopes.append("admin:repo_hook")
-        if "write:code" not in scopes_result.stdout:
-            missing_scopes.append("write:code")
-
-        if missing_scopes:
-            scopes_str = ",".join(missing_scopes)
-            print(f"🔐 GitHub token is missing required scopes: {scopes_str}")
-            subprocess.run(["gh", "auth", "refresh", "-h", "github.com", "-s", scopes_str], check=True)
+        # Trigger full refresh for scopes
+        print("🔐 Checking for required GitHub token scopes...")
+        subprocess.run([
+            "gh", "auth", "refresh",
+            "-h", "github.com",
+            "-s", "repo,security_events"
+        ], check=True)
 
     except subprocess.CalledProcessError:
         print("🔐 GitHub authentication required.")
