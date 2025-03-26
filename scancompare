@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.9.5
+# scancompare version 1.9.6
 
 import os
 import sys
@@ -15,7 +15,7 @@ import html
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.9.5"
+VERSION = "1.9.6"
 
 import tempfile
 
@@ -370,6 +370,90 @@ def validate_image_exists(image):
         print(f"⚠️ Unexpected error while validating image: {e}")
         return False
 
+def ensure_gh_installed():
+    try:
+        subprocess.run(["gh", "--version"], check=True, stdout=subprocess.DEVNULL)
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        print("🔧 GitHub CLI (gh) not found. Attempting to install...")
+        if shutil.which("brew"):
+            subprocess.run(["brew", "install", "gh"], check=True)
+        else:
+            subprocess.run(["curl", "-fsSL", "https://cli.github.com/install.sh"], check=True)
+        print("✅ GitHub CLI installed.")
+
+def prompt_gh_auth_and_repo():
+    try:
+        subprocess.run(["gh", "auth", "status"], check=True, stdout=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        print("🔐 GitHub authentication required.")
+        subprocess.run(["gh", "auth", "login"])
+        return prompt_gh_auth_and_repo()
+
+    result = subprocess.run(["gh", "repo", "list", "--limit", "100", "--json", "name,owner"], capture_output=True, text=True)
+    if result.returncode != 0:
+        print("❌ Unable to fetch GitHub repositories. Make sure you're authenticated.")
+        sys.exit(1)
+
+    try:
+        repos = json.loads(result.stdout)
+        if not repos:
+            print("⚠️ No GitHub repositories found.")
+            sys.exit(1)
+
+        print("\n📁 Select a repository to upload scan results to:")
+        for idx, repo in enumerate(repos):
+            print(f"[{idx + 1}] {repo['owner']['login']}/{repo['name']}")
+        selection = int(input("Enter the number of the repo to use: ")) - 1
+        if selection < 0 or selection >= len(repos):
+            raise IndexError("Invalid selection.")
+
+        return f"{repos[selection]['owner']['login']}/{repos[selection]['name']}"
+
+    except Exception as e:
+        print(f"⚠️ Error selecting repo: {e}")
+        sys.exit(1)
+
+def upload_scan_results_to_repo(repo, files):
+    for f in files:
+        if Path(f).exists():
+            print(f"📤 Uploading {f} to {repo}...")
+            subprocess.run(["gh", "release", "upload", "scancompare-results", f, "--repo", repo, "--clobber"], check=True)
+        else:
+            print(f"⚠️ File not found for upload: {f}")
+
+def upload_to_ghas(image, trivy_json_path, grype_json_path, shared, only_trivy, only_grype):
+    ensure_gh_installed()
+    repo = prompt_gh_auth_and_repo()
+
+    def prepare_payload(path):
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"⚠️ Could not load {path}: {e}")
+            return {}
+
+    trivy_data = prepare_payload(trivy_json_path)
+    grype_data = prepare_payload(grype_json_path)
+    diff_data = {
+        "shared": sorted(shared),
+        "only_in_trivy": sorted(only_trivy),
+        "only_in_grype": sorted(only_grype),
+    }
+
+    trivy_out = "scan_reports/ghas_upload_trivy.json"
+    grype_out = "scan_reports/ghas_upload_grype.json"
+    diff_out = "scan_reports/ghas_upload_diff.json"
+
+    with open(trivy_out, "w") as f:
+        json.dump(trivy_data, f, indent=2)
+    with open(grype_out, "w") as f:
+        json.dump(grype_data, f, indent=2)
+    with open(diff_out, "w") as f:
+        json.dump(diff_data, f, indent=2)
+
+    upload_scan_results_to_repo(repo, [trivy_out, grype_out, diff_out])
+
 def main():
     if len(sys.argv) == 2 and sys.argv[1] in ("--version", "version"):
         print(f"📦 scancompare version {VERSION}")
@@ -457,7 +541,7 @@ def main():
     print_cves_by_severity("Shared CVEs", {c: trivy_data.get(c, grype_data.get(c, "Unknown")) for c in shared})
 
     generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
-
+    upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype)
 
 if __name__ == "__main__":
     main()
