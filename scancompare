@@ -128,6 +128,7 @@ def uninstall_scancompare():
     sys.exit(0)
 
 def handle_cli_args():
+    global args
     parser = argparse.ArgumentParser(description="Scan and compare Docker image vulnerabilities")
     parser.add_argument("image", nargs="?", help="Docker image to scan")
     parser.add_argument("--repo-url", help="GitHub repo URL containing Dockerfile for image build")
