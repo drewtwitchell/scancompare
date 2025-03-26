@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.6.6
+# scancompare version 1.6.7
 
 import os
 import sys
@@ -13,7 +13,7 @@ import webbrowser
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.6.6"
+VERSION = "1.6.7"
 
 def check_latest_version(only_check=False):
     try:
@@ -53,13 +53,12 @@ def get_version(tool):
     return "unknown"
 
 def run_scan(tool, image, output_path):
-    with open(output_path, "w") as outfile:
-        try:
-            subprocess.run([tool, "image", "-f", "json", "-o", output_path, image],
-                           check=True, stdout=outfile, stderr=subprocess.DEVNULL)
-            return True
-        except subprocess.CalledProcessError:
-            return False
+    try:
+        subprocess.run([tool, "image", "-f", "json", "-o", str(output_path), image],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except subprocess.CalledProcessError:
+        return False
 
 def extract_cves(file_path):
     try:
@@ -134,7 +133,7 @@ Trivy      | {len(only_trivy) + len(shared)}   | {len(only_trivy)}            | 
     {html_section("Unique to Grype", only_grype)}
 </body>
 </html>
-"""  # noqa: E501
+"""
 
     report_path.write_text(html)
     print(f"✅ HTML report saved: {report_path}")
