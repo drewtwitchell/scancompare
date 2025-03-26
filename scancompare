@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.1.4 
+# scancompare version 2.1.5 
 
 import os
 import sys
@@ -18,9 +18,22 @@ import re
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.1.4"
+VERSION = "2.1.5"
 
 import tempfile
+
+def get_current_version():
+    """Read the current VERSION from the script on disk."""
+    try:
+        script_path = Path(get_script_path())
+        if not script_path.exists():
+            return "unknown"
+        content = script_path.read_text()
+        match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', content)
+        return match.group(1) if match else "unknown"
+    except Exception as e:
+        print(f"⚠️ Could not read current version: {e}")
+        return "unknown"
 
 def check_latest_version(only_check=False):
     if os.environ.get("SCANCOMPARE_UPDATED") == "1":
@@ -39,6 +52,7 @@ def check_latest_version(only_check=False):
         current = get_current_version()
 
         if latest != current:
+
             print(f"🔄 New version available: {current} → {latest}")
             update_script(new_code)
 
