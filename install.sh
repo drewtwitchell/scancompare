@@ -26,22 +26,27 @@ if [[ ":$PATH:" != *:"$INSTALL_BIN":* ]]; then
   export PATH="$INSTALL_BIN:$PATH"
 fi
 
-# Function to safely append to profile files
+# Function to safely append to profile files and clean up duplicates
 append_if_missing() {
   local file="$1"
-  if [[ -f "$file" && ! $(grep -Fx "$ADDED_LINE" "$file") ]]; then
-    echo "$ADDED_LINE" >> "$file"
+  if [[ -f "$file" ]]; then
+    if ! grep -Fxq "$ADDED_LINE" "$file"; then
+      echo "$ADDED_LINE" >> "$file"
+    fi
+    # Remove duplicate lines
+    awk '!x[$0]++' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
   fi
 }
 
-# Handle shell profile persistence (macOS, Linux, WSL)
+# Handle shell profile persistence (macOS, Linux, WSL, Git Bash)
 append_if_missing "$HOME/.profile"
 append_if_missing "$HOME/.bashrc"
 append_if_missing "$HOME/.bash_profile"
 append_if_missing "$HOME/.zshrc"
 append_if_missing "$HOME/.zprofile"
+append_if_missing "$HOME/.bash_profile"  # Git Bash default
 
-# WSL-specific (if .bashrc didn't exist before)
+# WSL-specific
 if grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null; then
   if [[ ! -f "$HOME/.bashrc" ]]; then
     echo "# WSL profile" > "$HOME/.bashrc"
@@ -55,18 +60,6 @@ mkdir -p "$INSTALL_LIB"
 
 # Check for Python
 command -v python3 &> /dev/null || { echo "❌ Python3 is required but not found."; exit 1; }
-
-# Check for jq
-if ! command -v jq &> /dev/null; then
-  echo "❌ jq not found"
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    command -v brew &> /dev/null || install_homebrew
-    brew install jq
-  else
-    echo "Install jq using your package manager (e.g. apt, yum)"
-    exit 1
-  fi
-fi
 
 # Trivy
 if ! command -v trivy &> /dev/null; then
@@ -106,12 +99,14 @@ if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
 fi
 chmod +x "$PYTHON_SCRIPT"
 
-# Create wrapper script
-cat <<EOF > "$WRAPPER_SCRIPT"
+# Create wrapper script if it doesn't exist (for upgrades, don't overwrite)
+if [[ ! -f "$WRAPPER_SCRIPT" ]]; then
+  cat <<EOF > "$WRAPPER_SCRIPT"
 #!/bin/bash
 exec python3 "$PYTHON_SCRIPT" "\$@"
 EOF
-chmod +x "$WRAPPER_SCRIPT"
+  chmod +x "$WRAPPER_SCRIPT"
+fi
 
 echo "✅ Installed $SCRIPT_NAME"
 
@@ -121,6 +116,23 @@ if ! command -v scancompare &> /dev/null; then
   echo "⚠️  scancompare was installed but isn't available in this shell session."
   echo "➡️  Try running: export PATH=\"\$HOME/.local/bin:\$PATH\""
   echo "   or close and reopen your terminal."
+else
+  echo "✅ $INSTALL_BIN is in your PATH"
+fi
+
+# Attempt to re-source the current profile (if interactive)
+CURRENT_SHELL=$(basename "$SHELL")
+if [[ -t 1 ]]; then
+  case "$CURRENT_SHELL" in
+    bash)
+      [[ -f "$HOME/.bashrc" ]] && source "$HOME/.bashrc"
+      ;;
+    zsh)
+      [[ -f "$HOME/.zshrc" ]] && source "$HOME/.zshrc"
+      ;;
+    *)
+      ;;
+  esac
 fi
 
 echo "🎉 You can now run: $SCRIPT_NAME <image-name>"
