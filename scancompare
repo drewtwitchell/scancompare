@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.0.4 
+# scancompare version 2.0.5 
 
 import os
 import sys
@@ -12,10 +12,11 @@ import webbrowser
 import shutil
 import tempfile
 import html
+import base64
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.0.4"
+VERSION = "2.0.5"
 
 import tempfile
 
@@ -397,30 +398,15 @@ def choose_or_create_repo():
         return f"{owner}/{new_repo_name}"
     else:
         return f"{repos[selection - 1]['owner']['login']}/{repos[selection - 1]['name']}"
-
-def ensure_release_exists(repo, tag="scancompare-results"):
-    result = subprocess.run(["gh", "release", "view", tag, "--repo", repo], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if result.returncode != 0:
-        subprocess.run([
-            "gh", "release", "create", tag,
-            "--repo", repo,
-            "--title", "ScanCompare Results",
-            "--notes", "Vulnerability scan results"
-        ], check=True)
-
-def upload_scan_results_to_repo(repo, files):
-    ensure_release_exists(repo)
-    for f in files:
-        if Path(f).exists():
-            print(f"📤 Uploading {f} to {repo}...")
-            subprocess.run(["gh", "release", "upload", "scancompare-results", f, "--repo", repo, "--clobber"], check=True)
-        else:
-            print(f"⚠️ File not found for upload: {f}")
+    
 
 def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype):
     import shutil
     import subprocess
     import json
+    import base64
+    import datetime
+    import tempfile
     from pathlib import Path
 
     def ensure_gh_installed():
@@ -458,50 +444,87 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
         else:
             return f"{repos[selection - 1]['owner']['login']}/{repos[selection - 1]['name']}"
 
+    def generate_sarif(tool_name, output_path):
+        try:
+            subprocess.run([tool_name, image, "-o", "sarif", "--file", str(output_path)], check=True)
+            return True
+        except Exception as e:
+            print(f"⚠️ Failed to generate SARIF with {tool_name}: {e}")
+            return False
+
+    def is_valid_sarif(sarif_path):
+        try:
+            with open(sarif_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return all(key in data for key in ["version", "runs"])
+        except Exception:
+            return False
+
+    def upload_sarif(sarif_path, tool_name, repo):
+        if not sarif_path.exists() or not is_valid_sarif(sarif_path):
+            print(f"⚠️ Skipping {tool_name} SARIF upload: file not found or invalid.")
+            return
+
+        commit_sha = subprocess.getoutput("git rev-parse HEAD").strip()
+        if "fatal" in commit_sha or not commit_sha:
+            commit_sha = "0000000000000000000000000000000000000000"
+
+        ref = subprocess.getoutput("git symbolic-ref -q HEAD || echo refs/heads/main").strip()
+        if "fatal" in ref or not ref.startswith("refs/"):
+            ref = "refs/heads/main"
+
+        with open(sarif_path, "rb") as f:
+            encoded_sarif = base64.b64encode(f.read()).decode("utf-8")
+
+        payload = {
+            "commit_sha": commit_sha,
+            "ref": ref,
+            "sarif": encoded_sarif,
+            "tool_name": tool_name,
+            "checkout_uri": ".",
+            "started_at": datetime.datetime.utcnow().isoformat() + "Z"
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".json") as tmp:
+            json.dump(payload, tmp)
+            tmp_path = tmp.name
+
+        try:
+            print(f"📤 Uploading {tool_name} SARIF to GitHub Advanced Security in {repo}...")
+            subprocess.run([
+                "gh", "api", f"repos/{repo}/code-scanning/sarifs",
+                "--method", "POST",
+                "--input", tmp_path
+            ], check=True)
+            print(f"✅ Uploaded {tool_name} SARIF to GitHub Advanced Security.")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ GH CLI failed for {tool_name}: {e}")
+        except Exception as e:
+            print(f"❌ Unexpected error for {tool_name}: {e}")
+
     ensure_gh_installed()
     ensure_gh_authenticated()
-
     repo = choose_or_create_repo()
 
     scan_dir = Path("scan_reports")
     scan_dir.mkdir(exist_ok=True)
 
-    sarif_path = scan_dir / "ghas_upload_grype.sarif"
-    try:
-        subprocess.run([
-            "grype", image, "-o", "sarif", "--file", str(sarif_path)
-        ], check=True)
-    except Exception as e:
-        print(f"⚠️ Failed to generate SARIF: {e}")
-        return
+    # Generate Grype SARIF
+    grype_sarif_path = scan_dir / "ghas_upload_grype.sarif"
+    if not only_trivy:
+        generate_sarif("grype", grype_sarif_path)
+        upload_sarif(grype_sarif_path, "grype", repo)
 
-    try:
-        # Dummy commit and ref if not in a git repo
-        commit_sha = subprocess.getoutput("git rev-parse HEAD")
-        if "fatal" in commit_sha:
-            commit_sha = "0000000000000000000000000000000000000000"
+    # Generate Trivy SARIF
+    trivy_sarif_path = scan_dir / "ghas_upload_trivy.sarif"
+    if not only_grype:
+        generate_sarif("trivy", trivy_sarif_path)
+        upload_sarif(trivy_sarif_path, "trivy", repo)
 
-        ref = subprocess.getoutput("git symbolic-ref -q HEAD || echo refs/heads/main")
-        if "fatal" in ref:
-            ref = "refs/heads/main"
-
-        with sarif_path.open("rb") as f:
-            sarif_data = f.read()
-
-        print(f"📤 Uploading SARIF to GitHub Advanced Security in {repo}...")
-        subprocess.run([
-            "gh", "api", f"repos/{repo}/code-scanning/sarifs",
-            "--method", "POST",
-            "--field", f"commit_sha={commit_sha}",
-            "--field", f"ref={ref}",
-            "--field", "checkout_uri=.",
-            "--field", f"started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "--raw-field", "tool_name=grype",
-            "--input", str(sarif_path)
-        ], check=True)
-        print("✅ Uploaded SARIF to GitHub Advanced Security dashboard.")
-    except Exception as e:
-        print(f"❌ Failed to upload SARIF to GHAS: {e}")
+    # Upload SARIF diff file if it exists
+    diff_sarif_path = scan_dir / "ghas_diff.sarif"
+    if diff_sarif_path.exists():
+        upload_sarif(diff_sarif_path, "scancompare", repo)
 
 def main():
     if len(sys.argv) == 2 and sys.argv[1] in ("--version", "version"):
