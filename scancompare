@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.0.7 
+# scancompare version 2.0.8 
 
 import os
 import sys
@@ -18,7 +18,7 @@ import re
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.0.7"
+VERSION = "2.0.8"
 
 import tempfile
 
@@ -410,12 +410,6 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
             print("🔐 GitHub authentication required.")
             subprocess.run(["gh", "auth", "login"], check=True)
 
-    def get_repo_from_url(repo_url):
-        match = re.match(r"https?://github.com/([^/]+/[^/]+)(?:\.git)?", repo_url)
-        if match:
-            return match.group(1)
-        explain_exit("Invalid GitHub repository URL format.")
-
     def generate_sarif(tool_name, output_path):
         try:
             subprocess.run([tool_name, image, "-o", "sarif", "--file", str(output_path)], check=True)
@@ -497,6 +491,12 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
     diff_sarif_path = scan_dir / "ghas_diff.sarif"
     if diff_sarif_path.exists():
         upload_sarif(diff_sarif_path, "scancompare", repo)
+
+def get_repo_from_url(repo_url):
+    match = re.match(r"https?://github.com/([^/]+/[^/]+)(?:\.git)?", repo_url)
+    if match:
+        return match.group(1)
+    explain_exit("Invalid GitHub repository URL format.")
 
 def main():
     parser = argparse.ArgumentParser(description="Compare container image scan results between Trivy and Grype.")
