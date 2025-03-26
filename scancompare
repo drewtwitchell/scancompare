@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.7.9
+# scancompare version 1.8.0
 
 import os
 import sys
@@ -13,7 +13,7 @@ import shutil
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.7.9"
+VERSION = "1.8.0"
 
 def check_latest_version(only_check=False):
     try:
@@ -59,13 +59,16 @@ def get_version(tool):
             # Parse Grype's version output
             for line in result.stdout.splitlines():
                 if line.startswith("Application:"):
-                    return line.split(":")[1].strip()
+                    parts = line.split()
+                    if len(parts) > 1:
+                        return parts[-1].strip()  # Extract the version
         else:
             # Generic version parsing for other tools
             for line in result.stdout.splitlines():
                 if tool.lower() in line.lower() or "Version" in line:
                     return line.strip()
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ Error getting version for {tool}: {e}")
         return "unknown"
     return "unknown"
 
@@ -75,10 +78,12 @@ def run_scan(tool, image, output_path):
             cmd = [tool, "image", "-f", "json", "-o", str(output_path), image]
             subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         elif tool == "grype":
+            cmd = [tool, image, "-o", "json"]
             with open(output_path, "w") as f:
-                subprocess.run([tool, image, "-o", "json"], check=True, stdout=f, stderr=subprocess.DEVNULL)
+                subprocess.run(cmd, check=True, stdout=f, stderr=subprocess.DEVNULL)
         return True
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
+        print(f"⚠️ {tool} scan failed: {e}")
         return False
 
 def extract_cves_with_severity(file_path):
