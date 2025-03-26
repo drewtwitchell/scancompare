@@ -4,100 +4,76 @@ set -e
 
 INSTALL_DIR="$HOME/.local/bin"
 SCRIPT_NAME="scancompare"
-SCRIPT_PATH="$INSTALL_DIR/$SCRIPT_NAME"
-REPO_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-PROFILE_FILES=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile")
+SCRIPT_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
+TARGET_PATH="$INSTALL_DIR/$SCRIPT_NAME"
 
-# Create bin directory
+echo "🛠️  Installing $SCRIPT_NAME..."
+
+# Ensure local bin directory exists and is in PATH
 mkdir -p "$INSTALL_DIR"
-
-# Add ~/.local/bin to PATH if not already
-ensure_path() {
-  for file in "${PROFILE_FILES[@]}"; do
-    if [ -f "$file" ] && ! grep -q 'export PATH="$HOME/.local/bin:$PATH"' "$file"; then
-      echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$file"
-      echo "✅ Updated PATH in $file"
-    fi
-  done
-  export PATH="$HOME/.local/bin:$PATH"
-}
-
-# Install Homebrew if not installed
-install_brew() {
-  if ! command -v brew &>/dev/null; then
-    echo "🍺 Homebrew not found."
-    read -p "Would you like to install Homebrew? (y/n): " yn
-    if [[ "$yn" == "y" ]]; then
-      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || {
-        echo "❌ Failed to install Homebrew. Will use fallback installers..."
-        return 1
-      }
-      echo "✅ Homebrew installed."
-    else
-      echo "⚠️ Skipping Homebrew install."
-      return 1
-    fi
-  fi
-  return 0
-}
-
-# Use curl or wget to install a tool directly
-download_binary() {
-  local url="$1"
-  local out="$2"
-  if command -v curl &>/dev/null; then
-    curl -fsSL "$url" -o "$out"
-  elif command -v wget &>/dev/null; then
-    wget -q "$url" -O "$out"
-  else
-    echo "❌ Neither curl nor wget available. Cannot continue."
-    exit 1
-  fi
-  chmod +x "$out"
-}
-
-# Install Python and pip if missing
-ensure_python() {
-  if ! command -v python3 &>/dev/null; then
-    echo "🐍 Python 3 not found."
-    if install_brew; then
-      brew install python
-    else
-      echo "📥 Attempting fallback Python install..."
-      download_binary "https://www.python.org/ftp/python/3.12.1/python-3.12.1-macos11.pkg" "/tmp/python.pkg"
-      sudo installer -pkg /tmp/python.pkg -target /
-    fi
-  fi
-
-  if ! command -v pip3 &>/dev/null; then
-    echo "📦 pip not found. Installing..."
-    curl -sS https://bootstrap.pypa.io/get-pip.py | python3
-  fi
-}
-
-# Install scancompare CLI
-install_script() {
-  echo "⬇️  Downloading scancompare..."
-  curl -fsSL "$REPO_URL" -o "$SCRIPT_PATH"
-  chmod +x "$SCRIPT_PATH"
-  echo "✅ Installed scancompare to $SCRIPT_PATH"
-}
-
-# Uninstall scancompare
-if [[ "$1" == "uninstall" ]]; then
-  if [ -f "$SCRIPT_PATH" ]; then
-    rm "$SCRIPT_PATH"
-    echo "🗑️  scancompare has been removed from $SCRIPT_PATH"
-  else
-    echo "⚠️  scancompare is not currently installed."
-  fi
-  exit 0
+if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+  echo "⚠️  $INSTALL_DIR is not in your PATH. You may want to add the following to your shell profile:"
+  echo 'export PATH="$HOME/.local/bin:$PATH"'
 fi
 
-# Main install flow
-echo "🛠️  Installing scancompare..."
-ensure_path
-ensure_python
-install_script
+# Download latest scancompare script
+echo "⬇️  Downloading latest version..."
+curl -fsSL "$SCRIPT_URL" -o "$TARGET_PATH"
+
+# Ensure proper shebang
+if ! grep -q '^#!/usr/bin/env python3' "$TARGET_PATH"; then
+  echo "🔧 Adding Python shebang to script..."
+  sed -i '' '1s|^|#!/usr/bin/env python3\n|' "$TARGET_PATH"
+fi
+
+# Make it executable
+chmod +x "$TARGET_PATH"
+
+# Check for Python 3
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "❌ Python 3 is required but not found."
+  echo "Installing Python via Homebrew..."
+  if command -v brew >/dev/null 2>&1; then
+    brew install python
+  else
+    echo "❌ Homebrew not found. Please install Python manually and re-run this script."
+    exit 1
+  fi
+fi
+
+# Check for jq
+if ! command -v jq >/dev/null 2>&1; then
+  echo "❌ jq not found. Installing..."
+  if command -v brew >/dev/null 2>&1; then
+    brew install jq
+  else
+    echo "❌ Homebrew not found. Please install jq manually and re-run this script."
+    exit 1
+  fi
+fi
+
+# Check for grype
+if ! command -v grype >/dev/null 2>&1; then
+  echo "❌ Grype not found. Installing..."
+  if command -v brew >/dev/null 2>&1; then
+    brew install grype
+  else
+    echo "❌ Homebrew not found. Please install grype manually and re-run this script."
+    exit 1
+  fi
+fi
+
+# Check for trivy
+if ! command -v trivy >/dev/null 2>&1; then
+  echo "❌ Trivy not found. Installing..."
+  if command -v brew >/dev/null 2>&1; then
+    brew install trivy
+  else
+    echo "❌ Homebrew not found. Please install trivy manually and re-run this script."
+    exit 1
+  fi
+fi
+
+echo "✅ Installed $SCRIPT_NAME to $TARGET_PATH"
 echo "🎉 Installation complete!"
-echo "You can now run: scancompare <image-name>"
+echo "You can now run: $SCRIPT_NAME <image-name>"
