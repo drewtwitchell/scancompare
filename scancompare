@@ -15,12 +15,12 @@ import html
 import base64
 import argparse
 import re
+import time
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
 VERSION = "2.1.9"
 
-import tempfile
 
 def get_current_version():
     return VERSION
@@ -35,7 +35,9 @@ def check_latest_version(only_check=False):
         print("🔎 Checking for updates...")
 
     try:
-        response = urlopen(SCRIPT_URL)
+        # Add timestamp to avoid GitHub CDN caching the raw file
+        cache_bust_url = f"{SCRIPT_URL}?t={int(time.time())}"
+        response = urlopen(cache_bust_url)
         new_code = response.read().decode("utf-8")
 
         latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
