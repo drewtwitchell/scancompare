@@ -77,14 +77,12 @@ echo "⬇️  Downloading $SCRIPT_NAME..."
 curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT"
 
 # Ensure Python shebang
-echo "🔧 Enforcing Python shebang..."
 if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
   sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null || sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
 fi
 chmod +x "$PYTHON_SCRIPT"
 
 # Create wrapper script
-echo "🔧 Creating wrapper..."
 cat <<EOF > "$WRAPPER_SCRIPT"
 #!/bin/bash
 exec python3 "$PYTHON_SCRIPT" "\$@"
