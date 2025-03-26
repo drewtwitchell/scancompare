@@ -5,7 +5,7 @@ INSTALL_BIN="$HOME/.local/bin"
 INSTALL_LIB="$HOME/.local/lib/scancompare"
 SCRIPT_NAME="scancompare"
 SCRIPT_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-PYTHON_SCRIPT="$INSTALL_LIB/$SCRIPT_NAME.py"
+PYTHON_SCRIPT="$INSTALL_LIB/$SCRIPT_NAME"
 WRAPPER_SCRIPT="$INSTALL_BIN/$SCRIPT_NAME"
 
 echo "🛠️  Starting $SCRIPT_NAME installation..."
