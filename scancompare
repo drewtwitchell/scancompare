@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.8.9
+# scancompare version 1.9.0
 
 import os
 import sys
@@ -14,7 +14,7 @@ import tempfile
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.8.9"
+VERSION = "1.9.0"
 
 import tempfile
 
@@ -176,10 +176,16 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     def format_cves(cve_map):
         grouped = group_by_severity(cve_map)
         sections = ""
-        for severity in sorted(grouped.keys(), key=lambda s: ["Critical", "High", "Medium", "Low", "Unknown"].index(s.capitalize()) if s.capitalize() in ["Critical", "High", "Medium", "Low", "Unknown"] else 99):
+        for severity in sorted(
+            grouped.keys(),
+            key=lambda s: ["Critical", "High", "Medium", "Low", "Unknown"].index(s.capitalize())
+            if s.capitalize() in ["Critical", "High", "Medium", "Low", "Unknown"]
+            else 99,
+        ):
             sections += f"<h4>{severity} ({len(grouped[severity])})</h4><ul>"
             for cve in sorted(grouped[severity]):
-                sections += f"<li>{cve}</li>"
+                cve_link = f"https://nvd.nist.gov/vuln/detail/{cve}"
+                sections += f'<li><a href="{cve_link}" target="_blank">{cve}</a></li>'
             sections += "</ul>"
         return sections or "<p>No CVEs found.</p>"
 
@@ -193,36 +199,85 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
   <meta charset="UTF-8">
   <title>ScanCompare Report</title>
   <style>
-    body {{ font-family: Arial, sans-serif; padding: 20px; }}
-    h1, h2, h3 {{ color: #333; }}
-    ul {{ line-height: 1.6; }}
-    pre {{ background: #f4f4f4; padding: 10px; }}
+    body {{
+      font-family: Arial, sans-serif;
+      padding: 40px;
+      background-color: #f9f9f9;
+      color: #333;
+    }}
+    h1, h2, h3, h4 {{
+      color: #222;
+    }}
+    ul {{
+      line-height: 1.6;
+    }}
+    pre {{
+      background: #eee;
+      padding: 10px;
+      border-left: 4px solid #4CAF50;
+    }}
     .pdf-button {{
-      display: inline-block; margin: 20px 0; padding: 10px 15px; background: #4CAF50;
-      color: white; text-decoration: none; border-radius: 5px;
+      display: inline-block;
+      margin: 30px 0;
+      padding: 10px 20px;
+      background: #4CAF50;
+      color: white;
+      text-decoration: none;
+      border-radius: 5px;
+    }}
+    table {{
+      border-collapse: collapse;
+      margin-top: 10px;
+    }}
+    table td, table th {{
+      border: 1px solid #ccc;
+      padding: 6px 10px;
+      text-align: center;
+    }}
+    a {{
+      color: #0077cc;
+      text-decoration: none;
+    }}
+    a:hover {{
+      text-decoration: underline;
     }}
   </style>
 </head>
 <body>
   <h1>Scan Report for {image}</h1>
 
-  <pre>
-Tool       | Total | Only in Tool | Shared
------------|-------|---------------|--------
-Grype      | {len(grype_cves)}   | {len(only_grype)}             | {len(shared)}
-Trivy      | {len(trivy_cves)}   | {len(only_trivy)}            | {len(shared)}
-  </pre>
-
-  <h2>Shared CVEs</h2>
-  {format_cves({cve: trivy_cves.get(cve, grype_cves.get(cve, "Unknown")) for cve in shared})}
-
-  <h2>Unique to Trivy</h2>
-  {format_cves({cve: trivy_cves[cve] for cve in only_trivy})}
-
-  <h2>Unique to Grype</h2>
-  {format_cves({cve: grype_cves[cve] for cve in only_grype})}
+  <table>
+    <tr>
+      <th>Tool</th>
+      <th><a href="#total">Total</a></th>
+      <th><a href="#unique">Only in Tool</a></th>
+      <th><a href="#shared">Shared</a></th>
+    </tr>
+    <tr>
+      <td>Grype</td>
+      <td><a href="#grype">{len(grype_cves)}</a></td>
+      <td><a href="#grype">{len(only_grype)}</a></td>
+      <td><a href="#shared">{len(shared)}</a></td>
+    </tr>
+    <tr>
+      <td>Trivy</td>
+      <td><a href="#trivy">{len(trivy_cves)}</a></td>
+      <td><a href="#trivy">{len(only_trivy)}</a></td>
+      <td><a href="#shared">{len(shared)}</a></td>
+    </tr>
+  </table>
 
   <a class="pdf-button" href="#" onclick="window.print()">📄 Export to PDF</a>
+
+  <h2 id="shared">Shared CVEs</h2>
+  {format_cves({cve: trivy_cves.get(cve, grype_cves.get(cve, "Unknown")) for cve in shared})}
+
+  <h2 id="trivy">Unique to Trivy</h2>
+  {format_cves({cve: trivy_cves[cve] for cve in only_trivy})}
+
+  <h2 id="grype">Unique to Grype</h2>
+  {format_cves({cve: grype_cves[cve] for cve in only_grype})}
+
 </body>
 </html>
 """
