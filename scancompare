@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.0.2 
+# scancompare version 2.0.3 
 
 import os
 import sys
@@ -15,7 +15,7 @@ import html
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.0.2"
+VERSION = "2.0.3"
 
 import tempfile
 
@@ -452,7 +452,7 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
         subprocess.run(["gh", "repo", "create", f"{owner}/{new_name}", "--public", "--confirm"])
         repo = f"{owner}/{new_name}"
     else:
-        repo = f"{repos[choice-1]['owner']['login']}/{repos[choice-1]['name']}"]
+        repo = f"{repos[choice-1]['owner']['login']}/{repos[choice-1]['name']}"
 
     scan_dir = Path("scan_reports")
     scan_dir.mkdir(exist_ok=True)
