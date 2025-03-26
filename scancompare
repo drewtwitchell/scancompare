@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.0.0 
+# scancompare version 2.0.1 
 
 import os
 import sys
@@ -15,7 +15,7 @@ import html
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 
 import tempfile
 
@@ -424,30 +424,44 @@ def upload_scan_results_to_repo(repo, files):
         else:
             print(f"⚠️ File not found for upload: {f}")
 
-def upload_to_ghas(image, trivy_json_path, grype_json_path, shared, only_trivy, only_grype):
-    ensure_gh_installed()
-    prompt_gh_auth()
-    repo = choose_or_create_repo()
+def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype):
+    def ensure_gh():
+        if shutil.which("gh"): return
+        if shutil.which("brew"):
+            subprocess.run(["brew", "install", "gh"], check=True)
+        else:
+            subprocess.run(["curl", "-fsSL", "https://cli.github.com/install.sh"], check=True)
+    ensure_gh()
+    subprocess.run(["gh", "auth", "login"])
+    owner = subprocess.run(["gh", "api", "/user", "--jq", ".login"], capture_output=True, text=True).stdout.strip()
+    result = subprocess.run(["gh", "repo", "list", "--json", "name,owner"], capture_output=True, text=True)
+    repos = json.loads(result.stdout)
+    for i, repo in enumerate(repos):
+        print(f"[{i+1}] {repo['owner']['login']}/{repo['name']}")
+    print(f"[{len(repos)+1}] Create new repo")
+    choice = int(input("Select repo: "))
+    if choice == len(repos) + 1:
+        new_name = input("Enter new repo name: ")
+        subprocess.run(["gh", "repo", "create", f"{owner}/{new_name}", "--public", "--confirm"])
+        repo = f"{owner}/{new_name}"
+    else:
+        repo = f"{repos[choice-1]['owner']['login']}/{repos[choice-1]['name']}"
 
-    # Prepare artifacts
-    trivy_data = json.load(open(trivy_json_path))
-    grype_data = json.load(open(grype_json_path))
-    diff_data = {
-        "shared": sorted(shared),
-        "only_in_trivy": sorted(only_trivy),
-        "only_in_grype": sorted(only_grype),
-    }
-
+    tag = "scancompare-results"
+    if subprocess.run(["gh", "release", "view", tag, "--repo", repo], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
+        subprocess.run(["gh", "release", "create", tag, "--title", "ScanCompare Results", "--notes", "Automated scan upload", "--repo", repo])
+    
     scan_dir = Path("scan_reports")
-    trivy_out = scan_dir / "ghas_upload_trivy.json"
-    grype_out = scan_dir / "ghas_upload_grype.json"
-    diff_out = scan_dir / "ghas_upload_diff.json"
+    files = {
+        "ghas_upload_trivy.json": trivy_path,
+        "ghas_upload_grype.json": grype_path,
+        "ghas_upload_diff.json": scan_dir / "ghas_upload_diff.json"
+    }
+    diff = {"shared": sorted(shared), "only_trivy": sorted(only_trivy), "only_grype": sorted(only_grype)}
+    json.dump(diff, open(files["ghas_upload_diff.json"], "w"), indent=2)
 
-    json.dump(trivy_data, open(trivy_out, "w"), indent=2)
-    json.dump(grype_data, open(grype_out, "w"), indent=2)
-    json.dump(diff_data, open(diff_out, "w"), indent=2)
-
-    upload_scan_results_to_repo(repo, [str(trivy_out), str(grype_out), str(diff_out)])
+    for fname, path in files.items():
+        subprocess.run(["gh", "release", "upload", tag, str(path), "--repo", repo, "--clobber"])
 
 def main():
     if len(sys.argv) == 2 and sys.argv[1] in ("--version", "version"):
