@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.6.9
+# scancompare version 1.7.0
 
 import os
 import sys
@@ -13,7 +13,7 @@ import webbrowser
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.6.9"
+VERSION = "1.7.0"
 
 def check_latest_version(only_check=False):
     try:
@@ -46,20 +46,23 @@ def get_version(tool):
     try:
         result = subprocess.run([tool, "version"], capture_output=True, text=True)
         for line in result.stdout.splitlines():
-            if tool.lower() in line.lower() or "Version" in line or "Application:" in line:
+            if tool.lower() in line.lower() or "Version" in line:
                 return line.strip().split()[-1]
     except Exception:
         return "unknown"
     return "unknown"
 
 def run_scan(tool, image, output_path):
-    with open(output_path, "w") as outfile:
-        try:
-            subprocess.run([tool, "image", "-f", "json", "-o", output_path, image],
-                           check=True, stdout=outfile, stderr=subprocess.DEVNULL)
-            return True
-        except subprocess.CalledProcessError:
-            return False
+    try:
+        if tool == "trivy":
+            cmd = [tool, "image", "-f", "json", "-o", str(output_path), image]
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        elif tool == "grype":
+            with open(output_path, "w") as f:
+                subprocess.run([tool, image, "-o", "json"], check=True, stdout=f, stderr=subprocess.DEVNULL)
+        return True
+    except subprocess.CalledProcessError:
+        return False
 
 def extract_cves(file_path):
     try:
@@ -84,17 +87,6 @@ def display_summary(trivy_cves, grype_cves):
 def explain_exit(msg):
     print(f"⚠️ {msg}")
     sys.exit(1)
-
-def validate_image_exists(image):
-    try:
-        subprocess.run(["docker", "manifest", "inspect", image], check=True, capture_output=True)
-        return True
-    except subprocess.CalledProcessError as e:
-        if "no such manifest" in str(e.stderr).lower():
-            return False
-    except FileNotFoundError:
-        print("❌ Docker not found. Please install Docker.")
-    return False
 
 def generate_html_report(image, trivy_json, grype_json, shared, only_trivy, only_grype):
     timestamp = datetime.now().strftime("%Y-%m-%d")
@@ -168,22 +160,6 @@ def main():
         sys.exit(0)
     if len(sys.argv) == 2 and sys.argv[1] == "update":
         check_latest_version(only_check=True)
-    if len(sys.argv) == 2 and sys.argv[1] in ("--uninstall", "uninstall"):
-        print("🧹 Uninstalling scancompare...")
-        try:
-            os.remove(Path(__file__))
-            lib_dir = Path(__file__).parent
-            report_dir = Path("scan_reports")
-            wrapper = Path.home() / ".local/bin/scancompare"
-            if report_dir.exists():
-                import shutil
-                shutil.rmtree(report_dir)
-            if wrapper.exists():
-                wrapper.unlink()
-            print("✅ scancompare uninstalled.")
-        except Exception as e:
-            print("❌ Failed to uninstall:", e)
-        sys.exit(0)
 
     if len(sys.argv) < 2:
         print("Usage: scancompare <image>")
@@ -191,9 +167,6 @@ def main():
 
     image = sys.argv[1]
     check_latest_version()
-
-    if not validate_image_exists(image):
-        explain_exit(f"Image '{image}' not found locally or remotely.")
 
     scan_dir = Path("scan_reports")
     scan_dir.mkdir(exist_ok=True)
