@@ -7,6 +7,7 @@ SCRIPT_NAME="scancompare"
 SCRIPT_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
 PYTHON_SCRIPT="$INSTALL_LIB/$SCRIPT_NAME"
 WRAPPER_SCRIPT="$INSTALL_BIN/$SCRIPT_NAME"
+ENV_GUARD_FILE="$HOME/.config/scancompare/env.shexport"
 
 echo "🛠️  Starting $SCRIPT_NAME installation..."
 
@@ -18,37 +19,54 @@ install_homebrew() {
   fi
 }
 
-INSTALL_BIN="$HOME/.local/bin"
 ADDED_LINE='export PATH="$HOME/.local/bin:$PATH"'
 
-# Make available in current shell session
+# Deduplicate runtime PATH
+PATH="$(echo "$PATH" | awk -v RS=: -v ORS=: '!a[$1]++' | sed 's/:$//')"
+export PATH
+
+# Add to current shell session
 if [[ ":$PATH:" != *:"$INSTALL_BIN":* ]]; then
+  echo "🔧 Adding $INSTALL_BIN to current shell session"
   export PATH="$INSTALL_BIN:$PATH"
 fi
 
-# Function to safely append to profile files and clean up duplicates
+# Function to safely append to profile files if missing
 append_if_missing() {
   local file="$1"
-  if [[ -f "$file" ]]; then
-    if ! grep -Fxq "$ADDED_LINE" "$file"; then
-      echo "$ADDED_LINE" >> "$file"
-    fi
-    # Remove duplicate lines
-    awk '!x[$0]++' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+  if [[ -f "$file" && ! $(grep -Fx "$ADDED_LINE" "$file") ]]; then
+    echo "🔧 Adding $INSTALL_BIN to PATH in $file"
+    echo "$ADDED_LINE" >> "$file"
   fi
 }
 
-# Handle shell profile persistence (macOS, Linux, WSL, Git Bash)
+# Source custom env.shexport file only if it exists and not already sourced
+conditionally_source_env() {
+  local profile="$1"
+  local source_line="source \"$ENV_GUARD_FILE\""
+  if [[ -f "$ENV_GUARD_FILE" && -f "$profile" && ! $(grep -Fx "$source_line" "$profile") ]]; then
+    echo "🔧 Sourcing $ENV_GUARD_FILE from $profile"
+    echo "$source_line" >> "$profile"
+  fi
+}
+
+# Persist in shell profiles
 append_if_missing "$HOME/.profile"
 append_if_missing "$HOME/.bashrc"
 append_if_missing "$HOME/.bash_profile"
 append_if_missing "$HOME/.zshrc"
 append_if_missing "$HOME/.zprofile"
-append_if_missing "$HOME/.bash_profile"  # Git Bash default
 
-# WSL-specific
+conditionally_source_env "$HOME/.profile"
+conditionally_source_env "$HOME/.bashrc"
+conditionally_source_env "$HOME/.bash_profile"
+conditionally_source_env "$HOME/.zshrc"
+conditionally_source_env "$HOME/.zprofile"
+
+# WSL-specific case if .bashrc doesn't exist
 if grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null; then
   if [[ ! -f "$HOME/.bashrc" ]]; then
+    echo "🔧 Creating $HOME/.bashrc for WSL"
     echo "# WSL profile" > "$HOME/.bashrc"
     echo "$ADDED_LINE" >> "$HOME/.bashrc"
   fi
@@ -89,7 +107,7 @@ fi
 echo "⬇️  Downloading $SCRIPT_NAME..."
 curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT"
 
-# Extract version from script
+# Extract version
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
 echo "   📦 Installing version: $VERSION"
 
@@ -99,8 +117,8 @@ if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
 fi
 chmod +x "$PYTHON_SCRIPT"
 
-# Create wrapper script if it doesn't exist (for upgrades, don't overwrite)
-if [[ ! -f "$WRAPPER_SCRIPT" ]]; then
+# Create wrapper only if it doesn't exist or needs updating
+if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c "$PYTHON_SCRIPT" "$WRAPPER_SCRIPT")" -eq 0 ]]; then
   cat <<EOF > "$WRAPPER_SCRIPT"
 #!/bin/bash
 exec python3 "$PYTHON_SCRIPT" "\$@"
@@ -110,7 +128,7 @@ fi
 
 echo "✅ Installed $SCRIPT_NAME"
 
-# Show reminder only if scancompare still not found in PATH
+# Final PATH check and re-execution if needed
 if ! command -v scancompare &> /dev/null; then
   echo ""
   echo "⚠️  scancompare was installed but isn't available in this shell session."
@@ -118,21 +136,6 @@ if ! command -v scancompare &> /dev/null; then
   echo "   or close and reopen your terminal."
 else
   echo "✅ $INSTALL_BIN is in your PATH"
-fi
-
-# Attempt to re-source the current profile (if interactive)
-CURRENT_SHELL=$(basename "$SHELL")
-if [[ -t 1 ]]; then
-  case "$CURRENT_SHELL" in
-    bash)
-      [[ -f "$HOME/.bashrc" ]] && source "$HOME/.bashrc"
-      ;;
-    zsh)
-      [[ -f "$HOME/.zshrc" ]] && source "$HOME/.zshrc"
-      ;;
-    *)
-      ;;
-  esac
 fi
 
 echo "🎉 You can now run: $SCRIPT_NAME <image-name>"
