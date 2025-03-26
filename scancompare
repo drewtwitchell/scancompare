@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.3.6 
+# scancompare version 2.3.7 
 
 import os
 import sys
@@ -21,9 +21,11 @@ import uuid
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.3.6"
+VERSION = "2.3.7"
 
 args = None  # global placeholder
+cloned_repo_dir = None # global placeholder
+
 
 def get_current_version():
     return VERSION
@@ -507,11 +509,11 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
             print(f"⚠️ Skipping {tool_name} SARIF upload: file not found or invalid.")
             return
 
+        global cloned_repo_dir
         temp_repo_dir = Path("scan_reports").resolve()
 
-        if args.repo_url:
-            repo_name = args.repo_url.split("/")[-1].replace(".git", "")
-            temp_repo_dir = Path(tempfile.gettempdir()) / repo_name
+        if cloned_repo_dir and Path(cloned_repo_dir).exists():
+            temp_repo_dir = Path(cloned_repo_dir)
             if not temp_repo_dir.exists():
                 print(f"⚠️ Could not find local clone directory at {temp_repo_dir}, using fallback for commit info.")
 
@@ -600,6 +602,9 @@ def main(args):
         temp_dir = tempfile.mkdtemp()
         print(f"📥 Cloning {args.repo_url} into temporary directory...")
         subprocess.run(["git", "clone", args.repo_url, temp_dir], check=True)
+
+        global cloned_repo_dir
+        cloned_repo_dir = temp_dir
 
         dockerfile_path = None
         for root, _, files in os.walk(temp_dir):
