@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.7.4 
+# scancompare version 2.7.5 
 
 import os
 import sys
@@ -22,7 +22,7 @@ from io import BytesIO
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.7.4"
+VERSION = "2.7.5"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -302,7 +302,12 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
         if lang_related:
             result += "<h3>📦 Language Package CVEs</h3>" + format_cves(lang_related)
         if unknown:
-            result += "<h3>❓ Unclassified CVEs</h3>" + format_cves(unknown)
+            result += (
+                "<h3>❓ Unclassified CVEs</h3>"
+                "<p><em>These CVEs couldn’t be categorized as OS or language packages. This often includes:</em></p>"
+                "<ul><li>Uncommon sources or tools</li><li>Temporary CVE IDs (like TEMP-1234)</li><li>Missing or malformed metadata</li></ul>"
+                + format_cves(unknown)
+            )
         return result
 
     timestamp = datetime.now().strftime("%Y-%m-%d")
@@ -316,9 +321,6 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     trivy_unique_detailed = {cve: trivy_cves.get(cve) or {"type": "unknown"} for cve in only_trivy}
     grype_unique_detailed = {cve: grype_cves.get(cve) or {"type": "unknown"} for cve in only_grype}
 
-    html_template_path = Path("scan_reports/template.js")
-    script_block = html_template_path.read_text() if html_template_path.exists() else ""
-
     total_vulns = len(trivy_cves) + len(grype_cves) - len(shared)
 
     html_report = f"""<!DOCTYPE html>
@@ -326,15 +328,18 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
 <head>
   <meta charset='UTF-8'>
   <title>ScanCompare Report</title>
+  <script src='https://cdn.jsdelivr.net/npm/chart.js'></script>
   <style>
     body {{ font-family: Arial, sans-serif; background-color: #f9f9f9; color: #333; display: flex; justify-content: center; transition: background 0.3s, color 0.3s; }}
-    .container {{ max-width: 900px; padding: 40px; background: white; box-shadow: 0 0 12px rgba(0,0,0,0.05); border-radius: 10px; }}
+    .container {{ max-width: 900px; padding: 40px; background: white; box-shadow: 0 0 12px rgba(0,0,0,0.05); border-radius: 10px; position: relative; }}
+    .toolbar {{ position: absolute; top: 10px; right: 10px; }}
+    .toolbar button, .toolbar span {{ margin-left: 6px; background: none; border: none; cursor: pointer; font-size: 18px; }}
+    .toolbar button:hover {{ opacity: 0.7; }}
     body.dark-mode {{ background-color: #121212; color: #ddd; }}
     body.dark-mode .container {{ background: #1e1e1e; }}
     h1, h2, h3, h4 {{ color: inherit; }}
     ul {{ line-height: 1.6; }}
     pre {{ background: #eee; padding: 10px; border-left: 4px solid #4CAF50; overflow-x: auto; }}
-    .pdf-button, .toggle-dark, .save-pdf {{ display: inline-block; margin: 20px 10px 30px 0; padding: 10px 20px; background: #4CAF50; color: white; text-decoration: none; border-radius: 5px; cursor: pointer; }}
     table {{ border-collapse: collapse; margin-top: 10px; width: 100%; }}
     table td, table th {{ border: 1px solid #ccc; padding: 6px 10px; text-align: center; }}
     a {{ color: #0077cc; text-decoration: none; }}
@@ -344,18 +349,45 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     .content {{ padding: 0 18px; display: none; overflow: hidden; background-color: #f1f1f1; margin-bottom: 20px; }}
     .content pre {{ max-height: 400px; overflow: auto; }}
     .severity-toggle button {{ margin: 5px; padding: 6px 12px; border: none; border-radius: 5px; background: #ddd; cursor: pointer; }}
+    canvas {{ max-width: 100%; margin-top: 20px; }}
   </style>
 </head>
 <body>
   <div class="container">
+    <div class="toolbar">
+      <button onclick='window.print()' title='Export Full PDF'>📄</button>
+      <button onclick='window.print()' title='Export Filtered View'>📝</button>
+      <span onclick='toggleDarkMode()' title='Toggle Dark Mode'>🌙☀️</span>
+    </div>
     <h1>Scan Report for {image}</h1>
     <p><strong>🔢 Trivy version:</strong> {trivy_version} &nbsp;&nbsp;&nbsp; <strong>🔢 Grype version:</strong> {grype_version}</p>
     <p><strong>📊 Total unique vulnerabilities detected:</strong> {total_vulns}</p>
 
+    <canvas id="severityChart" height="120"></canvas>
+
+    <script>
+      window.addEventListener("DOMContentLoaded", () => {
+        const ctx = document.getElementById('severityChart');
+        new Chart(ctx, {{
+          type: 'pie',
+          data: {{
+            labels: ['Shared', 'Only Trivy', 'Only Grype'],
+            datasets: [{{
+              label: 'Vulnerability Distribution',
+              data: [{len(shared)}, {len(only_trivy)}, {len(only_grype)}],
+              backgroundColor: ['#4CAF50', '#ff9800', '#2196F3'],
+              borderWidth: 1
+            }}]
+          }},
+          options: {{ responsive: true, plugins: {{ legend: {{ position: 'bottom' }} }} }}
+        }});
+      });
+    </script>
+
     <table>
       <tr><th>Tool</th><th>Total</th><th>Only in Tool</th><th>Shared</th></tr>
-      <tr><td>Grype</td><td>{len(grype_cves)}</td><td><a href='#grype'> {len(only_grype)}</a></td><td><a href='#shared'>{len(shared)}</a></td></tr>
-      <tr><td>Trivy</td><td>{len(trivy_cves)}</td><td><a href='#trivy'> {len(only_trivy)}</a></td><td><a href='#shared'>{len(shared)}</a></td></tr>
+      <tr><td>Grype</td><td>{len(grype_cves)}</td><td><a href='#grype'>{len(only_grype)}</a></td><td><a href='#shared'>{len(shared)}</a></td></tr>
+      <tr><td>Trivy</td><td>{len(trivy_cves)}</td><td><a href='#trivy'>{len(only_trivy)}</a></td><td><a href='#shared'>{len(shared)}</a></td></tr>
     </table>
 
     <div class='severity-toggle'>
@@ -367,20 +399,13 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
       <button onclick="toggleSeverity('Unknown')">Unknown</button>
     </div>
 
-    <a class='pdf-button' href='#' onclick='window.print()'>📄 Export Full Report</a>
-    <a class='save-pdf' href='#' onclick='window.print()'>📄 Export Filtered View</a>
-    <span class='toggle-dark' onclick='toggleDarkMode()'>🌙 Toggle Dark Mode</span>
-
     <h2 id='shared'>Shared CVEs</h2>
-    <p><em>These CVEs were detected by both tools and are likely reliable indicators of real vulnerabilities.</em></p>
     {format_and_group_by_type(shared_cves_detailed)}
 
     <h2 id='trivy'>Unique to Trivy</h2>
-    <p><em>These CVEs were found only by Trivy. Common reasons include language-specific package detection, Trivy database freshness, or more aggressive detection heuristics.</em></p>
     {format_and_group_by_type(trivy_unique_detailed)}
 
     <h2 id='grype'>Unique to Grype</h2>
-    <p><em>These CVEs were found only by Grype. Grype may have identified these due to broader OS package indexing or different default scanning rules.</em></p>
     {format_and_group_by_type(grype_unique_detailed)}
 
     <button type='button' class='collapsible'>🔍 View Raw Trivy JSON</button>
@@ -389,16 +414,46 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     <button type='button' class='collapsible'>🔍 View Raw Grype JSON</button>
     <div class='content'><pre>{grype_raw}</pre></div>
   </div>
-  <script>{script_block}</script>
+
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      document.querySelectorAll(".collapsible").forEach(btn => {
+        btn.addEventListener("click", function () {
+          this.classList.toggle("active");
+          const content = this.nextElementSibling;
+          content.style.display = content.style.display === "block" ? "none" : "block";
+        });
+      });
+
+      window.toggleDarkMode = function () {
+        document.body.classList.toggle("dark-mode");
+        localStorage.setItem("darkMode", document.body.classList.contains("dark-mode"));
+      };
+
+      window.toggleSeverity = function (sev) {
+        document.querySelectorAll(`[data-severity='${sev}']`).forEach(el => {
+          el.style.display = el.style.display === 'none' ? 'block' : 'none';
+          const next = el.nextElementSibling;
+          if (next && next.tagName === 'DIV') {
+            next.style.display = next.style.display === 'none' ? 'block' : 'none';
+          }
+        });
+      };
+
+      if (localStorage.getItem("darkMode") === "true") {
+        document.body.classList.add("dark-mode");
+      }
+    });
+  </script>
 </body>
-</html>
-"""
+</html>"""
     report_path.write_text(html_report)
     print(f"✅ Local HTML report saved: {report_path}")
 
     open_html = input("📁 Open local HTML report in browser? (y/n): ").strip().lower()
     if open_html == "y":
         webbrowser.open(f"file://{report_path.absolute()}")
+
 
 def explain_exit(msg):
     print(f"⚠️ {msg}")
