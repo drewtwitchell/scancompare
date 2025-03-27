@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.6.9 
+# scancompare version 2.7.0 
 
 import os
 import sys
@@ -22,7 +22,7 @@ from io import BytesIO
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.6.9"
+VERSION = "2.7.0"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -217,7 +217,10 @@ def extract_cves_with_severity(file_path):
 def group_by_severity(cve_map):
     grouped = {}
     for cve_id, meta in cve_map.items():
-        severity = meta.get("severity", "Unknown")
+        if isinstance(meta, dict):
+            severity = meta.get("severity", "Unknown")
+        else:
+            severity = meta or "Unknown"
         grouped.setdefault(severity, []).append(cve_id)
     return grouped
 
