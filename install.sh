@@ -25,13 +25,13 @@ log() {
 spinner() {
   local pid=$!
   local delay=0.1
-  local spinstr='⏳◴◷◶◵'
-  while ps -p $pid &> /dev/null; do
-    for c in $(echo $spinstr | grep -o .); do
-      printf " [%s]  " "$c"
-      sleep $delay
-      printf "\b\b\b\b\b\b"
-    done
+  local spinstr=('⏳' '◴' '◷' '◶' '◵')
+  local i=0
+  while kill -0 $pid 2>/dev/null; do
+    i=$(((i + 1) % 5))
+    printf " [%s]  " "${spinstr[$i]}"
+    sleep $delay
+    printf "\b\b\b\b\b\b"
   done
   printf "    \b\b\b\b"
 }
@@ -135,6 +135,7 @@ fi
 mkdir -p "$INSTALL_BIN"
 mkdir -p "$INSTALL_LIB"
 
+# Install Python if missing
 if ! command -v python3 &> /dev/null; then
   echo "❌ Python3 not found"
   if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -156,15 +157,18 @@ if ! command -v python3 &> /dev/null; then
   fi
 fi
 
+# Setup Python virtual environment
 if [[ ! -d "$VENV_DIR" ]]; then
-  echo "🐍 Creating Python virtual environment..."
-  python3 -m venv "$VENV_DIR"
+  tool_progress "virtual environment" "Creating"
+  (python3 -m venv "$VENV_DIR") & spinner
+  tool_done
 fi
 
 source "$VENV_DIR/bin/activate"
 
+# Install jinja2 in virtual environment if missing
 if ! python -c "import jinja2" &> /dev/null; then
-  echo "📦 Installing required Python module: jinja2"
+  tool_progress "jinja2" "Installing"
   if [[ "$VERBOSE" -eq 1 ]]; then
     pip install jinja2 --disable-pip-version-check --no-warn-script-location || {
       echo "❌ Failed to install jinja2. Try manually using pip inside the virtual environment."; exit 1;
@@ -174,43 +178,46 @@ if ! python -c "import jinja2" &> /dev/null; then
       echo "❌ Failed to install jinja2. Try manually using pip inside the virtual environment."; exit 1;
     }
   fi
+  tool_done
 fi
 
 deactivate
 
+# Install Trivy if missing
 if ! command -v trivy &> /dev/null; then
-  echo "❌ Trivy not found"
+  tool_progress "Trivy" "Installing"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     command -v brew &> /dev/null || install_homebrew
-    echo "⚙️ Installing Trivy using Homebrew..."
     brew install trivy &> /dev/null || echo "⚠️ Failed to install Trivy with Homebrew. Please install manually."
   else
-    echo "⚙️ Installing Trivy with curl..."
-    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
+    (curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN") & spinner || {
       echo "❌ Failed to install Trivy via curl."; exit 1;
     }
   fi
+  tool_done
 fi
 
+# Install Grype if missing
 if ! command -v grype &> /dev/null; then
-  echo "❌ Grype not found"
+  tool_progress "Grype" "Installing"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     command -v brew &> /dev/null || install_homebrew
-    echo "⚙️ Installing Grype using Homebrew..."
     brew install grype &> /dev/null || echo "⚠️ Failed to install Grype with Homebrew. Please install manually."
   else
-    echo "⚙️ Installing Grype with curl..."
-    curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
+    (curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN") & spinner || {
       echo "❌ Failed to install Grype via curl."; exit 1;
     }
   fi
+  tool_done
 fi
 
-echo "⬇️  Downloading $SCRIPT_NAME..."
-curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT"
+tool_progress "$SCRIPT_NAME script" "Downloading"
+(curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT") & spinner
+tool_done
 
-echo "📄 Downloading HTML template..."
-curl -fsSL "$TEMPLATE_URL" -o "$TEMPLATE_FILE"
+tool_progress "scan_template.html" "Downloading"
+(curl -fsSL "$TEMPLATE_URL" -o "$TEMPLATE_FILE") & spinner
+tool_done
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
 echo "   📦 Installing version: $VERSION"
@@ -221,12 +228,16 @@ fi
 chmod +x "$PYTHON_SCRIPT"
 
 if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c \"$PYTHON_SCRIPT\" \"$WRAPPER_SCRIPT\")" -eq 0 ]]; then
+  tool_progress "CLI wrapper" "Creating"
   cat <<EOF > "$WRAPPER_SCRIPT"
 #!/bin/bash
 source "$VENV_DIR/bin/activate"
 exec python "$PYTHON_SCRIPT" "\$@"
 EOF
   chmod +x "$WRAPPER_SCRIPT"
+  tool_done
+else
+  echo "🔹 Wrapper script already exists. Skipping."
 fi
 
 echo "✅ Installed $SCRIPT_NAME"
