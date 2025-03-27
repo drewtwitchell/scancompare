@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.5.7 
+# scancompare version 2.5.8 
 
 import os
 import sys
@@ -22,7 +22,7 @@ from io import BytesIO
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.5.7"
+VERSION = "2.5.8"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -142,35 +142,12 @@ def handle_cli_args():
     parser = argparse.ArgumentParser(
         description="Scan and compare Docker image vulnerabilities using Trivy and Grype."
     )
-    parser.add_argument(
-        "image",
-        nargs="?",
-        help="Docker image to scan (e.g. nginx:latest). If omitted, use --repo-url to build from a GitHub repo."
-    )
-    parser.add_argument(
-        "--repo-url",
-        help="GitHub repo URL containing Dockerfile to build and scan (e.g. https://github.com/org/repo)"
-    )
-    parser.add_argument(
-        "--keep-image",
-        action="store_true",
-        help="Keep the temporary Docker image and cloned repo after scanning (default: clean up both)"
-    )
-    parser.add_argument(
-        "--version",
-        action="store_true",
-        help="Show scancompare version and exit"
-    )
-    parser.add_argument(
-        "--update",
-        action="store_true",
-        help="Check for and apply latest scancompare update"
-    )
-    parser.add_argument(
-        "--uninstall",
-        action="store_true",
-        help="Uninstall scancompare CLI and related files"
-    )
+    parser.add_argument("image", nargs="?", help="Docker image to scan")
+    parser.add_argument("--repo-url", help="GitHub repo URL containing Dockerfile for image build")
+    parser.add_argument("--keep-data", action="store_true", help="Keep Docker image, cloned repo, HTML, SARIF, and JSON results")
+    parser.add_argument("--version", action="store_true", help="Show scancompare version")
+    parser.add_argument("--update", action="store_true", help="Check and apply latest scancompare update")
+    parser.add_argument("--uninstall", action="store_true", help="Uninstall scancompare CLI")
     return parser.parse_args()
 
 def get_version(tool):
@@ -634,10 +611,10 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
 
 def main(args):
     if not args.image and not args.repo_url:
-        print("Usage: scancompare <image> [--repo-url <repo>, --version, --update, --uninstall, --keep-image]")
+        print("Usage: scancompare <image> [--repo-url <repo>, --keep-data, --version, --update, --uninstall]")
         print("\nFlags:")
         print("  --repo-url <url>   Build and scan a Docker image from a GitHub repo containing a Dockerfile")
-        print("  --keep-image       Keep the temporary Docker image and cloned repository (default is to clean up after scanning)")
+        print("  --keep-data        Keep all output and temporary data (HTML, SARIF, JSON, image, cloned repo)")
         print("  --version          Show scancompare version")
         print("  --update           Check and apply latest scancompare update")
         print("  --uninstall        Uninstall scancompare CLI")
@@ -646,15 +623,22 @@ def main(args):
     check_latest_version()
     scan_dir = Path("scan_reports")
     scan_dir.mkdir(exist_ok=True)
+    summary_log = scan_dir / "scan_summary.log"
+    summary_lines = [
+        "\n" + "="*40,
+        f"Scan started: {datetime.now().isoformat()}"
+    ]
 
     temp_dir = None
     image_tag = None
+    scancompare_version = get_current_version()
+    summary_lines.append(f"🔢 scancompare version: {scancompare_version}")
 
     if args.repo_url:
         temp_dir = tempfile.mkdtemp()
         print(f"📅 Cloning {args.repo_url} into temporary directory...")
         subprocess.run(["git", "clone", args.repo_url, temp_dir], check=True)
-        args.cloned_repo_path = temp_dir  # persist path for use in GHAS upload
+        args.cloned_repo_path = temp_dir
 
         dockerfile_path = None
         for root, _, files in os.walk(temp_dir):
@@ -690,14 +674,16 @@ def main(args):
 
     print(f"\n🔹 Scanning with Trivy...")
     trivy_version = get_version("trivy")
-    print(f"   📆 Trivy version: {trivy_version}")
+    print(f"   🛡️ Trivy version: {trivy_version}")
+    summary_lines.append(f"🛡️ Trivy version: {trivy_version}")
     if not run_scan("trivy", image, trivy_path):
         explain_exit("Trivy scan failed or image not found.")
     print(f"    ✔ Trivy scan saved to {trivy_path}")
 
     print(f"\n🔹 Scanning with Grype...")
     grype_version = get_version("grype")
-    print(f"   📆 Grype version: {grype_version}")
+    print(f"   🛡️ Grype version: {grype_version}")
+    summary_lines.append(f"🛡️ Grype version: {grype_version}")
     if not run_scan("grype", image, grype_path):
         explain_exit("Grype scan failed or image not found.")
     print(f"    ✔ Grype scan saved to {grype_path}")
@@ -717,17 +703,37 @@ def main(args):
         upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo)
         generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
 
-        if not getattr(args, "keep_image", False):
+        if args.keep_data:
+            print("🛑 Cleanup skipped due to --keep-data. Keeping Docker image, cloned repo, and scan artifacts.")
+            summary_lines.append("🛑 Cleanup skipped due to --keep-data. Keeping Docker image, cloned repo, and scan artifacts.")
+        else:
             print(f"\n🧼 Removing temporary Docker image '{image_tag}'...")
             subprocess.run(["docker", "rmi", "-f", image_tag], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             print("✅ Cleaned up temporary Docker image.")
+            summary_lines.append(f"✅ Removed temporary Docker image '{image_tag}'")
 
             if temp_dir and os.path.isdir(temp_dir):
                 print(f"\n🧹 Removing temporary cloned repository from '{temp_dir}' (cloned from {args.repo_url})...")
                 shutil.rmtree(temp_dir)
                 print("✅ Cleaned up temporary cloned repository.")
+                summary_lines.append(f"✅ Removed temporary cloned repository from '{temp_dir}'")
     else:
         generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
+        if args.keep_data:
+            print("🛑 Cleanup skipped due to --keep-data. Keeping scan artifacts.")
+            summary_lines.append("🛑 Cleanup skipped due to --keep-data. Keeping scan artifacts.")
+        else:
+            print("🧹 Cleaning previous HTML, SARIF, and JSON scan files... Keeping only the latest report.")
+            summary_lines.append("🧹 Cleaned up old scan artifacts, kept only latest.")
+            for path in scan_dir.glob("*.*"):
+                if path.name not in {trivy_path.name, grype_path.name} and not path.name.endswith(".html"):
+                    path.unlink()
+
+    if summary_lines:
+        with open(summary_log, "a") as log_file:
+            for line in summary_lines:
+                log_file.write(line + "\n")
+        print(f"📝 Summary written to: {summary_log}")
 
 if __name__ == "__main__":
     args = handle_cli_args()
