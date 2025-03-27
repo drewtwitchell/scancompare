@@ -100,8 +100,8 @@
     <div class="controls">
       <div><button class="dark-toggle" onclick="toggleDarkMode()">🌙</button></div>
       <div class="controls-right">
-        <button onclick="downloadRaw('trivy')">⬇️ Trivy JSON</button>
-        <button onclick="downloadRaw('grype')">⬇️ Grype JSON</button>
+        <button onclick="downloadRaw('trivy')">⬇️ Download Trivy JSON</button>
+        <button onclick="downloadRaw('grype')">⬇️ Download Grype JSON</button>
         <button onclick="window.print()">📄 Export PDF</button>
       </div>
     </div>
@@ -118,18 +118,18 @@
         <th>Total</th>
         <th><a href="#grype">Only in Tool</a></th>
         <th><a href="#shared">Shared</a></th>
-        <th colspan="5">Jump to Severity</th>
+        <th><a href="#Critical">Critical</a></th>
+        <th><a href="#High">High</a></th>
+        <th><a href="#Medium">Medium</a></th>
+        <th><a href="#Low">Low</a></th>
+        <th><a href="#Unknown">Unknown</a></th>
       </tr>
       <tr>
         <td>Grype</td>
         <td>{{ grype_count + shared_count }}</td>
         <td><a href="#grype">{{ grype_count }}</a></td>
         <td><a href="#shared">{{ shared_count }}</a></td>
-        <td><a href="#Critical">Critical</a></td>
-        <td><a href="#High">High</a></td>
-        <td><a href="#Medium">Medium</a></td>
-        <td><a href="#Low">Low</a></td>
-        <td><a href="#Unknown">Unknown</a></td>
+        <td colspan="5"></td>
       </tr>
       <tr>
         <td>Trivy</td>
@@ -167,13 +167,8 @@
       },
       options: {
         plugins: {
-          legend: {
-            position: 'top'
-          },
-          title: {
-            display: true,
-            text: 'Scan Result Breakdown'
-          }
+          legend: { position: 'top' },
+          title: { display: true, text: 'Scan Result Breakdown' }
         }
       }
     });
