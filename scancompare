@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.6.7 
+# scancompare version 2.6.8 
 
 import os
 import sys
@@ -22,7 +22,7 @@ from io import BytesIO
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.6.7"
+VERSION = "2.6.8"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -266,7 +266,7 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
         unknown = {}
         for cve, meta in cve_map.items():
             if not isinstance(meta, dict):
-                unknown[cve] = {"type": "unknown"}
+                unknown[cve] = meta
                 continue
             pkg_type = meta.get("pkg_type") or meta.get("type") or "unknown"
             if pkg_type.lower() in ["os", "debian", "alpine", "rpm", "apk"]:
@@ -292,20 +292,26 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     trivy_raw = html.escape(json.dumps(json.load(open("scan_reports/original_trivy.json")), indent=2))
     grype_raw = html.escape(json.dumps(json.load(open("scan_reports/original_grype.json")), indent=2))
 
-    shared_cves_detailed = {
-        cve: (trivy_cves.get(cve) if isinstance(trivy_cves.get(cve), dict)
-              else grype_cves.get(cve) if isinstance(grype_cves.get(cve), dict)
-              else {"type": "unknown"})
-        for cve in shared
-    }
-    trivy_unique_detailed = {
-        cve: (trivy_cves[cve] if isinstance(trivy_cves[cve], dict) else {"type": "unknown"})
-        for cve in only_trivy
-    }
-    grype_unique_detailed = {
-        cve: (grype_cves[cve] if isinstance(grype_cves[cve], dict) else {"type": "unknown"})
-        for cve in only_grype
-    }
+    shared_cves_detailed = {}
+    for cve in shared:
+        cve_data = trivy_cves.get(cve) if isinstance(trivy_cves.get(cve), dict) else grype_cves.get(cve)
+        if not isinstance(cve_data, dict):
+            cve_data = {"type": "unknown"}
+        shared_cves_detailed[cve] = cve_data
+
+    trivy_unique_detailed = {}
+    for cve in only_trivy:
+        cve_data = trivy_cves.get(cve)
+        if not isinstance(cve_data, dict):
+            cve_data = {"type": "unknown"}
+        trivy_unique_detailed[cve] = cve_data
+
+    grype_unique_detailed = {}
+    for cve in only_grype:
+        cve_data = grype_cves.get(cve)
+        if not isinstance(cve_data, dict):
+            cve_data = {"type": "unknown"}
+        grype_unique_detailed[cve] = cve_data
 
     html_report = f"""<!DOCTYPE html>
 <html>
