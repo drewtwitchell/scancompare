@@ -7,13 +7,14 @@ SCRIPT_NAME="scancompare"
 SCRIPT_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
 TEMPLATE_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html"
 PYTHON_SCRIPT="$INSTALL_LIB/$SCRIPT_NAME"
-TEMPLATE_PATH="$INSTALL_LIB/scan_template.html"
+TEMPLATE_FILE="$INSTALL_LIB/scan_template.html"
 WRAPPER_SCRIPT="$INSTALL_BIN/$SCRIPT_NAME"
 ENV_GUARD_FILE="$HOME/.config/scancompare/env.shexport"
 
 echo "🛠️  Starting $SCRIPT_NAME installation..."
 
-# Ensure Homebrew is available on macOS if needed
+echo "📦 Installing required tools: python3, pip (for jinja2), trivy, grype"
+
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "🍺 Homebrew not found. Attempting to install..."
@@ -23,17 +24,14 @@ install_homebrew() {
 
 ADDED_LINE='export PATH="$HOME/.local/bin:$PATH"'
 
-# Deduplicate runtime PATH
 PATH="$(echo "$PATH" | awk -v RS=: -v ORS=: '!a[$1]++' | sed 's/:$//')"
 export PATH
 
-# Add to current shell session
 if [[ ":$PATH:" != *:"$INSTALL_BIN":* ]]; then
   echo "🔧 Adding $INSTALL_BIN to current shell session"
   export PATH="$INSTALL_BIN:$PATH"
 fi
 
-# Function to safely append to profile files if missing
 append_if_missing() {
   local file="$1"
   if [[ -f "$file" && ! $(grep -Fx "$ADDED_LINE" "$file") ]]; then
@@ -42,7 +40,6 @@ append_if_missing() {
   fi
 }
 
-# Source custom env.shexport file only if it exists and not already sourced
 conditionally_source_env() {
   local profile="$1"
   local source_line="source \"$ENV_GUARD_FILE\""
@@ -52,7 +49,6 @@ conditionally_source_env() {
   fi
 }
 
-# Persist in shell profiles
 append_if_missing "$HOME/.profile"
 append_if_missing "$HOME/.bashrc"
 append_if_missing "$HOME/.bash_profile"
@@ -65,7 +61,6 @@ conditionally_source_env "$HOME/.bash_profile"
 conditionally_source_env "$HOME/.zshrc"
 conditionally_source_env "$HOME/.zprofile"
 
-# WSL-specific case if .bashrc doesn't exist
 if grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null; then
   if [[ ! -f "$HOME/.bashrc" ]]; then
     echo "🔧 Creating $HOME/.bashrc for WSL"
@@ -74,73 +69,66 @@ if grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null; then
   fi
 fi
 
-# Ensure install directories exist
 mkdir -p "$INSTALL_BIN"
 mkdir -p "$INSTALL_LIB"
 
-# Check for Python
-command -v python3 &> /dev/null || { echo "❌ Python3 is required but not found."; exit 1; }
-
-# Install Trivy if missing
-install_trivy() {
-  echo "⬇️  Installing Trivy..."
+if ! command -v python3 &> /dev/null; then
+  echo "❌ Python3 not found"
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    if command -v brew &> /dev/null; then
-      brew install trivy
-    else
-      curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN"
-    fi
+    command -v brew &> /dev/null || install_homebrew
+    brew install python
   else
-    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN"
+    echo "⚙️ Installing Python3 with apt..."
+    sudo apt update && sudo apt install -y python3 python3-pip || {
+      echo "❌ Could not install Python3. Please install manually."; exit 1;
+    }
   fi
-}
+fi
 
-# Install Grype if missing
-install_grype() {
-  echo "⬇️  Installing Grype..."
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    if command -v brew &> /dev/null; then
-      brew install grype
-    else
-      curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN"
-    fi
-  else
-    curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN"
-  fi
-}
+if ! python3 -c "import jinja2" &> /dev/null; then
+  echo "📦 Installing required Python module: jinja2"
+  python3 -m pip install --user jinja2 || {
+    echo "❌ Failed to install jinja2. Please install it manually with 'pip3 install --user jinja2'"; exit 1;
+  }
+fi
 
-# Check and install Trivy
 if ! command -v trivy &> /dev/null; then
   echo "❌ Trivy not found"
-  install_trivy
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    command -v brew &> /dev/null || install_homebrew
+    brew install trivy
+  else
+    echo "⚙️ Installing Trivy with curl..."
+    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN"
+  fi
 fi
 
-# Check and install Grype
 if ! command -v grype &> /dev/null; then
   echo "❌ Grype not found"
-  install_grype
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    command -v brew &> /dev/null || install_homebrew
+    brew install grype
+  else
+    echo "⚙️ Installing Grype with curl..."
+    curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN"
+  fi
 fi
 
-# Download Python script
 echo "⬇️  Downloading $SCRIPT_NAME..."
 curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT"
 
-# Extract version
+echo "📄 Downloading HTML template..."
+curl -fsSL "$TEMPLATE_URL" -o "$TEMPLATE_FILE"
+
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
 echo "   📦 Installing version: $VERSION"
 
-# Ensure Python shebang
 if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
   sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null || sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
 fi
 chmod +x "$PYTHON_SCRIPT"
 
-# Download HTML template
-echo "⬇️  Downloading scan_template.html..."
-curl -fsSL "$TEMPLATE_URL" -o "$TEMPLATE_PATH"
-
-# Create wrapper only if it doesn't exist or needs updating
-if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c "$PYTHON_SCRIPT" "$WRAPPER_SCRIPT")" -eq 0 ]]; then
+if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c \"$PYTHON_SCRIPT\" \"$WRAPPER_SCRIPT\")" -eq 0 ]]; then
   cat <<EOF > "$WRAPPER_SCRIPT"
 #!/bin/bash
 exec python3 "$PYTHON_SCRIPT" "\$@"
@@ -150,7 +138,6 @@ fi
 
 echo "✅ Installed $SCRIPT_NAME"
 
-# Final PATH check and re-execution if needed
 if ! command -v scancompare &> /dev/null; then
   echo ""
   echo "⚠️  scancompare was installed but isn't available in this shell session."
