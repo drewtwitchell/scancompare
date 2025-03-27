@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.5.4 
+# scancompare version 2.5.5 
 
 import os
 import sys
@@ -22,7 +22,7 @@ from io import BytesIO
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.5.4"
+VERSION = "2.5.5"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -417,9 +417,9 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
 </html>
 """
     report_path.write_text(html_report)
-    print(f"✅ HTML report saved: {report_path}")
+    print(f"✅ Local HTML report saved: {report_path}")
 
-    open_html = input("📁 Open report in browser? (y/n): ").strip().lower()
+    open_html = input("📁 Open local HTML report in browser? (y/n): ").strip().lower()
     if open_html == "y":
         webbrowser.open(f"file://{report_path.absolute()}")
 
@@ -618,24 +618,25 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
 
     # ✅ Single consolidated GHAS link after all uploads
     gh_link = f"https://github.com/{repo}/security/code-scanning"
-    print(f"\n\033[4;36m🔗 View results: {gh_link}\033[0m\n")
+    print(f"\n\033[4;36m🔗 View code scanning results on GHAS: {gh_link}\033[0m\n")
 
 def main(args):
     if not args.image and not args.repo_url:
-        print("Usage: scancompare <image> [--repo-url <repo>, --version, --update, --uninstall, --keep-image]")
+        print("Usage: scancompare <image> [--repo-url <repo>, --version, --update, --uninstall]")
         sys.exit(1)
 
     check_latest_version()
     scan_dir = Path("scan_reports")
     scan_dir.mkdir(exist_ok=True)
 
+    temp_dir = None
     image_tag = None
 
     if args.repo_url:
         temp_dir = tempfile.mkdtemp()
-        print(f"📥 Cloning {args.repo_url} into temporary directory...")
+        print(f"📅 Cloning {args.repo_url} into temporary directory...")
         subprocess.run(["git", "clone", args.repo_url, temp_dir], check=True)
-        args.cloned_repo_path = temp_dir
+        args.cloned_repo_path = temp_dir  # persist path for use in GHAS upload
 
         dockerfile_path = None
         for root, _, files in os.walk(temp_dir):
@@ -698,13 +699,15 @@ def main(args):
         upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo)
         generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
 
-        # 🧼 Remove temp Docker image unless --keep-image is passed
-        if image_tag and not getattr(args, "keep_image", False):
-            print(f"🧼 Removing temporary Docker image '{image_tag}'...")
+        if not getattr(args, "keep_image", False):
+            print(f"\n🧼 Removing temporary Docker image '{image_tag}'...")
             subprocess.run(["docker", "rmi", "-f", image_tag], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             print("✅ Cleaned up temporary Docker image.")
-        elif image_tag:
-            print(f"ℹ️ Keeping temporary Docker image '{image_tag}' due to --keep-image flag.")
+
+            if temp_dir and os.path.isdir(temp_dir):
+                print(f"🧹 Removing temporary clone directory '{temp_dir}'...")
+                shutil.rmtree(temp_dir)
+                print("✅ Cleaned up cloned repository directory.")
     else:
         generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
 
