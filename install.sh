@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+VERBOSE=0
+[[ "$1" == "--verbose" ]] && VERBOSE=1 && shift
+
 INSTALL_BIN="$HOME/.local/bin"
 INSTALL_LIB="$HOME/.local/lib/scancompare"
 SCRIPT_NAME="scancompare"
@@ -12,14 +15,21 @@ WRAPPER_SCRIPT="$INSTALL_BIN/$SCRIPT_NAME"
 ENV_GUARD_FILE="$HOME/.config/scancompare/env.shexport"
 VENV_DIR="$INSTALL_LIB/venv"
 
-echo "🛠️  Starting $SCRIPT_NAME installation..."
+log() {
+  if [[ "$VERBOSE" -eq 1 ]]; then
+    echo "$@"
+  fi
+}
 
+log "🛠️  Starting $SCRIPT_NAME installation..."
 echo "📦 Installing required tools: python3, jinja2, trivy, grype"
 
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "🍺 Homebrew not found. Attempting to install..."
-    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
+      echo "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
+    }
   fi
 }
 
@@ -28,15 +38,15 @@ ADDED_LINE='export PATH="$HOME/.local/bin:$PATH"'
 PATH="$(echo "$PATH" | awk -v RS=: -v ORS=: '!a[$1]++' | sed 's/:$//')"
 export PATH
 
-if [[ ":$PATH:" != *:"$INSTALL_BIN":* ]]; then
-  echo "🔧 Adding $INSTALL_BIN to current shell session"
+if [[ ":$PATH:" != *:":$INSTALL_BIN":* ]]; then
+  log "🔧 Adding $INSTALL_BIN to current shell session"
   export PATH="$INSTALL_BIN:$PATH"
 fi
 
 append_if_missing() {
   local file="$1"
   if [[ -f "$file" && ! $(grep -Fx "$ADDED_LINE" "$file") ]]; then
-    echo "🔧 Adding $INSTALL_BIN to PATH in $file"
+    log "🔧 Adding $INSTALL_BIN to PATH in $file"
     echo "$ADDED_LINE" >> "$file"
   fi
 }
@@ -45,7 +55,7 @@ conditionally_source_env() {
   local profile="$1"
   local source_line="source \"$ENV_GUARD_FILE\""
   if [[ -f "$ENV_GUARD_FILE" && -f "$profile" && ! $(grep -Fx "$source_line" "$profile") ]]; then
-    echo "🔧 Sourcing $ENV_GUARD_FILE from $profile"
+    log "🔧 Sourcing $ENV_GUARD_FILE from $profile"
     echo "$source_line" >> "$profile"
   fi
 }
@@ -64,7 +74,7 @@ conditionally_source_env "$HOME/.zprofile"
 
 if grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null; then
   if [[ ! -f "$HOME/.bashrc" ]]; then
-    echo "🔧 Creating $HOME/.bashrc for WSL"
+    log "🔧 Creating $HOME/.bashrc for WSL"
     echo "# WSL profile" > "$HOME/.bashrc"
     echo "$ADDED_LINE" >> "$HOME/.bashrc"
   fi
@@ -77,16 +87,23 @@ if ! command -v python3 &> /dev/null; then
   echo "❌ Python3 not found"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     command -v brew &> /dev/null || install_homebrew
-    brew install python
-  else
+    echo "⚙️ Installing Python3 using Homebrew..."
+    brew install python &> /dev/null || echo "⚠️ Failed to install Python3 with Homebrew. Please install manually."
+  elif command -v apt &> /dev/null; then
     echo "⚙️ Installing Python3 with apt..."
-    sudo apt update && sudo apt install -y python3 python3-pip || {
-      echo "❌ Could not install Python3. Please install manually."; exit 1;
-    }
+    sudo apt update &> /dev/null && sudo apt install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with apt. Please install manually."
+  elif command -v dnf &> /dev/null; then
+    echo "⚙️ Installing Python3 with dnf..."
+    sudo dnf install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with dnf. Please install manually."
+  elif command -v yum &> /dev/null; then
+    echo "⚙️ Installing Python3 with yum..."
+    sudo yum install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with yum. Please install manually."
+  else
+    echo "❌ Could not determine package manager. Please install Python3 manually."
+    exit 1
   fi
 fi
 
-# Create virtualenv
 if [[ ! -d "$VENV_DIR" ]]; then
   echo "🐍 Creating Python virtual environment..."
   python3 -m venv "$VENV_DIR"
@@ -96,14 +113,14 @@ source "$VENV_DIR/bin/activate"
 
 if ! python -c "import jinja2" &> /dev/null; then
   echo "📦 Installing required Python module: jinja2"
-  if ! pip install jinja2; then
-    if command -v pipx &> /dev/null; then
-      echo "📦 Falling back to pipx..."
-      pipx install jinja2
-    else
-      echo "❌ Failed to install jinja2. Try manually using pip inside the virtual environment."
-      exit 1
-    fi
+  if [[ "$VERBOSE" -eq 1 ]]; then
+    pip install jinja2 || {
+      echo "❌ Failed to install jinja2. Try manually using pip inside the virtual environment."; exit 1;
+    }
+  else
+    pip install jinja2 --quiet || {
+      echo "❌ Failed to install jinja2. Try manually using pip inside the virtual environment."; exit 1;
+    }
   fi
 fi
 
@@ -113,10 +130,13 @@ if ! command -v trivy &> /dev/null; then
   echo "❌ Trivy not found"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     command -v brew &> /dev/null || install_homebrew
-    brew install trivy
+    echo "⚙️ Installing Trivy using Homebrew..."
+    brew install trivy &> /dev/null || echo "⚠️ Failed to install Trivy with Homebrew. Please install manually."
   else
     echo "⚙️ Installing Trivy with curl..."
-    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN"
+    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
+      echo "❌ Failed to install Trivy via curl."; exit 1;
+    }
   fi
 fi
 
@@ -124,10 +144,13 @@ if ! command -v grype &> /dev/null; then
   echo "❌ Grype not found"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     command -v brew &> /dev/null || install_homebrew
-    brew install grype
+    echo "⚙️ Installing Grype using Homebrew..."
+    brew install grype &> /dev/null || echo "⚠️ Failed to install Grype with Homebrew. Please install manually."
   else
     echo "⚙️ Installing Grype with curl..."
-    curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN"
+    curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
+      echo "❌ Failed to install Grype via curl."; exit 1;
+    }
   fi
 fi
 
