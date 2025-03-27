@@ -50,6 +50,7 @@ scancompare alpine:3.14
 |-----------------------|-----------------------------------------------------------------------------|
 | `scancompare <image>` | Runs a vulnerability scan, compares Grype and Trivy, and generates a report |
 | `scancompare --repo-url <your repo URL>`  | Runs a docker build for repos using Dockerfiles and executes scans     |
+| `scancompare --keep-data`  | Keep Docker image, cloned repo, HTML, SARIF, and JSON results      |
 | `scancompare --update`  | Manually forces a script update from GitHub (auto-checks on every run)      |
 | `scancompare --version`  | Lists your current working version     |
 | `scancompare --uninstall`  | Removes the scancompare binary and cleans PATH from shell profiles       |
@@ -97,21 +98,24 @@ scancompare alpine:3.14
 | `scan_reports/ghas_upload_grype.sarif` | Grype SARIF file|
 | `scan_reports/ghas_upload_trivy.sarif`  | Trivy SARIF file      |
 | `scan_reports/scan_report_<image>_<date>.html`  | Human-readable HTML report      |
+| `scan_reports/scan_summary.log`  | Human-readable log file for each run     |
 
 ---
 📎 Example
 After running scancompare, you’ll see:
 ```bash
 scancompare postgres:15
-🔄 New version available: 1.9.4 → 1.9.5
-✅ scancompare updated to latest version
+🔎 Checking for updates...
+🔄 New version detected. Updating scancompare script...
+✅ scancompare updated to version 2.6.0
+♻️ Restarting with updated version...
 
 🔹 Scanning with Trivy...
-   📦 Trivy version: Version: 0.60.0
+   🛡️ Trivy version: Version: 0.60.0
     ✔ Trivy scan saved to scan_reports/original_trivy.json
 
 🔹 Scanning with Grype...
-   📦 Grype version: 0.90.0
+   🛡️ Grype version: 0.90.0
     ✔ Grype scan saved to scan_reports/original_grype.json
 
 📊 CLI Summary Report
@@ -272,11 +276,11 @@ Trivy      | 121   | 13            | 108
 ## 🔄 Self-Updating CLI
 Every time you run scancompare, it checks GitHub for new versions and silently updates. To run it manually use the following:
 ```bash
-scancompare update
+scancompare --update
 ```
 Or can also remove it entirely by running the following:
 ```bash
-scancompare uninstall
+scancompare --uninstall
 ```
 
 ---
