@@ -114,11 +114,11 @@ source "$VENV_DIR/bin/activate"
 if ! python -c "import jinja2" &> /dev/null; then
   echo "📦 Installing required Python module: jinja2"
   if [[ "$VERBOSE" -eq 1 ]]; then
-    pip install jinja2 --no-warn-script-location || {
+    pip install jinja2 --disable-pip-version-check --no-warn-script-location || {
       echo "❌ Failed to install jinja2. Try manually using pip inside the virtual environment."; exit 1;
     }
   else
-    pip install jinja2 --quiet --no-warn-script-location || {
+    pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location || {
       echo "❌ Failed to install jinja2. Try manually using pip inside the virtual environment."; exit 1;
     }
   fi
