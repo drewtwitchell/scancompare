@@ -10,9 +10,7 @@ INSTALL_BIN="$HOME/.local/bin"
 INSTALL_LIB="$HOME/.local/lib/scancompare"
 SCRIPT_NAME="scancompare"
 SCRIPT_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-TEMPLATE_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html"
 PYTHON_SCRIPT="$INSTALL_LIB/$SCRIPT_NAME"
-TEMPLATE_FILE="$INSTALL_LIB/scan_template.html"
 WRAPPER_SCRIPT="$INSTALL_BIN/$SCRIPT_NAME"
 ENV_GUARD_FILE="$HOME/.config/scancompare/env.shexport"
 VENV_DIR="$INSTALL_LIB/venv"
@@ -29,11 +27,15 @@ echo "📦 Installing required tools: python3, jinja2, trivy, grype"
 if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
   echo "🔍 scancompare is already installed. Checking for updates and verifying dependencies..."
   if scancompare --update; then
+    CURRENT_VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
+    echo "📦 Installed scancompare version: $CURRENT_VERSION"
     echo "✅ scancompare updated. Verifying Trivy and Grype..."
     for TOOL in trivy grype; do
       if ! command -v "$TOOL" &> /dev/null; then
         echo "⚠️ $TOOL not found. Reinstalling..."
         FORCE_REINSTALL=1
+      else
+        echo "🔹 Found $TOOL. Skipping install."
       fi
     done
     if [[ "$FORCE_REINSTALL" -eq 0 ]]; then
