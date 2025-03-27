@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.6.6 
+# scancompare version 2.6.7 
 
 import os
 import sys
@@ -22,7 +22,7 @@ from io import BytesIO
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.6.6"
+VERSION = "2.6.7"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -292,6 +292,21 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     trivy_raw = html.escape(json.dumps(json.load(open("scan_reports/original_trivy.json")), indent=2))
     grype_raw = html.escape(json.dumps(json.load(open("scan_reports/original_grype.json")), indent=2))
 
+    shared_cves_detailed = {
+        cve: (trivy_cves.get(cve) if isinstance(trivy_cves.get(cve), dict)
+              else grype_cves.get(cve) if isinstance(grype_cves.get(cve), dict)
+              else {"type": "unknown"})
+        for cve in shared
+    }
+    trivy_unique_detailed = {
+        cve: (trivy_cves[cve] if isinstance(trivy_cves[cve], dict) else {"type": "unknown"})
+        for cve in only_trivy
+    }
+    grype_unique_detailed = {
+        cve: (grype_cves[cve] if isinstance(grype_cves[cve], dict) else {"type": "unknown"})
+        for cve in only_grype
+    }
+
     html_report = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -329,15 +344,15 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
   <a class=\"pdf-button\" href=\"#\" onclick=\"window.print()\">📄 Export to PDF</a>
 
   <h2 id=\"shared\">Shared CVEs</h2>
-  {format_and_group_by_type({cve: (trivy_cves.get(cve) if isinstance(trivy_cves.get(cve), dict) else grype_cves.get(cve) if isinstance(grype_cves.get(cve), dict) else {"type": "unknown"}) for cve in shared})}
+  {format_and_group_by_type(shared_cves_detailed)}
 
   <h2 id=\"trivy\">Unique to Trivy</h2>
   <p><em>These CVEs were found only by Trivy. Common reasons include language-specific package detection, database update timing, or scan depth.</em></p>
-  {format_and_group_by_type({cve: (trivy_cves[cve] if isinstance(trivy_cves[cve], dict) else {"type": "unknown"}) for cve in only_trivy})}
+  {format_and_group_by_type(trivy_unique_detailed)}
 
   <h2 id=\"grype\">Unique to Grype</h2>
   <p><em>These CVEs were found only by Grype. Reasons often include OS-level detection strengths, mapping differences, or default config variances.</em></p>
-  {format_and_group_by_type({cve: (grype_cves[cve] if isinstance(grype_cves[cve], dict) else {"type": "unknown"}) for cve in only_grype})}
+  {format_and_group_by_type(grype_unique_detailed)}
 
   <button type=\"button\" class=\"collapsible\">🔍 View Raw Trivy JSON</button>
   <div class=\"content\"><pre>{trivy_raw}</pre></div>
@@ -368,7 +383,6 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     open_html = input("📁 Open local HTML report in browser? (y/n): ").strip().lower()
     if open_html == "y":
         webbrowser.open(f"file://{report_path.absolute()}")
-
 
 def explain_exit(msg):
     print(f"⚠️ {msg}")
