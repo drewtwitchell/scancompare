@@ -10,6 +10,7 @@ INSTALL_BIN="$HOME/.local/bin"
 INSTALL_LIB="$HOME/.local/lib/scancompare"
 SCRIPT_NAME="scancompare"
 SCRIPT_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
+TEMPLATE_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html"
 PYTHON_SCRIPT="$INSTALL_LIB/$SCRIPT_NAME"
 WRAPPER_SCRIPT="$INSTALL_BIN/$SCRIPT_NAME"
 ENV_GUARD_FILE="$HOME/.config/scancompare/env.shexport"
@@ -19,6 +20,30 @@ log() {
   if [[ "$VERBOSE" -eq 1 ]]; then
     echo "$@"
   fi
+}
+
+spinner() {
+  local pid=$!
+  local delay=0.1
+  local spinstr='⏳◴◷◶◵'
+  while ps -p $pid &> /dev/null; do
+    for c in $(echo $spinstr | grep -o .); do
+      printf " [%s]  " "$c"
+      sleep $delay
+      printf "\b\b\b\b\b\b"
+    done
+  done
+  printf "    \b\b\b\b"
+}
+
+tool_progress() {
+  TOOL_NAME="$1"
+  ACTION="$2"
+  echo -n "⏳ $ACTION $TOOL_NAME..."
+}
+
+tool_done() {
+  echo -e " \033[32m✔\033[0m"
 }
 
 log "🛠️  Starting $SCRIPT_NAME installation..."
@@ -54,7 +79,7 @@ echo "🔍 Attempting tool installation via Homebrew or fallback methods..."
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "🍺 Homebrew not found. Attempting to install..."
-    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
+    (NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null) & spinner || {
       echo "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
     }
   fi
