@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.7.2 
+# scancompare version 2.7.3 
 
 import os
 import sys
@@ -22,7 +22,7 @@ from io import BytesIO
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.7.2"
+VERSION = "2.7.3"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -649,7 +649,7 @@ def main(args):
 
         repo_name = args.repo_url.split('/')[-1].replace('.git', '')
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-        image_tag = f"scancompare-{repo_name}-{timestamp}"
+        image_tag = f"{repo_name}-{timestamp}"
 
         print(f"🐳 Building Docker image '{image_tag}' from {dockerfile_path}...")
         docker_build_cmd = ["docker", "build", "-t", image_tag, os.path.dirname(dockerfile_path)]
@@ -674,3 +674,79 @@ def main(args):
 
     if not validate_image_exists(image):
         explain_exit(f"Docker image '{image}' could not be found locally or remotely.")
+
+    trivy_path = scan_dir / "original_trivy.json"
+    grype_path = scan_dir / "original_grype.json"
+
+    print(f"\n🔹 Scanning with Trivy...")
+    trivy_version = get_version("trivy")
+    print(f"   🔢 Trivy version: {trivy_version}")
+    summary_lines.append(f"🔢 Trivy version: {trivy_version}")
+    if not run_scan("trivy", image, trivy_path, verbose=args.verbose):
+        explain_exit("Trivy scan failed or image not found.")
+    print(f"    ✔ Trivy scan saved to {trivy_path}")
+
+    print(f"\n🔹 Scanning with Grype...")
+    grype_version = get_version("grype")
+    print(f"   🔢 Grype version: {grype_version}")
+    summary_lines.append(f"🔢 Grype version: {grype_version}")
+    if not run_scan("grype", image, grype_path, verbose=args.verbose):
+        explain_exit("Grype scan failed or image not found.")
+    print(f"    ✔ Grype scan saved to {grype_path}")
+
+    trivy_data = extract_cves_with_severity(trivy_path)
+    grype_data = extract_cves_with_severity(grype_path)
+
+    shared, only_trivy, only_grype = display_summary(trivy_data, grype_data)
+
+    print_cves_by_severity("Unique to Grype", {c: grype_data[c] for c in only_grype})
+    print_cves_by_severity("Unique to Trivy", {c: trivy_data[c] for c in only_trivy})
+    print_cves_by_severity("Shared CVEs", {c: trivy_data.get(c, grype_data.get(c, "Unknown")) for c in shared})
+
+    if repo:
+        print(f"🛠️ Trivy and Grype scans complete. Preparing upload to GitHub Advanced Security (GHAS)...")
+        upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, verbose=args.verbose)
+        generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
+
+        if args.keep_data:
+            print("🛑 Cleanup skipped due to --keep-data. Keeping Docker image, cloned repo, and scan artifacts.")
+            summary_lines.append("🛑 Cleanup skipped due to --keep-data. Keeping Docker image, cloned repo, and scan artifacts.")
+        else:
+            print(f"\n🧼 Removing temporary Docker image '{image_tag}'...")
+            subprocess.run(["docker", "rmi", "-f", image_tag], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print("✅ Cleaned up temporary Docker image.")
+            summary_lines.append(f"✅ Removed temporary Docker image '{image_tag}'")
+
+            if temp_dir and os.path.isdir(temp_dir):
+                print(f"\n🧹 Removing temporary cloned repository from '{temp_dir}' (cloned from {args.repo_url})...")
+                shutil.rmtree(temp_dir)
+                print("✅ Cleaned up temporary cloned repository.")
+                summary_lines.append(f"✅ Removed temporary cloned repository from '{temp_dir}'")
+    else:
+        print(f"📄 Trivy and Grype scans complete. Generating local HTML report...")
+        generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
+        if not shown_ghas_hint:
+            hint = "💡 To enable GitHub Advanced Security upload, rerun with --repo-url <your-repo-url>"
+            print(hint)
+            summary_lines.append(hint)
+            shown_ghas_hint = True
+
+        if args.keep_data:
+            print("🛑 Cleanup skipped due to --keep-data. Keeping scan artifacts.")
+            summary_lines.append("🛑 Cleanup skipped due to --keep-data. Keeping scan artifacts.")
+        else:
+            print("🧹 Cleaning previous HTML, SARIF, and JSON scan files... Keeping only the latest report.")
+            summary_lines.append("🧹 Cleaned up old scan artifacts, kept only latest.")
+            for path in scan_dir.glob("*.*"):
+                if path.name not in {trivy_path.name, grype_path.name} and not path.name.endswith(".html"):
+                    path.unlink()
+
+    if summary_lines:
+        with open(summary_log, "a") as log_file:
+            for line in summary_lines:
+                log_file.write(line + "\n")
+        print(f"📝 Summary written to: {summary_log}")
+
+if __name__ == "__main__":
+    args = handle_cli_args()
+    main(args)
