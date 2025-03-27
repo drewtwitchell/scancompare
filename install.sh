@@ -10,10 +10,11 @@ PYTHON_SCRIPT="$INSTALL_LIB/$SCRIPT_NAME"
 TEMPLATE_FILE="$INSTALL_LIB/scan_template.html"
 WRAPPER_SCRIPT="$INSTALL_BIN/$SCRIPT_NAME"
 ENV_GUARD_FILE="$HOME/.config/scancompare/env.shexport"
+VENV_DIR="$INSTALL_LIB/venv"
 
 echo "🛠️  Starting $SCRIPT_NAME installation..."
 
-echo "📦 Installing required tools: python3, pip (for jinja2), trivy, grype"
+echo "📦 Installing required tools: python3, jinja2, trivy, grype"
 
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -85,11 +86,28 @@ if ! command -v python3 &> /dev/null; then
   fi
 fi
 
-if ! python3 -m pip install --user --break-system-packages jinja2; then
-  echo "❌ Failed to install jinja2. Please try running:"
-  echo "   python3 -m pip install --user --break-system-packages jinja2"
-  exit 1
+# Create virtualenv
+if [[ ! -d "$VENV_DIR" ]]; then
+  echo "🐍 Creating Python virtual environment..."
+  python3 -m venv "$VENV_DIR"
 fi
+
+source "$VENV_DIR/bin/activate"
+
+if ! python -c "import jinja2" &> /dev/null; then
+  echo "📦 Installing required Python module: jinja2"
+  if ! pip install jinja2; then
+    if command -v pipx &> /dev/null; then
+      echo "📦 Falling back to pipx..."
+      pipx install jinja2
+    else
+      echo "❌ Failed to install jinja2. Try manually using pip inside the virtual environment."
+      exit 1
+    fi
+  fi
+fi
+
+deactivate
 
 if ! command -v trivy &> /dev/null; then
   echo "❌ Trivy not found"
@@ -130,7 +148,8 @@ chmod +x "$PYTHON_SCRIPT"
 if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c \"$PYTHON_SCRIPT\" \"$WRAPPER_SCRIPT\")" -eq 0 ]]; then
   cat <<EOF > "$WRAPPER_SCRIPT"
 #!/bin/bash
-exec python3 "$PYTHON_SCRIPT" "\$@"
+source "$VENV_DIR/bin/activate"
+exec python "$PYTHON_SCRIPT" "\$@"
 EOF
   chmod +x "$WRAPPER_SCRIPT"
 fi
