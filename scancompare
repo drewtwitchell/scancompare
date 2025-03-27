@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.6.4 
+# scancompare version 2.6.5 
 
 import os
 import sys
@@ -22,7 +22,7 @@ from io import BytesIO
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.6.4"
+VERSION = "2.6.5"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -266,7 +266,8 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
         unknown = {}
         for cve, meta in cve_map.items():
             if not isinstance(meta, dict):
-                meta = {"type": "unknown"}
+                unknown[cve] = meta
+                continue
             pkg_type = meta.get("pkg_type") or meta.get("type") or "unknown"
             if pkg_type.lower() in ["os", "debian", "alpine", "rpm", "apk"]:
                 os_related[cve] = meta
@@ -400,15 +401,15 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
   <a class=\"pdf-button\" href=\"#\" onclick=\"window.print()\">📄 Export to PDF</a>
 
   <h2 id=\"shared\">Shared CVEs</h2>
-  {format_and_group_by_type({cve: trivy_cves.get(cve) or grype_cves.get(cve) or {"type": "unknown"} for cve in shared})}
+  {format_and_group_by_type({cve: (trivy_cves.get(cve) if isinstance(trivy_cves.get(cve), dict) else grype_cves.get(cve)) or {"type": "unknown"} for cve in shared})}
 
   <h2 id=\"trivy\">Unique to Trivy</h2>
   <p><em>These CVEs were found only by Trivy. Common reasons include language-specific package detection, database update timing, or scan depth.</em></p>
-  {format_and_group_by_type({cve: trivy_cves[cve] for cve in only_trivy})}
+  {format_and_group_by_type({cve: trivy_cves[cve] for cve in only_trivy if isinstance(trivy_cves[cve], dict)})}
 
   <h2 id=\"grype\">Unique to Grype</h2>
   <p><em>These CVEs were found only by Grype. Reasons often include OS-level detection strengths, mapping differences, or default config variances.</em></p>
-  {format_and_group_by_type({cve: grype_cves[cve] for cve in only_grype})}
+  {format_and_group_by_type({cve: grype_cves[cve] for cve in only_grype if isinstance(grype_cves[cve], dict)})}
 
   <button type=\"button\" class=\"collapsible\">🔍 View Raw Trivy JSON</button>
   <div class=\"content\"><pre>{trivy_raw}</pre></div>
