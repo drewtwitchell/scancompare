@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.6.5 
+# scancompare version 2.6.6 
 
 import os
 import sys
@@ -22,7 +22,7 @@ from io import BytesIO
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.6.5"
+VERSION = "2.6.6"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -266,7 +266,7 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
         unknown = {}
         for cve, meta in cve_map.items():
             if not isinstance(meta, dict):
-                unknown[cve] = meta
+                unknown[cve] = {"type": "unknown"}
                 continue
             pkg_type = meta.get("pkg_type") or meta.get("type") or "unknown"
             if pkg_type.lower() in ["os", "debian", "alpine", "rpm", "apk"]:
@@ -289,7 +289,6 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     report_name = f"scan_report_{image.replace(':', '_')}_{timestamp}.html"
     report_path = Path("scan_reports") / report_name
 
-    # Properly escape raw JSON
     trivy_raw = html.escape(json.dumps(json.load(open("scan_reports/original_trivy.json")), indent=2))
     grype_raw = html.escape(json.dumps(json.load(open("scan_reports/original_grype.json")), indent=2))
 
@@ -299,101 +298,30 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
   <meta charset=\"UTF-8\">
   <title>ScanCompare Report</title>
   <style>
-    body {{
-      font-family: Arial, sans-serif;
-      padding: 40px;
-      background-color: #f9f9f9;
-      color: #333;
-    }}
-    h1, h2, h3, h4 {{
-      color: #222;
-    }}
-    ul {{
-      line-height: 1.6;
-    }}
-    pre {{
-      background: #eee;
-      padding: 10px;
-      border-left: 4px solid #4CAF50;
-      overflow-x: auto;
-    }}
-    .pdf-button {{
-      display: inline-block;
-      margin: 30px 0;
-      padding: 10px 20px;
-      background: #4CAF50;
-      color: white;
-      text-decoration: none;
-      border-radius: 5px;
-    }}
-    table {{
-      border-collapse: collapse;
-      margin-top: 10px;
-    }}
-    table td, table th {{
-      border: 1px solid #ccc;
-      padding: 6px 10px;
-      text-align: center;
-    }}
-    a {{
-      color: #0077cc;
-      text-decoration: none;
-    }}
-    a:hover {{
-      text-decoration: underline;
-    }}
-    .collapsible {{
-      background-color: #eee;
-      color: #333;
-      cursor: pointer;
-      padding: 12px;
-      width: 100%;
-      border: none;
-      text-align: left;
-      outline: none;
-      font-size: 15px;
-      margin-top: 20px;
-    }}
-    .active, .collapsible:hover {{
-      background-color: #ccc;
-    }}
-    .content {{
-      padding: 0 18px;
-      display: none;
-      overflow: hidden;
-      background-color: #f1f1f1;
-      margin-bottom: 20px;
-    }}
-    .content pre {{
-      max-height: 400px;
-      overflow: auto;
-    }}
+    body {{ font-family: Arial, sans-serif; padding: 40px; background-color: #f9f9f9; color: #333; }}
+    h1, h2, h3, h4 {{ color: #222; }}
+    ul {{ line-height: 1.6; }}
+    pre {{ background: #eee; padding: 10px; border-left: 4px solid #4CAF50; overflow-x: auto; }}
+    .pdf-button {{ display: inline-block; margin: 30px 0; padding: 10px 20px; background: #4CAF50; color: white; text-decoration: none; border-radius: 5px; }}
+    table {{ border-collapse: collapse; margin-top: 10px; }}
+    table td, table th {{ border: 1px solid #ccc; padding: 6px 10px; text-align: center; }}
+    a {{ color: #0077cc; text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+    .collapsible {{ background-color: #eee; color: #333; cursor: pointer; padding: 12px; width: 100%; border: none; text-align: left; outline: none; font-size: 15px; margin-top: 20px; }}
+    .active, .collapsible:hover {{ background-color: #ccc; }}
+    .content {{ padding: 0 18px; display: none; overflow: hidden; background-color: #f1f1f1; margin-bottom: 20px; }}
+    .content pre {{ max-height: 400px; overflow: auto; }}
   </style>
 </head>
 <body>
   <h1>Scan Report for {image}</h1>
-  <p><strong>Trivy version:</strong> {trivy_version} &nbsp;&nbsp;&nbsp; 
-     <strong>Grype version:</strong> {grype_version}</p>
+  <p><strong>🛡️ Trivy version:</strong> {trivy_version} &nbsp;&nbsp;&nbsp; 
+     <strong>🛡️ Grype version:</strong> {grype_version}</p>
 
   <table>
-    <tr>
-      <th>Tool</th>
-      <th>Total</th>
-      <th>Only in Tool</th>
-      <th>Shared</th>
-    </tr>
-    <tr>
-      <td>Grype</td>
-      <td>{len(grype_cves)}</td>
-      <td><a href=\"#grype\">{len(only_grype)}</a></td>
-      <td><a href=\"#shared\">{len(shared)}</a></td>
-    </tr>
-    <tr>
-      <td>Trivy</td>
-      <td>{len(trivy_cves)}</td>
-      <td><a href=\"#trivy\">{len(only_trivy)}</a></td>
-      <td><a href=\"#shared\">{len(shared)}</a></td>
-    </tr>
+    <tr><th>Tool</th><th>Total</th><th>Only in Tool</th><th>Shared</th></tr>
+    <tr><td>Grype</td><td>{len(grype_cves)}</td><td><a href=\"#grype\">{len(only_grype)}</a></td><td><a href=\"#shared\">{len(shared)}</a></td></tr>
+    <tr><td>Trivy</td><td>{len(trivy_cves)}</td><td><a href=\"#trivy\">{len(only_trivy)}</a></td><td><a href=\"#shared\">{len(shared)}</a></td></tr>
   </table>
 
   <p><em>Note: Disparities between tools are due to differences in vulnerability databases, package detection logic, severity mappings, and scan scopes. The following breakdown clarifies shared coverage and potential blind spots.</em></p>
@@ -401,15 +329,15 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
   <a class=\"pdf-button\" href=\"#\" onclick=\"window.print()\">📄 Export to PDF</a>
 
   <h2 id=\"shared\">Shared CVEs</h2>
-  {format_and_group_by_type({cve: (trivy_cves.get(cve) if isinstance(trivy_cves.get(cve), dict) else grype_cves.get(cve)) or {"type": "unknown"} for cve in shared})}
+  {format_and_group_by_type({cve: (trivy_cves.get(cve) if isinstance(trivy_cves.get(cve), dict) else grype_cves.get(cve) if isinstance(grype_cves.get(cve), dict) else {"type": "unknown"}) for cve in shared})}
 
   <h2 id=\"trivy\">Unique to Trivy</h2>
   <p><em>These CVEs were found only by Trivy. Common reasons include language-specific package detection, database update timing, or scan depth.</em></p>
-  {format_and_group_by_type({cve: trivy_cves[cve] for cve in only_trivy if isinstance(trivy_cves[cve], dict)})}
+  {format_and_group_by_type({cve: (trivy_cves[cve] if isinstance(trivy_cves[cve], dict) else {"type": "unknown"}) for cve in only_trivy})}
 
   <h2 id=\"grype\">Unique to Grype</h2>
   <p><em>These CVEs were found only by Grype. Reasons often include OS-level detection strengths, mapping differences, or default config variances.</em></p>
-  {format_and_group_by_type({cve: grype_cves[cve] for cve in only_grype if isinstance(grype_cves[cve], dict)})}
+  {format_and_group_by_type({cve: (grype_cves[cve] if isinstance(grype_cves[cve], dict) else {"type": "unknown"}) for cve in only_grype})}
 
   <button type=\"button\" class=\"collapsible\">🔍 View Raw Trivy JSON</button>
   <div class=\"content\"><pre>{trivy_raw}</pre></div>
