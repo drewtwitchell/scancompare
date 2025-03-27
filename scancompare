@@ -594,6 +594,14 @@ def main(args):
     if args.uninstall:
         uninstall_scancompare()
 
+    if args.version:
+        print(f"📦 scancompare version {get_current_version()}")
+        sys.exit(0)
+
+    if args.update:
+        check_latest_version(only_check=True)
+        sys.exit(0)
+
     if not args.image and not args.repo_url:
         print("Usage: scancompare <image> [--repo-url <repo>, --keep-data, --verbose, --version, --update, --uninstall]")
         print("\nFlags:")
