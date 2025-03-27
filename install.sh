@@ -3,6 +3,8 @@ set -e
 
 VERBOSE=0
 [[ "$1" == "--verbose" ]] && VERBOSE=1 && shift
+FORCE_REINSTALL=0
+[[ "$1" == "--force-reinstall" ]] && FORCE_REINSTALL=1 && shift
 
 INSTALL_BIN="$HOME/.local/bin"
 INSTALL_LIB="$HOME/.local/lib/scancompare"
@@ -23,6 +25,27 @@ log() {
 
 log "🛠️  Starting $SCRIPT_NAME installation..."
 echo "📦 Installing required tools: python3, jinja2, trivy, grype"
+
+if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
+  echo "🔍 scancompare is already installed. Checking for updates and verifying dependencies..."
+  if scancompare --update; then
+    echo "✅ scancompare updated. Verifying Trivy and Grype..."
+    for TOOL in trivy grype; do
+      if ! command -v "$TOOL" &> /dev/null; then
+        echo "⚠️ $TOOL not found. Reinstalling..."
+        FORCE_REINSTALL=1
+      fi
+    done
+    if [[ "$FORCE_REINSTALL" -eq 0 ]]; then
+      echo "✅ All tools verified. Installation not needed."
+      exit 0
+    else
+      echo "♻️ Dependencies missing. Continuing with forced reinstall."
+    fi
+  else
+    echo "⚠️  Failed to run 'scancompare --update'. Forcing reinstall..."
+  fi
+fi
 
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then

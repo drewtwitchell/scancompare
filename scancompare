@@ -591,6 +591,9 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
         print(f"\033[4;36m🔗 View code scanning results on GHAS: {gh_link}\033[0m\n")
 
 def main(args):
+    if args.uninstall:
+        uninstall_scancompare()
+
     if not args.image and not args.repo_url:
         print("Usage: scancompare <image> [--repo-url <repo>, --keep-data, --verbose, --version, --update, --uninstall]")
         print("\nFlags:")
