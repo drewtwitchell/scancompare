@@ -98,16 +98,15 @@ def update_script(new_code):
 
         os.replace(temp_path, script_path)
 
-        # Ensure template is present
-        if not template_path.exists():
-            print("📄 scan_template.html missing — restoring latest version...")
-            template_url = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html"
-            try:
-                import urllib.request
-                urllib.request.urlretrieve(template_url, template_path)
-                print(f"✅ scan_template.html downloaded to {template_path}")
-            except Exception as e:
-                print(f"❌ Failed to download template: {e}")
+        # Always fetch latest template
+        print("📄 Updating scan_template.html to latest version...")
+        template_url = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html"
+        try:
+            import urllib.request
+            urllib.request.urlretrieve(template_url, template_path)
+            print(f"✅ scan_template.html updated at {template_path}")
+        except Exception as e:
+            print(f"❌ Failed to update scan_template.html: {e}")
 
         # Ensure jinja2 is installed after update
         try:
