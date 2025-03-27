@@ -85,11 +85,10 @@ if ! command -v python3 &> /dev/null; then
   fi
 fi
 
-if ! python3 -c "import jinja2" &> /dev/null; then
-  echo "📦 Installing required Python module: jinja2"
-  python3 -m pip install --user jinja2 || {
-    echo "❌ Failed to install jinja2. Please install it manually with 'pip3 install --user jinja2'"; exit 1;
-  }
+if ! python3 -m pip install --user --break-system-packages jinja2; then
+  echo "❌ Failed to install jinja2. Please try running:"
+  echo "   python3 -m pip install --user --break-system-packages jinja2"
+  exit 1
 fi
 
 if ! command -v trivy &> /dev/null; then
