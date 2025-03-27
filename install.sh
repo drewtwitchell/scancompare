@@ -22,24 +22,10 @@ log() {
   fi
 }
 
-spinner() {
-  local pid=$!
-  local delay=0.1
-  local spinstr=('⏳' '◴' '◷' '◶' '◵')
-  local i=0
-  while kill -0 $pid 2>/dev/null; do
-    i=$(((i + 1) % 5))
-    printf " [%s]  " "${spinstr[$i]}"
-    sleep $delay
-    printf "\b\b\b\b\b\b"
-  done
-  printf "    \b\b\b\b"
-}
-
 tool_progress() {
   TOOL_NAME="$1"
   ACTION="$2"
-  echo -n "⏳ $ACTION $TOOL_NAME..."
+  echo -n "$ACTION $TOOL_NAME..."
 }
 
 tool_done() {
@@ -79,7 +65,7 @@ echo "🔍 Attempting tool installation via Homebrew or fallback methods..."
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "🍺 Homebrew not found. Attempting to install..."
-    (NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null) & spinner || {
+    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
       echo "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
     }
   fi
@@ -135,7 +121,6 @@ fi
 mkdir -p "$INSTALL_BIN"
 mkdir -p "$INSTALL_LIB"
 
-# Install Python if missing
 if ! command -v python3 &> /dev/null; then
   echo "❌ Python3 not found"
   if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -157,16 +142,14 @@ if ! command -v python3 &> /dev/null; then
   fi
 fi
 
-# Setup Python virtual environment
 if [[ ! -d "$VENV_DIR" ]]; then
   tool_progress "virtual environment" "Creating"
-  (python3 -m venv "$VENV_DIR") & spinner
+  python3 -m venv "$VENV_DIR" &> /dev/null
   tool_done
 fi
 
 source "$VENV_DIR/bin/activate"
 
-# Install jinja2 in virtual environment if missing
 if ! python -c "import jinja2" &> /dev/null; then
   tool_progress "jinja2" "Installing"
   if [[ "$VERBOSE" -eq 1 ]]; then
@@ -183,28 +166,26 @@ fi
 
 deactivate
 
-# Install Trivy if missing
 if ! command -v trivy &> /dev/null; then
   tool_progress "Trivy" "Installing"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     command -v brew &> /dev/null || install_homebrew
     brew install trivy &> /dev/null || echo "⚠️ Failed to install Trivy with Homebrew. Please install manually."
   else
-    (curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN") & spinner || {
+    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
       echo "❌ Failed to install Trivy via curl."; exit 1;
     }
   fi
   tool_done
 fi
 
-# Install Grype if missing
 if ! command -v grype &> /dev/null; then
   tool_progress "Grype" "Installing"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     command -v brew &> /dev/null || install_homebrew
     brew install grype &> /dev/null || echo "⚠️ Failed to install Grype with Homebrew. Please install manually."
   else
-    (curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN") & spinner || {
+    curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
       echo "❌ Failed to install Grype via curl."; exit 1;
     }
   fi
@@ -212,11 +193,7 @@ if ! command -v grype &> /dev/null; then
 fi
 
 tool_progress "$SCRIPT_NAME script" "Downloading"
-(curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT") & spinner
-tool_done
-
-tool_progress "scan_template.html" "Downloading"
-(curl -fsSL "$TEMPLATE_URL" -o "$TEMPLATE_FILE") & spinner
+curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" &> /dev/null
 tool_done
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
@@ -240,7 +217,7 @@ else
   echo "🔹 Wrapper script already exists. Skipping."
 fi
 
-echo "✅ Installed $SCRIPT_NAME"
+echo "✅ Installed $SCRIPT_NAME version $VERSION"
 
 if ! command -v scancompare &> /dev/null; then
   echo ""
