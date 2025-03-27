@@ -49,6 +49,8 @@ if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
   fi
 fi
 
+echo "🔍 Attempting tool installation via Homebrew or fallback methods..."
+
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "🍺 Homebrew not found. Attempting to install..."
