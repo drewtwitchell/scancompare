@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 0.0.6 
+# scancompare version 0.0.7 
 
 import os
 import sys
@@ -23,11 +23,17 @@ from jinja2 import Environment, FileSystemLoader
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "0.0.6"
+VERSION = "0.0.7"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
 
+# tool_progress and tool_done functions
+def tool_progress(TOOL_NAME, ACTION):
+    print(f"{ACTION} {TOOL_NAME}...", end=" ")
+
+def tool_done():
+    print(" \033[32m✔\033[0m")
 
 def get_current_version():
     return VERSION
@@ -38,7 +44,9 @@ def check_latest_version(only_check=False):
         return
 
     if not already_updated:
-        print("🔎 Checking for updates...")
+        tool_progress("🔎 Checking for updates...")
+        print("🔎 Checking for updates...")  # This could be removed or replaced with tool_progress's output
+        tool_done()
 
     try:
         api_url = "https://api.github.com/repos/drewtwitchell/scancompare/contents/scancompare"
@@ -62,11 +70,15 @@ def check_latest_version(only_check=False):
                 print(f"📦 scancompare version {current}")
                 sys.exit(0)
             else:
+                tool_progress(f"📦 Already using latest version ({current})")
                 print(f"📦 Already using latest version ({current})")
+                tool_done()
                 return
 
-        print(f"🔄 New version detected. Updating scancompare script...")
-        update_script(new_code)
+        tool_progress(f"🔄 New version detected. Updating scancompare script...")
+        update_script(new_code)  # This will handle the update, with its own progress steps
+        tool_done()
+
         print(f"✅ scancompare updated to version {latest}")
         print("♻️ Restarting with updated version...")
 
@@ -102,13 +114,13 @@ def update_script(new_code):
         os.replace(temp_path, script_path)
 
         # Always fetch latest scan_template.html
-        print("📄 Updating scan_template.html to latest version...")
+        tool_progress("scan_template.html", "Updating")
         template_url = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html"
         try:
             with urllib.request.urlopen(template_url) as response:
                 template_html = response.read().decode("utf-8")
                 template_path.write_text(template_html)
-            print(f"✅ scan_template.html updated at {template_path}")
+            tool_done()  # Complete scan_template.html update
         except Exception as e:
             print(f"❌ Failed to update scan_template.html: {e}")
 
@@ -116,8 +128,9 @@ def update_script(new_code):
         try:
             import jinja2  # noqa: F401
         except ImportError:
-            print("📦 Installing required Python module: jinja2")
+            tool_progress("jinja2", "Installing")
             subprocess.run([sys.executable, "-m", "pip", "install", "--user", "jinja2"], check=True)
+            tool_done()  # Complete jinja2 installation
 
     except Exception as e:
         print(f"❌ Critical: failed to update script: {e}")
@@ -130,7 +143,8 @@ def get_script_path():
         return sys.argv[0]
     
 def uninstall_scancompare():
-    print("🧹 Uninstalling scancompare...")
+    tool_progress("🧹 Uninstalling scancompare...")
+
     paths_removed = False
 
     lib_dir = Path.home() / ".local" / "lib" / "scancompare"
@@ -138,37 +152,51 @@ def uninstall_scancompare():
     wrapper_path = Path.home() / ".local" / "bin" / "scancompare"
     venv_path = lib_dir / "venv"
 
+    # Removing script and wrapper paths
     for path in [script_path, wrapper_path]:
         if path.exists():
+            tool_progress(f"    🗑️ Removing {path}...")
             path.unlink()
-            print(f"🗑️ Removed {path}")
+            print(f"    🗑️ Removed {path}")
             paths_removed = True
+            tool_done()  # Completed this task
 
+    # Removing virtual environment
     if venv_path.exists() and venv_path.is_dir():
+        tool_progress(f"    🧹 Removing Python virtual environment: {venv_path}...")
         shutil.rmtree(venv_path)
-        print(f"🧹 Removed Python virtual environment: {venv_path}")
+        print(f"    🧹 Removed Python virtual environment: {venv_path}")
+        tool_done()  # Completed this task
 
+    # Removing scan_reports directory
     reports_dir = Path("scan_reports")
     if reports_dir.exists():
+        tool_progress(f"    🗑️ Removing scan_reports directory...")
         shutil.rmtree(reports_dir)
-        print("🗑️ Removed scan_reports directory")
+        print("    🗑️ Removed scan_reports directory")
+        tool_done()  # Completed this task
 
+    # Cleaning up shell config in profile files
     profile_files = [".zshrc", ".bashrc", ".profile", ".bash_profile", ".zprofile"]
     for profile in profile_files:
         full_path = Path.home() / profile
         if full_path.exists():
+            tool_progress(f"    🧽 Cleaning up shell config in {full_path}...")
             content = full_path.read_text()
             new_content = "\n".join(
                 line for line in content.splitlines()
                 if 'export PATH="$HOME/.local/bin:$PATH"' not in line and 'source "$HOME/.config/scancompare/env.shexport"' not in line
             )
             full_path.write_text(new_content)
-            print(f"🧽 Cleaned up shell config in {full_path}")
+            print(f"    🧽 Cleaned up shell config in {full_path}")
+            tool_done()  # Completed this task
 
     if paths_removed:
         print("✅ scancompare successfully uninstalled.")
     else:
         print("ℹ️ scancompare was not found or already uninstalled.")
+    
+    tool_done()  # Mark uninstallation as completed
     sys.exit(0)
 
 def handle_cli_args():
@@ -249,7 +277,6 @@ def extract_cves_with_severity(file_path):
         print(f"⚠️ Failed to parse {file_path}: {e}")
         return {}
 
-
 def group_by_severity(cve_map):
     grouped = {}
     for cve_id, meta in cve_map.items():
@@ -273,11 +300,17 @@ def display_summary(trivy_cves, grype_cves):
     only_trivy = set(trivy_cves) - set(grype_cves)
     only_grype = set(grype_cves) - set(trivy_cves)
 
-    print("\n📊 CLI Summary Report\n")
-    print("Tool       | Total | Only in Tool | Shared")
-    print("-----------|-------|---------------|--------")
-    print(f"Grype      | {len(grype_cves)}   | {len(only_grype)}             | {len(shared)}")
-    print(f"Trivy      | {len(trivy_cves)}   | {len(only_trivy)}            | {len(shared)}")
+    # Indicating the start of the summary report generation
+    tool_progress(f"    📊 Generating CLI Summary Report...")
+
+    # The actual summary output
+    print("\n    Tool       | Total | Only in Tool | Shared")
+    print("    -----------|-------|---------------|--------")
+    print(f"    Grype      | {len(grype_cves)}   | {len(only_grype)}             | {len(shared)}")
+    print(f"    Trivy      | {len(trivy_cves)}   | {len(only_trivy)}            | {len(shared)}")
+
+    # Marking the completion of the summary report
+    tool_done()  # Mark the summary generation as done
 
     return shared, only_trivy, only_grype
 
@@ -358,16 +391,18 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     template_path = template_dir / "scan_template.html"
 
     if not template_path.exists():
-        print("📄 scan_template.html missing — restoring latest version...")
+        tool_progress("📄 scan_template.html missing — restoring latest version...")
         try:
             urllib.request.urlretrieve(
                 "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html",
                 template_path
             )
+            tool_done()
             print(f"✅ scan_template.html downloaded to {template_path}")
         except Exception as e:
             print(f"❌ Failed to download template: {e}")
-
+    else:
+        tool_done()
     env = Environment(loader=FileSystemLoader(template_dir))
     template = env.get_template("scan_template.html")
 
@@ -489,18 +524,6 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
 
         temp_repo_dir = Path("scan_reports").resolve()
 
-        if hasattr(args, "cloned_repo_path"):
-            temp_repo_dir = Path(args.cloned_repo_path)
-            print(f"📁 Using cloned repo at {temp_repo_dir} for Git commit info.")
-        elif args.repo_url:
-            repo_name = args.repo_url.split("/")[-1].replace(".git", "")
-            guessed_path = Path.home() / ".scancompare_clones" / repo_name
-            if guessed_path.exists():
-                temp_repo_dir = guessed_path
-                print(f"📁 Using guessed repo path: {temp_repo_dir}")
-            else:
-                print(f"⚠️ Could not find local clone directory at {guessed_path}, using fallback for commit info.")
-
         def run_git(cmd):
             try:
                 return subprocess.check_output(cmd, cwd=temp_repo_dir, text=True).strip()
@@ -550,6 +573,7 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
             ], check=True,
                stdout=None if verbose else subprocess.DEVNULL,
                stderr=None if verbose else subprocess.DEVNULL)
+            tool_done()  # After the SARIF upload, mark it as done.
             return True
         except subprocess.CalledProcessError as e:
             print(f"❌ GH CLI failed for {tool_name}: {e}")
@@ -567,26 +591,32 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
     uploads = []
 
     try:
+        tool_progress("grype", "Generating SARIF for grype...")
         subprocess.run(["grype", image, "-o", "sarif", "--file", str(grype_sarif_path)], check=True,
                        stdout=None if verbose else subprocess.DEVNULL,
                        stderr=None if verbose else subprocess.DEVNULL)
         if upload_sarif(grype_sarif_path, "grype"):
             uploads.append("grype")
+        tool_done()  # Completed grype SARIF generation
     except Exception as e:
         print(f"⚠️ Failed to generate SARIF with grype: {e}")
 
     try:
+        tool_progress("trivy", "Generating SARIF for trivy...")
         subprocess.run(["trivy", "image", "-f", "sarif", "-o", str(trivy_sarif_path), image], check=True,
                        stdout=None if verbose else subprocess.DEVNULL,
                        stderr=None if verbose else subprocess.DEVNULL)
         if upload_sarif(trivy_sarif_path, "trivy"):
             uploads.append("trivy")
+        tool_done()  # Completed trivy SARIF generation
     except Exception as e:
         print(f"⚠️ Failed to generate SARIF with trivy: {e}")
 
     if diff_sarif_path.exists():
+        tool_progress("scancompare", "Generating diff SARIF (trivy vs grype)...")
         if upload_sarif(diff_sarif_path, "scancompare"):
-            uploads.append("diff")
+            uploads.append("diff (trivy vs grype)")
+        tool_done()  # Completed diff SARIF generation
 
     if uploads:
         print(f"\n✅ Uploaded SARIF to GHAS: {', '.join(uploads)}")
@@ -633,12 +663,15 @@ def main(args):
 
     if args.repo_url:
         temp_dir = tempfile.mkdtemp()
-        print(f"📥 Cloning {args.repo_url} into temporary directory...")
+
+        # Clone the repository with progress
+        tool_progress(f"📥 Cloning {args.repo_url} into temporary directory...")
         git_clone_cmd = ["git", "clone", args.repo_url, temp_dir]
         if args.verbose:
             subprocess.run(git_clone_cmd, check=True)
         else:
             subprocess.run(git_clone_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        tool_done()  # Mark cloning as done
 
         args.cloned_repo_path = temp_dir
 
@@ -652,20 +685,22 @@ def main(args):
                 break
 
         if not dockerfile_path:
-            explain_exit("No Dockerfile found in the provided repository.")
+            print("❌ No Dockerfile found in the provided repository. Exiting.")
+            sys.exit(1)  # Exit if Dockerfile is not found
 
         repo_name = args.repo_url.split('/')[-1].replace('.git', '')
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
         image_tag = f"{repo_name}-{timestamp}"
 
-        print(f"🐳 Building Docker image '{image_tag}' from {dockerfile_path}...")
+        # Docker image build as a sub-process of cloning the repo (Indented)
+        tool_progress(f"    🐳 Building Docker image '{image_tag}' from {dockerfile_path}...")
         docker_build_cmd = ["docker", "build", "-t", image_tag, os.path.dirname(dockerfile_path)]
         try:
             if args.verbose:
                 subprocess.run(docker_build_cmd, check=True)
             else:
                 subprocess.run(docker_build_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print(f"✅ Docker image '{image_tag}' built successfully.")
+            tool_done()  # Mark Docker build as done
             print(f"🛡️ Starting vulnerability scans against image: {image_tag}")
             summary_lines.append(f"🛡️ Scanning built image: {image_tag}")
         except subprocess.CalledProcessError:
@@ -685,21 +720,25 @@ def main(args):
     trivy_path = scan_dir / "original_trivy.json"
     grype_path = scan_dir / "original_grype.json"
 
-    print(f"\n🔹 Scanning with Trivy...")
+    # Trivy scan as a sub-process of "Starting vulnerability scans"
+    tool_progress(f"    🔹 Scanning with Trivy...")
     trivy_version = get_version("trivy")
-    print(f"   🔢 Trivy version: {trivy_version}")
+    print(f"       🔢 Trivy version: {trivy_version}")
     summary_lines.append(f"🔢 Trivy version: {trivy_version}")
     if not run_scan("trivy", image, trivy_path, verbose=args.verbose):
         explain_exit("Trivy scan failed or image not found.")
-    print(f"    ✔ Trivy scan saved to {trivy_path}")
+    print(f"       ✔ Trivy scan saved to {trivy_path}")
+    tool_done()  # Mark Trivy scan as done
 
-    print(f"\n🔹 Scanning with Grype...")
+    # Grype scan as a sub-process of "Starting vulnerability scans"
+    tool_progress(f"    🔹 Scanning with Grype...")
     grype_version = get_version("grype")
-    print(f"   🔢 Grype version: {grype_version}")
+    print(f"       🔢 Grype version: {grype_version}")
     summary_lines.append(f"🔢 Grype version: {grype_version}")
     if not run_scan("grype", image, grype_path, verbose=args.verbose):
         explain_exit("Grype scan failed or image not found.")
-    print(f"    ✔ Grype scan saved to {grype_path}")
+    print(f"       ✔ Grype scan saved to {grype_path}")
+    tool_done()  # Mark Grype scan as done
 
     trivy_data = extract_cves_with_severity(trivy_path)
     grype_data = extract_cves_with_severity(grype_path)
@@ -713,25 +752,38 @@ def main(args):
     if repo:
         print(f"🛠️ Trivy and Grype scans complete. Preparing upload to GitHub Advanced Security (GHAS)...")
         upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, verbose=args.verbose)
+
+        # Generate HTML report with progress
+        tool_progress(f"📄 Generating HTML report...")
         generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
+        tool_done()  # Mark HTML report generation as done
+
+        # Cleanup: Show progress with tool_progress
+        tool_progress(f"🧹 Cleaning up old scan artifacts...")  # Replacing print with tool_progress
+        summary_lines.append("🧹 Cleaned up old scan artifacts.")
+        for path in scan_dir.glob("*.*"):
+            if path.name not in {trivy_path.name, grype_path.name} and not path.name.endswith(".html"):
+                path.unlink()
+        tool_done()  # Mark cleanup as done
 
         if args.keep_data:
             print("🛑 Cleanup skipped due to --keep-data. Keeping Docker image, cloned repo, and scan artifacts.")
             summary_lines.append("🛑 Cleanup skipped due to --keep-data. Keeping Docker image, cloned repo, and scan artifacts.")
         else:
-            print(f"\n🧼 Removing temporary Docker image '{image_tag}'...")
+            # Now, cleaning up Docker image and repo as part of cleanup sub-process
+            tool_progress(f"    🧼 Removing temporary Docker image '{image_tag}'...")
             subprocess.run(["docker", "rmi", "-f", image_tag], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print("✅ Cleaned up temporary Docker image.")
-            summary_lines.append(f"✅ Removed temporary Docker image '{image_tag}'")
+            tool_done()  # Mark Docker image removal as done
 
             if temp_dir and os.path.isdir(temp_dir):
-                print(f"\n🧹 Removing temporary cloned repository from '{temp_dir}' (cloned from {args.repo_url})...")
+                tool_progress(f"    🧹 Removing temporary cloned repository from '{temp_dir}' (cloned from {args.repo_url})...")
                 shutil.rmtree(temp_dir)
-                print("✅ Cleaned up temporary cloned repository.")
-                summary_lines.append(f"✅ Removed temporary cloned repository from '{temp_dir}'")
+                tool_done()  # Mark repository removal as done
     else:
-        print(f"📄 Trivy and Grype scans complete. Generating local HTML report...")
+        tool_progress(f"📄 Generating local HTML report...")  # Show progress for HTML report generation
         generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
+        tool_done()  # Mark HTML report generation as done
+
         if not shown_ghas_hint:
             hint = "💡 To enable GitHub Advanced Security upload, rerun with --repo-url <your-repo-url>"
             print(hint)
