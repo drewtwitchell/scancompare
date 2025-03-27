@@ -50,7 +50,7 @@
       display: flex;
       gap: 10px;
     }
-    .controls button {
+    .controls button, .controls select {
       padding: 6px 12px;
       font-size: 14px;
       cursor: pointer;
@@ -58,29 +58,12 @@
       border: none;
     }
     .dark-toggle {
-      background: none;
-      font-size: 20px;
+      background: #444;
+      color: #fff;
     }
-    .collapsible {
-      background-color: #eee;
-      color: #333;
-      cursor: pointer;
-      padding: 10px;
-      width: 100%;
-      text-align: left;
-      border: none;
-      font-size: 16px;
-      margin-top: 12px;
-      border-radius: 4px;
-    }
-    .active, .collapsible:hover {
-      background-color: #ccc;
-    }
-    .content {
-      display: none;
-      background-color: #f1f1f1;
-      overflow: hidden;
-      padding: 0 16px 16px;
+    .export-btn {
+      background: #333;
+      color: #fff;
     }
     pre {
       background: #eee;
@@ -100,9 +83,9 @@
     <div class="controls">
       <div><button class="dark-toggle" onclick="toggleDarkMode()">🌙</button></div>
       <div class="controls-right">
-        <button onclick="downloadRaw('trivy')">⬇️ Download Trivy JSON</button>
-        <button onclick="downloadRaw('grype')">⬇️ Download Grype JSON</button>
-        <button onclick="window.print()">📄 Export PDF</button>
+        <a id="downloadTrivy" class="export-btn" download="original_trivy.json">⬇️ Trivy JSON</a>
+        <a id="downloadGrype" class="export-btn" download="original_grype.json">⬇️ Grype JSON</a>
+        <button class="export-btn" onclick="window.print()">📄 Export PDF</button>
       </div>
     </div>
 
@@ -112,32 +95,46 @@
 
     <canvas id="severityChart"></canvas>
 
-    <table>
-      <tr>
-        <th>Tool</th>
-        <th>Total</th>
-        <th><a href="#grype">Only in Tool</a></th>
-        <th><a href="#shared">Shared</a></th>
-        <th><a href="#Critical">Critical</a></th>
-        <th><a href="#High">High</a></th>
-        <th><a href="#Medium">Medium</a></th>
-        <th><a href="#Low">Low</a></th>
-        <th><a href="#Unknown">Unknown</a></th>
-      </tr>
-      <tr>
-        <td>Grype</td>
-        <td>{{ grype_count + shared_count }}</td>
-        <td><a href="#grype">{{ grype_count }}</a></td>
-        <td><a href="#shared">{{ shared_count }}</a></td>
-        <td colspan="5"></td>
-      </tr>
-      <tr>
-        <td>Trivy</td>
-        <td>{{ trivy_count + shared_count }}</td>
-        <td><a href="#trivy">{{ trivy_count }}</a></td>
-        <td><a href="#shared">{{ shared_count }}</a></td>
-        <td colspan="5"></td>
-      </tr>
+    <div>
+      <label for="severityFilter">Filter by Severity: </label>
+      <select id="severityFilter" onchange="filterBySeverity()">
+        <option value="">All</option>
+        <option value="Critical">Critical</option>
+        <option value="High">High</option>
+        <option value="Medium">Medium</option>
+        <option value="Low">Low</option>
+      </select>
+    </div>
+
+    <table id="cveTable">
+      <thead>
+        <tr>
+          <th>Tool</th>
+          <th>Total</th>
+          <th><a href="#grype">Unique to Grype</a></th>
+          <th><a href="#trivy">Unique to Trivy</a></th>
+          <th><a href="#shared">Shared</a></th>
+          <th><a href="#Critical">Critical</a></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Grype</td>
+          <td>{{ grype_count + shared_count }}</td>
+          <td><a href="#grype">{{ grype_count }}</a></td>
+          <td>-</td>
+          <td><a href="#shared">{{ shared_count }}</a></td>
+          <td><a href="#Critical">🔍</a></td>
+        </tr>
+        <tr>
+          <td>Trivy</td>
+          <td>{{ trivy_count + shared_count }}</td>
+          <td>-</td>
+          <td><a href="#trivy">{{ trivy_count }}</a></td>
+          <td><a href="#shared">{{ shared_count }}</a></td>
+          <td><a href="#Critical">🔍</a></td>
+        </tr>
+      </tbody>
     </table>
 
     <h2 id="shared">Shared CVEs</h2>
@@ -178,22 +175,37 @@
       localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
     }
 
-    function downloadRaw(tool) {
-      const filename = tool === 'trivy' ? 'original_trivy.json' : 'original_grype.json';
-      const data = tool === 'trivy' ? `{{ trivy_raw }}` : `{{ grype_raw }}`;
-      const blob = new Blob([data], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }
-
+    // Handle dark mode persistence
     if (localStorage.getItem("darkMode") === "true") {
       document.body.classList.add("dark-mode");
+    }
+
+    // JSON blob download
+    document.getElementById("downloadTrivy").addEventListener("click", function(e) {
+      const blob = new Blob([`{{ trivy_raw }}`], { type: 'application/json' });
+      this.href = URL.createObjectURL(blob);
+    });
+
+    document.getElementById("downloadGrype").addEventListener("click", function(e) {
+      const blob = new Blob([`{{ grype_raw }}`], { type: 'application/json' });
+      this.href = URL.createObjectURL(blob);
+    });
+
+    // Filter CVEs by severity
+    function filterBySeverity() {
+      const filter = document.getElementById("severityFilter").value.toLowerCase();
+      const rows = document.querySelectorAll("#cveTable tbody tr");
+
+      rows.forEach(row => {
+        const severityColumn = row.querySelector("td:nth-child(6)"); // The Critical column
+        const severity = severityColumn ? severityColumn.textContent.trim().toLowerCase() : "";
+
+        if (filter && severity !== filter) {
+          row.style.display = "none";
+        } else {
+          row.style.display = "";
+        }
+      });
     }
   </script>
 </body>
