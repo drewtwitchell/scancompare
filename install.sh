@@ -5,7 +5,9 @@ INSTALL_BIN="$HOME/.local/bin"
 INSTALL_LIB="$HOME/.local/lib/scancompare"
 SCRIPT_NAME="scancompare"
 SCRIPT_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
+TEMPLATE_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html"
 PYTHON_SCRIPT="$INSTALL_LIB/$SCRIPT_NAME"
+TEMPLATE_PATH="$INSTALL_LIB/scan_template.html"
 WRAPPER_SCRIPT="$INSTALL_BIN/$SCRIPT_NAME"
 ENV_GUARD_FILE="$HOME/.config/scancompare/env.shexport"
 
@@ -79,28 +81,44 @@ mkdir -p "$INSTALL_LIB"
 # Check for Python
 command -v python3 &> /dev/null || { echo "❌ Python3 is required but not found."; exit 1; }
 
-# Trivy
+# Install Trivy if missing
+install_trivy() {
+  echo "⬇️  Installing Trivy..."
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    if command -v brew &> /dev/null; then
+      brew install trivy
+    else
+      curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN"
+    fi
+  else
+    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN"
+  fi
+}
+
+# Install Grype if missing
+install_grype() {
+  echo "⬇️  Installing Grype..."
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    if command -v brew &> /dev/null; then
+      brew install grype
+    else
+      curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN"
+    fi
+  else
+    curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN"
+  fi
+}
+
+# Check and install Trivy
 if ! command -v trivy &> /dev/null; then
   echo "❌ Trivy not found"
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    command -v brew &> /dev/null || install_homebrew
-    brew install trivy
-  else
-    echo "Install Trivy using your package manager"
-    exit 1
-  fi
+  install_trivy
 fi
 
-# Grype
+# Check and install Grype
 if ! command -v grype &> /dev/null; then
   echo "❌ Grype not found"
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    command -v brew &> /dev/null || install_homebrew
-    brew install grype
-  else
-    echo "Install Grype using your package manager"
-    exit 1
-  fi
+  install_grype
 fi
 
 # Download Python script
@@ -116,6 +134,10 @@ if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
   sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null || sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
 fi
 chmod +x "$PYTHON_SCRIPT"
+
+# Download HTML template
+echo "⬇️  Downloading scan_template.html..."
+curl -fsSL "$TEMPLATE_URL" -o "$TEMPLATE_PATH"
 
 # Create wrapper only if it doesn't exist or needs updating
 if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c "$PYTHON_SCRIPT" "$WRAPPER_SCRIPT")" -eq 0 ]]; then

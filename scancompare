@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.7.5 
+# scancompare version 2.7.6 
 
 import os
 import sys
@@ -18,11 +18,12 @@ import re
 import time
 import random
 import uuid
-from io import BytesIO
+from io import BytesIO  
+from jinja2 import Environment, FileSystemLoader
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.7.5"
+VERSION = "2.7.6"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -84,14 +85,29 @@ def check_latest_version(only_check=False):
 def update_script(new_code):
     try:
         script_path = Path(get_script_path())
+        install_dir = script_path.parent
+        template_path = install_dir / "scan_template.html"
+
         if not os.access(script_path, os.W_OK):
             raise PermissionError(f"Cannot write to {script_path}. Try using sudo or adjusting permissions.")
 
+        # Write new script to temporary file
         with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tmp:
             tmp.write(new_code)
             temp_path = tmp.name
 
         os.replace(temp_path, script_path)
+
+        # Ensure template is present
+        if not template_path.exists():
+            print("📄 scan_template.html missing — restoring latest version...")
+            template_url = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html"
+            try:
+                import urllib.request
+                urllib.request.urlretrieve(template_url, template_path)
+                print(f"✅ scan_template.html downloaded to {template_path}")
+            except Exception as e:
+                print(f"❌ Failed to download template: {e}")
     except Exception as e:
         print(f"❌ Critical: failed to update script: {e}")
         sys.exit(1)
@@ -248,8 +264,6 @@ def display_summary(trivy_cves, grype_cves):
 
     return shared, only_trivy, only_grype
 
-import html  # make sure this is at the top of your file
-
 def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only_grype, trivy_version, grype_version):
     def format_cves(cve_map):
         grouped = group_by_severity(cve_map)
@@ -298,7 +312,7 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
 
         result = ""
         if os_related:
-            result += "<h3>🧩 OS Package CVEs</h3>" + format_cves(os_related)
+            result += "<h3>🧹 OS Package CVEs</h3>" + format_cves(os_related)
         if lang_related:
             result += "<h3>📦 Language Package CVEs</h3>" + format_cves(lang_related)
         if unknown:
@@ -323,137 +337,44 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
 
     total_vulns = len(trivy_cves) + len(grype_cves) - len(shared)
 
-    html_report = f"""<!DOCTYPE html>
-<html>
-<head>
-  <meta charset='UTF-8'>
-  <title>ScanCompare Report</title>
-  <script src='https://cdn.jsdelivr.net/npm/chart.js'></script>
-  <style>
-    body {{ font-family: Arial, sans-serif; background-color: #f9f9f9; color: #333; display: flex; justify-content: center; transition: background 0.3s, color 0.3s; }}
-    .container {{ max-width: 900px; padding: 40px; background: white; box-shadow: 0 0 12px rgba(0,0,0,0.05); border-radius: 10px; position: relative; }}
-    .toolbar {{ position: absolute; top: 10px; right: 10px; }}
-    .toolbar button, .toolbar span {{ margin-left: 6px; background: none; border: none; cursor: pointer; font-size: 18px; }}
-    .toolbar button:hover {{ opacity: 0.7; }}
-    body.dark-mode {{ background-color: #121212; color: #ddd; }}
-    body.dark-mode .container {{ background: #1e1e1e; }}
-    h1, h2, h3, h4 {{ color: inherit; }}
-    ul {{ line-height: 1.6; }}
-    pre {{ background: #eee; padding: 10px; border-left: 4px solid #4CAF50; overflow-x: auto; }}
-    table {{ border-collapse: collapse; margin-top: 10px; width: 100%; }}
-    table td, table th {{ border: 1px solid #ccc; padding: 6px 10px; text-align: center; }}
-    a {{ color: #0077cc; text-decoration: none; }}
-    a:hover {{ text-decoration: underline; }}
-    .collapsible {{ background-color: #eee; color: #333; cursor: pointer; padding: 12px; width: 100%; border: none; text-align: left; outline: none; font-size: 15px; margin-top: 20px; }}
-    .active, .collapsible:hover {{ background-color: #ccc; }}
-    .content {{ padding: 0 18px; display: none; overflow: hidden; background-color: #f1f1f1; margin-bottom: 20px; }}
-    .content pre {{ max-height: 400px; overflow: auto; }}
-    .severity-toggle button {{ margin: 5px; padding: 6px 12px; border: none; border-radius: 5px; background: #ddd; cursor: pointer; }}
-    canvas {{ max-width: 100%; margin-top: 20px; }}
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="toolbar">
-      <button onclick='window.print()' title='Export Full PDF'>📄</button>
-      <button onclick='window.print()' title='Export Filtered View'>📝</button>
-      <span onclick='toggleDarkMode()' title='Toggle Dark Mode'>🌙☀️</span>
-    </div>
-    <h1>Scan Report for {image}</h1>
-    <p><strong>🔢 Trivy version:</strong> {trivy_version} &nbsp;&nbsp;&nbsp; <strong>🔢 Grype version:</strong> {grype_version}</p>
-    <p><strong>📊 Total unique vulnerabilities detected:</strong> {total_vulns}</p>
+    template_dir = Path(__file__).parent
+    template_path = template_dir / "scan_template.html"
 
-    <canvas id="severityChart" height="120"></canvas>
+    if not template_path.exists():
+        print("📄 scan_template.html missing — restoring latest version...")
+        try:
+            urllib.request.urlretrieve(
+                "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html",
+                template_path
+            )
+            print(f"✅ scan_template.html downloaded to {template_path}")
+        except Exception as e:
+            print(f"❌ Failed to download template: {e}")
 
-    <script>
-      window.addEventListener("DOMContentLoaded", () => {
-        const ctx = document.getElementById('severityChart');
-        new Chart(ctx, {{
-          type: 'pie',
-          data: {{
-            labels: ['Shared', 'Only Trivy', 'Only Grype'],
-            datasets: [{{
-              label: 'Vulnerability Distribution',
-              data: [{len(shared)}, {len(only_trivy)}, {len(only_grype)}],
-              backgroundColor: ['#4CAF50', '#ff9800', '#2196F3'],
-              borderWidth: 1
-            }}]
-          }},
-          options: {{ responsive: true, plugins: {{ legend: {{ position: 'bottom' }} }} }}
-        }});
-      });
-    </script>
+    env = Environment(loader=FileSystemLoader(template_dir))
+    template = env.get_template("scan_template.html")
 
-    <table>
-      <tr><th>Tool</th><th>Total</th><th>Only in Tool</th><th>Shared</th></tr>
-      <tr><td>Grype</td><td>{len(grype_cves)}</td><td><a href='#grype'>{len(only_grype)}</a></td><td><a href='#shared'>{len(shared)}</a></td></tr>
-      <tr><td>Trivy</td><td>{len(trivy_cves)}</td><td><a href='#trivy'>{len(only_trivy)}</a></td><td><a href='#shared'>{len(shared)}</a></td></tr>
-    </table>
+    rendered = template.render(
+        image=image,
+        trivy_version=trivy_version,
+        grype_version=grype_version,
+        total_vulns=total_vulns,
+        shared_count=len(shared),
+        trivy_count=len(only_trivy),
+        grype_count=len(only_grype),
+        shared_section=format_and_group_by_type(shared_cves_detailed),
+        trivy_section=format_and_group_by_type(trivy_unique_detailed),
+        grype_section=format_and_group_by_type(grype_unique_detailed),
+        trivy_raw=trivy_raw,
+        grype_raw=grype_raw
+    )
 
-    <div class='severity-toggle'>
-      <strong>🧪 Filter by Severity:</strong>
-      <button onclick="toggleSeverity('Critical')">Critical</button>
-      <button onclick="toggleSeverity('High')">High</button>
-      <button onclick="toggleSeverity('Medium')">Medium</button>
-      <button onclick="toggleSeverity('Low')">Low</button>
-      <button onclick="toggleSeverity('Unknown')">Unknown</button>
-    </div>
-
-    <h2 id='shared'>Shared CVEs</h2>
-    {format_and_group_by_type(shared_cves_detailed)}
-
-    <h2 id='trivy'>Unique to Trivy</h2>
-    {format_and_group_by_type(trivy_unique_detailed)}
-
-    <h2 id='grype'>Unique to Grype</h2>
-    {format_and_group_by_type(grype_unique_detailed)}
-
-    <button type='button' class='collapsible'>🔍 View Raw Trivy JSON</button>
-    <div class='content'><pre>{trivy_raw}</pre></div>
-
-    <button type='button' class='collapsible'>🔍 View Raw Grype JSON</button>
-    <div class='content'><pre>{grype_raw}</pre></div>
-  </div>
-
-  <script>
-    window.addEventListener("DOMContentLoaded", () => {
-      document.querySelectorAll(".collapsible").forEach(btn => {
-        btn.addEventListener("click", function () {
-          this.classList.toggle("active");
-          const content = this.nextElementSibling;
-          content.style.display = content.style.display === "block" ? "none" : "block";
-        });
-      });
-
-      window.toggleDarkMode = function () {
-        document.body.classList.toggle("dark-mode");
-        localStorage.setItem("darkMode", document.body.classList.contains("dark-mode"));
-      };
-
-      window.toggleSeverity = function (sev) {
-        document.querySelectorAll(`[data-severity='${sev}']`).forEach(el => {
-          el.style.display = el.style.display === 'none' ? 'block' : 'none';
-          const next = el.nextElementSibling;
-          if (next && next.tagName === 'DIV') {
-            next.style.display = next.style.display === 'none' ? 'block' : 'none';
-          }
-        });
-      };
-
-      if (localStorage.getItem("darkMode") === "true") {
-        document.body.classList.add("dark-mode");
-      }
-    });
-  </script>
-</body>
-</html>"""
-    report_path.write_text(html_report)
+    report_path.write_text(rendered)
     print(f"✅ Local HTML report saved: {report_path}")
 
     open_html = input("📁 Open local HTML report in browser? (y/n): ").strip().lower()
     if open_html == "y":
         webbrowser.open(f"file://{report_path.absolute()}")
-
 
 def explain_exit(msg):
     print(f"⚠️ {msg}")

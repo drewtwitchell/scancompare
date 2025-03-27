@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ScanCompare Report</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f9f9f9;
+      color: #333;
+      transition: background 0.3s, color 0.3s;
+      margin: 0;
+    }
+    .dark-mode {
+      background-color: #121212;
+      color: #ddd;
+    }
+    .container {
+      max-width: 960px;
+      margin: auto;
+      padding: 40px 20px;
+    }
+    h1, h2, h3 {
+      color: inherit;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: center;
+    }
+    a {
+      color: #0077cc;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .controls {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .controls button {
+      padding: 6px 12px;
+      font-size: 14px;
+      cursor: pointer;
+      border-radius: 5px;
+      border: none;
+    }
+    .dark-toggle {
+      background: none;
+      font-size: 20px;
+    }
+    .severity-toggle button {
+      background: #eee;
+    }
+    .collapsible {
+      background-color: #eee;
+      color: #333;
+      cursor: pointer;
+      padding: 10px;
+      width: 100%;
+      text-align: left;
+      border: none;
+      font-size: 16px;
+      margin-top: 12px;
+      border-radius: 4px;
+    }
+    .active, .collapsible:hover {
+      background-color: #ccc;
+    }
+    .content {
+      display: none;
+      background-color: #f1f1f1;
+      overflow: hidden;
+      padding: 0 16px 16px;
+    }
+    pre {
+      background: #eee;
+      padding: 12px;
+      overflow-x: auto;
+      border-left: 4px solid #4CAF50;
+    }
+    canvas {
+      max-width: 400px;
+      margin: 0 auto 20px;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="controls">
+      <button class="dark-toggle" onclick="toggleDarkMode()">🌙</button>
+      <button onclick="window.print()">📄 Export PDF</button>
+    </div>
+
+    <h1>Scan Report for {{ image }}</h1>
+    <p><strong>🔢 Trivy:</strong> {{ trivy_version }} &nbsp;&nbsp; <strong>🔢 Grype:</strong> {{ grype_version }}</p>
+    <p><strong>📊 Total Unique CVEs:</strong> {{ total_vulns }}</p>
+
+    <canvas id="severityChart"></canvas>
+
+    <table>
+      <tr><th>Tool</th><th>Total</th><th>Only in Tool</th><th>Shared</th></tr>
+      <tr><td>Grype</td><td>{{ grype_count + shared_count }}</td><td><a href="#grype">{{ grype_count }}</a></td><td><a href="#shared">{{ shared_count }}</a></td></tr>
+      <tr><td>Trivy</td><td>{{ trivy_count + shared_count }}</td><td><a href="#trivy">{{ trivy_count }}</a></td><td><a href="#shared">{{ shared_count }}</a></td></tr>
+    </table>
+
+    <div class="severity-toggle">
+      <strong>🧪 Filter Severity:</strong>
+      <button onclick="toggleSeverity('Critical')">Critical</button>
+      <button onclick="toggleSeverity('High')">High</button>
+      <button onclick="toggleSeverity('Medium')">Medium</button>
+      <button onclick="toggleSeverity('Low')">Low</button>
+      <button onclick="toggleSeverity('Unknown')">Unknown</button>
+    </div>
+
+    <h2 id="shared">Shared CVEs</h2>
+    <p><em>These CVEs were detected by both tools and are likely reliable indicators of real vulnerabilities.</em></p>
+    {{ shared_section | safe }}
+
+    <h2 id="trivy">Unique to Trivy</h2>
+    <p><em>Only detected by Trivy. This may be due to deeper language package analysis or newer database entries.</em></p>
+    {{ trivy_section | safe }}
+
+    <h2 id="grype">Unique to Grype</h2>
+    <p><em>Only detected by Grype. Often includes additional OS-level package analysis or broader indexing.</em></p>
+    {{ grype_section | safe }}
+
+    <button type="button" class="collapsible">🔍 Raw Trivy JSON</button>
+    <div class="content"><pre>{{ trivy_raw }}</pre></div>
+
+    <button type="button" class="collapsible">🔍 Raw Grype JSON</button>
+    <div class="content"><pre>{{ grype_raw }}</pre></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const ctx = document.getElementById('severityChart');
+    new Chart(ctx, {
+      type: 'pie',
+      data: {
+        labels: ['Shared', 'Trivy Only', 'Grype Only'],
+        datasets: [{
+          data: [{{ shared_count }}, {{ trivy_count }}, {{ grype_count }}],
+          backgroundColor: ['#4CAF50', '#2196F3', '#FFC107']
+        }]
+      },
+      options: {
+        plugins: {
+          legend: {
+            position: 'top'
+          },
+          title: {
+            display: true,
+            text: 'Scan Result Breakdown'
+          }
+        }
+      }
+    });
+
+    const collapsibles = document.getElementsByClassName("collapsible");
+    for (let i = 0; i < collapsibles.length; i++) {
+      collapsibles[i].addEventListener("click", function () {
+        this.classList.toggle("active");
+        const content = this.nextElementSibling;
+        content.style.display = content.style.display === "block" ? "none" : "block";
+      });
+    }
+
+    function toggleSeverity(sev) {
+      const blocks = document.querySelectorAll(`[data-severity='${sev}']`);
+      blocks.forEach(el => {
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        let section = el.nextElementSibling;
+        if (section && section.classList.contains('content')) {
+          section.style.display = section.style.display === 'none' ? 'block' : 'none';
+        }
+      });
+    }
+
+    function toggleDarkMode() {
+      document.body.classList.toggle('dark-mode');
+      localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+    }
+
+    if (localStorage.getItem("darkMode") === "true") {
+      document.body.classList.add("dark-mode");
+    }
+  </script>
+</body>
+</html>
