@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 2.7.3 
+# scancompare version 2.7.4 
 
 import os
 import sys
@@ -22,7 +22,7 @@ from io import BytesIO
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "2.7.3"
+VERSION = "2.7.4"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -271,8 +271,11 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
             cves = grouped[severity]
             sections += f"<button class='collapsible severity-block' data-severity='{severity.capitalize()}' style='color:{color}'>{severity} ({len(cves)})</button><div class='content'><ul>"
             for cve in sorted(cves):
+                cve_meta = cve_map.get(cve, {})
+                if not isinstance(cve_meta, dict):
+                    cve_meta = {}
                 cve_link = f"https://nvd.nist.gov/vuln/detail/{cve}"
-                cvss_score = cve_map[cve].get("cvss", "N/A")
+                cvss_score = cve_meta.get("cvss", "N/A")
                 sections += f'<li><a href="{cve_link}" target="_blank">{cve}</a> — CVSS: {cvss_score}</li>'
             sections += "</ul></div>"
         return sections or "<p>No CVEs found.</p>"
