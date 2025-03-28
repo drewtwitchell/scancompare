@@ -50,7 +50,7 @@ fi
 # Installing required tools
 printf "📦 Installing required tools: python3, jinja2, trivy, grype...\n"
 
-tool_progress "🔍 Attempting" "tool installation via Homebrew or fallback methods..."
+tool_progress "🔍 Attempting" "tool installation..."
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
     tool_progress "🍺 Installing" "Homebrew"
