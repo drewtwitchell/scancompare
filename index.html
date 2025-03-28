@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Vulnerability Scan Reports</title>
+    <style>
+        body { font-family: -apple-system, system-ui, sans-serif; line-height: 1.5; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .report-list { list-style: none; padding: 0; }
+        .report-item { margin: 10px 0; padding: 15px; border: 1px solid #eee; border-radius: 5px; }
+        .report-link { color: #0366d6; text-decoration: none; }
+        .report-link:hover { text-decoration: underline; }
+        .timestamp { color: #666; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <h1>Vulnerability Scan Reports</h1>
+    <div id="reports"></div>
+    <script>
+        async function listReports() {
+            const reportsList = document.getElementById('reports');
+            const ul = document.createElement('ul');
+            ul.className = 'report-list';
+            
+            // Get list of report directories
+            const reports = [];
+            const response = await fetch('reports/');
+            const text = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(text, 'text/html');
+            const links = doc.getElementsByTagName('a');
+            
+            for (const link of links) {
+                const href = link.getAttribute('href');
+                if (href.startsWith('20') || href.includes('_202')) {
+                    reports.push({
+                        path: href,
+                        date: new Date(href.split('_')[1].split('/')[0])
+                    });
+                }
+            }
+            
+            // Sort reports by date (newest first)
+            reports.sort((a, b) => b.date - a.date);
+            
+            // Create list items
+            reports.forEach(report => {
+                const li = document.createElement('li');
+                li.className = 'report-item';
+                const imageName = report.path.split('_')[0];
+                const timestamp = new Date(report.date).toLocaleString();
+                li.innerHTML = `
+                    <a href="reports/${report.path}" class="report-link">
+                        ${imageName.replace(/_/g, ':')}
+                    </a>
+                    <div class="timestamp">Generated: ${timestamp}</div>
+                `;
+                ul.appendChild(li);
+            });
+            
+            reportsList.appendChild(ul);
+        }
+        
+        listReports();
+    </script>
+</body>
+</html>
