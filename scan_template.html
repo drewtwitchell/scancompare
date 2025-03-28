@@ -1,212 +1,284 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>ScanCompare Report</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #f9f9f9;
-      color: #333;
-      transition: background 0.3s, color 0.3s;
-      margin: 0;
-    }
-    .dark-mode {
-      background-color: #121212;
-      color: #ddd;
-    }
-    .container {
-      max-width: 960px;
-      margin: auto;
-      padding: 40px 20px;
-    }
-    h1, h2, h3 {
-      color: inherit;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 20px;
-    }
-    th, td {
-      border: 1px solid #ccc;
-      padding: 8px;
-      text-align: center;
-    }
-    a {
-      color: #0077cc;
-      text-decoration: none;
-    }
-    a:hover {
-      text-decoration: underline;
-    }
-    .controls {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 20px;
-    }
-    .controls-right {
-      display: flex;
-      gap: 10px;
-    }
-    .controls button, .controls select {
-      padding: 6px 12px;
-      font-size: 14px;
-      cursor: pointer;
-      border-radius: 5px;
-      border: none;
-    }
-    .dark-toggle {
-      background: #444;
-      color: #fff;
-    }
-    .export-btn {
-      background: #333;
-      color: #fff;
-    }
-    pre {
-      background: #eee;
-      padding: 12px;
-      overflow-x: auto;
-      border-left: 4px solid #4CAF50;
-    }
-    canvas {
-      max-width: 400px;
-      margin: 0 auto 20px;
-      display: block;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vulnerability Scan Report - {{ image }}</title>
+    <style>
+        :root {
+            --primary-color: #2196f3;
+            --critical-color: #d32f2f;
+            --high-color: #f57c00;
+            --medium-color: #fbc02d;
+            --low-color: #388e3c;
+            --unknown-color: #757575;
+            --background-color: #f5f5f5;
+            --card-background: #ffffff;
+            --text-color: #333333;
+            --border-color: #e0e0e0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background-color: var(--card-background);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            margin: 0;
+            color: var(--primary-color);
+        }
+
+        .metadata {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .metadata-item {
+            background-color: var(--background-color);
+            padding: 15px;
+            border-radius: 4px;
+        }
+
+        .metadata-item h3 {
+            margin: 0 0 10px 0;
+            color: var(--primary-color);
+        }
+
+        .metadata-item p {
+            margin: 0;
+        }
+
+        .summary {
+            background-color: var(--card-background);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .summary-card {
+            background-color: var(--background-color);
+            padding: 20px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .summary-card h3 {
+            margin: 0 0 10px 0;
+            color: var(--primary-color);
+        }
+
+        .summary-card .count {
+            font-size: 2em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .severity-block {
+            background-color: var(--card-background);
+            color: var(--text-color);
+            cursor: pointer;
+            padding: 15px;
+            width: 100%;
+            border: none;
+            text-align: left;
+            outline: none;
+            font-size: 1.1em;
+            font-weight: bold;
+            margin-top: 10px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: background-color 0.3s;
+        }
+
+        .severity-block:hover {
+            background-color: var(--background-color);
+        }
+
+        .severity-block::after {
+            content: '+';
+            font-weight: bold;
+            float: right;
+            margin-left: 5px;
+        }
+
+        .severity-block.active::after {
+            content: '-';
+        }
+
+        .content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            background-color: var(--card-background);
+            padding: 0 15px;
+            border-radius: 0 0 4px 4px;
+        }
+
+        .content ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .content li {
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .content li:last-child {
+            border-bottom: none;
+        }
+
+        .content a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .content a:hover {
+            text-decoration: underline;
+        }
+
+        .raw-data {
+            background-color: var(--card-background);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+
+        .raw-data pre {
+            background-color: var(--background-color);
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+
+        .confidence-high {
+            color: var(--low-color);
+        }
+
+        .confidence-medium {
+            color: var(--medium-color);
+        }
+
+        .confidence-low {
+            color: var(--high-color);
+        }
+
+        .scan-date {
+            color: var(--unknown-color);
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <div class="controls">
-      <div><button class="dark-toggle" onclick="toggleDarkMode()">🌙</button></div>
-      <div class="controls-right">
-        <a id="downloadTrivy" class="export-btn" download="original_trivy.json">⬇️ Trivy JSON</a>
-        <a id="downloadGrype" class="export-btn" download="original_grype.json">⬇️ Grype JSON</a>
-        <button class="export-btn" onclick="window.print()">📄 Export PDF</button>
-      </div>
+    <div class="container">
+        <div class="header">
+            <h1>Vulnerability Scan Report</h1>
+            <div class="metadata">
+                <div class="metadata-item">
+                    <h3>Image</h3>
+                    <p>{{ image }}</p>
+                </div>
+                <div class="metadata-item">
+                    <h3>Scan Date</h3>
+                    <p>{{ scan_date }}</p>
+                </div>
+                <div class="metadata-item">
+                    <h3>Trivy Version</h3>
+                    <p>{{ trivy_version }}</p>
+                </div>
+                <div class="metadata-item">
+                    <h3>Grype Version</h3>
+                    <p>{{ grype_version }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="summary">
+            <h2>Summary</h2>
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <h3>Total Vulnerabilities</h3>
+                    <div class="count">{{ total_vulns }}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Shared Vulnerabilities</h3>
+                    <div class="count">{{ shared_count }}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Trivy Unique</h3>
+                    <div class="count">{{ trivy_count }}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Grype Unique</h3>
+                    <div class="count">{{ grype_count }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="vulnerabilities">
+            <h2>Shared Vulnerabilities</h2>
+            {{ shared_section }}
+
+            <h2>Trivy Unique Vulnerabilities</h2>
+            {{ trivy_section }}
+
+            <h2>Grype Unique Vulnerabilities</h2>
+            {{ grype_section }}
+        </div>
+
+        <div class="raw-data">
+            <h2>Raw Scan Data</h2>
+            <h3>Trivy Results</h3>
+            <pre>{{ trivy_raw }}</pre>
+            <h3>Grype Results</h3>
+            <pre>{{ grype_raw }}</pre>
+        </div>
     </div>
 
-    <h1>Scan Report for {{ image }}</h1>
-    <p><strong>🔢 Trivy:</strong> {{ trivy_version }} &nbsp;&nbsp; <strong>🔢 Grype:</strong> {{ grype_version }}</p>
-    <p><strong>📊 Total Unique CVEs:</strong> {{ total_vulns }}</p>
-
-    <canvas id="severityChart"></canvas>
-
-    <div>
-      <label for="severityFilter">Filter by Severity: </label>
-      <select id="severityFilter" onchange="filterBySeverity()">
-        <option value="">All</option>
-        <option value="Critical">Critical</option>
-        <option value="High">High</option>
-        <option value="Medium">Medium</option>
-        <option value="Low">Low</option>
-      </select>
-    </div>
-
-    <table id="cveTable">
-      <thead>
-        <tr>
-          <th>Tool</th>
-          <th>Total</th>
-          <th><a href="#grype">Unique to Grype</a></th>
-          <th><a href="#trivy">Unique to Trivy</a></th>
-          <th><a href="#shared">Shared</a></th>
-          <th><a href="#Critical">Critical</a></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Grype</td>
-          <td>{{ grype_count + shared_count }}</td>
-          <td><a href="#grype">{{ grype_count }}</a></td>
-          <td>-</td>
-          <td><a href="#shared">{{ shared_count }}</a></td>
-          <td><a href="#Critical">🔍</a></td>
-        </tr>
-        <tr>
-          <td>Trivy</td>
-          <td>{{ trivy_count + shared_count }}</td>
-          <td>-</td>
-          <td><a href="#trivy">{{ trivy_count }}</a></td>
-          <td><a href="#shared">{{ shared_count }}</a></td>
-          <td><a href="#Critical">🔍</a></td>
-        </tr>
-      </tbody>
-    </table>
-
-    <h2 id="shared">Shared CVEs</h2>
-    <p><em>These CVEs were detected by both tools and are likely reliable indicators of real vulnerabilities.</em></p>
-    {{ shared_section | safe }}
-
-    <h2 id="trivy">Unique to Trivy</h2>
-    <p><em>Only detected by Trivy. This may be due to deeper language package analysis or newer database entries.</em></p>
-    {{ trivy_section | safe }}
-
-    <h2 id="grype">Unique to Grype</h2>
-    <p><em>Only detected by Grype. Often includes additional OS-level package analysis or broader indexing.</em></p>
-    {{ grype_section | safe }}
-  </div>
-
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script>
-    const ctx = document.getElementById('severityChart');
-    new Chart(ctx, {
-      type: 'pie',
-      data: {
-        labels: ['Shared', 'Trivy Only', 'Grype Only'],
-        datasets: [{
-          data: [{{ shared_count }}, {{ trivy_count }}, {{ grype_count }}],
-          backgroundColor: ['#4CAF50', '#2196F3', '#FFC107']
-        }]
-      },
-      options: {
-        plugins: {
-          legend: { position: 'top' },
-          title: { display: true, text: 'Scan Result Breakdown' }
+    <script>
+        var coll = document.getElementsByClassName("collapsible");
+        for (var i = 0; i < coll.length; i++) {
+            coll[i].addEventListener("click", function() {
+                this.classList.toggle("active");
+                var content = this.nextElementSibling;
+                if (content.style.maxHeight) {
+                    content.style.maxHeight = null;
+                } else {
+                    content.style.maxHeight = content.scrollHeight + "px";
+                }
+            });
         }
-      }
-    });
-
-    function toggleDarkMode() {
-      document.body.classList.toggle('dark-mode');
-      localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
-    }
-
-    // Handle dark mode persistence
-    if (localStorage.getItem("darkMode") === "true") {
-      document.body.classList.add("dark-mode");
-    }
-
-    // JSON blob download
-    document.getElementById("downloadTrivy").addEventListener("click", function(e) {
-      const blob = new Blob([`{{ trivy_raw }}`], { type: 'application/json' });
-      this.href = URL.createObjectURL(blob);
-    });
-
-    document.getElementById("downloadGrype").addEventListener("click", function(e) {
-      const blob = new Blob([`{{ grype_raw }}`], { type: 'application/json' });
-      this.href = URL.createObjectURL(blob);
-    });
-
-    // Filter CVEs by severity
-    function filterBySeverity() {
-      const filter = document.getElementById("severityFilter").value.toLowerCase();
-      const rows = document.querySelectorAll("#cveTable tbody tr");
-
-      rows.forEach(row => {
-        const severityColumn = row.querySelector("td:nth-child(6)"); // The Critical column
-        const severity = severityColumn ? severityColumn.textContent.trim().toLowerCase() : "";
-
-        if (filter && severity !== filter) {
-          row.style.display = "none";
-        } else {
-          row.style.display = "";
-        }
-      });
-    }
-  </script>
+    </script>
 </body>
 </html>
