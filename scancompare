@@ -713,6 +713,7 @@ def publish_to_github_pages(report_path, image):
     import subprocess
     from datetime import datetime
     import zipfile
+    from urllib.parse import urlparse
 
     if not args.repo_url:
         return None
@@ -801,6 +802,7 @@ def publish_to_github_pages(report_path, image):
         subprocess.run(["git", "init"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["git", "remote", "add", "origin", args.repo_url], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    # Verify and switch to target branch
     current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
 
     if target_branch != current_branch:
@@ -813,6 +815,8 @@ def publish_to_github_pages(report_path, image):
         subprocess.run(["git", "commit", "-m", f"📊 Add scan report for {image}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError:
         pass  # No changes to commit
+
+    # Push to the correct remote (origin should now be correct)
     subprocess.run(["git", "push", "-u", "origin", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     tool_done()
 
