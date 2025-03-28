@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.0
+# scancompare version 1.0.1
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -46,9 +46,7 @@ def check_latest_version(only_check=False):
         return
 
     try:
-        pass  # Add your code here
-    except Exception as e:
-        print(f"⚠️ An error occurred: {e}")
+        # First try to get version from GitHub API
         api_url = "https://api.github.com/repos/drewtwitchell/scancompare/contents/scancompare"
         req = Request(api_url, headers={"User-Agent": "scancompare-updater"})
         with urlopen(req) as response:
