@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vulnerability Scan Report - {{ image }}</title>
+    <title>Vulnerability Scan Report: Trivy vs Grype</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         :root {
@@ -89,6 +89,13 @@
             padding: 20px;
             border-radius: 4px;
             text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .summary-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
 
         .summary-card h3 {
@@ -211,21 +218,24 @@
             display: inline-flex;
             align-items: center;
             padding: 10px 20px;
-            background-color: #f8f9fa;
+            background-color: var(--card-background);
             border-radius: 4px;
             text-decoration: none;
-            color: #333;
-            transition: background-color 0.2s;
+            color: var(--text-color);
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
         .tool-link:hover {
-            background-color: #e9ecef;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
 
         .tool-link img {
-            width: 20px;
-            height: 20px;
+            width: 24px;
+            height: 24px;
             margin-right: 8px;
+            object-fit: contain;
         }
 
         .action-buttons {
@@ -290,12 +300,132 @@
                 display: none;
             }
         }
+
+        .section {
+            scroll-margin-top: 20px;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .section-filters {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .section-filter {
+            padding: 5px 15px;
+            border-radius: 15px;
+            cursor: pointer;
+            border: none;
+            font-weight: bold;
+            transition: opacity 0.2s;
+            font-size: 0.9em;
+        }
+
+        .section-filter.active {
+            opacity: 1;
+        }
+
+        .section-filter.inactive {
+            opacity: 0.5;
+        }
+
+        .legend {
+            background-color: var(--card-background);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .legend-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .legend-section {
+            background-color: var(--background-color);
+            padding: 15px;
+            border-radius: 4px;
+        }
+
+        .legend-section h3 {
+            color: var(--primary-color);
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+
+        .severity-legend {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        .tool-differences {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .tool-info h4 {
+            margin: 0 0 10px 0;
+            color: var(--primary-color);
+        }
+
+        .tool-info ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .tool-info li {
+            margin-bottom: 5px;
+        }
+
+        .data-info {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .data-info li {
+            margin-bottom: 10px;
+        }
+
+        .data-info strong {
+            color: var(--primary-color);
+        }
+
+        @media print {
+            .legend {
+                break-inside: avoid;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>Vulnerability Scan Report</h1>
+            <h1>Vulnerability Scan Report: Trivy vs Grype</h1>
             <div class="metadata">
                 <div class="metadata-item">
                     <h3>Image</h3>
@@ -318,11 +448,11 @@
 
         <div class="tool-links">
             <a href="https://aquasecurity.github.io/trivy/" target="_blank" class="tool-link">
-                <img src="https://aquasecurity.github.io/trivy/assets/logo.png" alt="Trivy Logo">
+                <img src="https://raw.githubusercontent.com/aquasecurity/trivy/main/docs/imgs/logo.png" alt="Trivy Logo">
                 Learn more about Trivy
             </a>
             <a href="https://github.com/anchore/grype" target="_blank" class="tool-link">
-                <img src="https://github.com/anchore/grype/raw/main/docs/img/grype-logo.png" alt="Grype Logo">
+                <img src="https://raw.githubusercontent.com/anchore/grype/main/docs/img/grype-logo.png" alt="Grype Logo">
                 Learn more about Grype
             </a>
         </div>
@@ -330,21 +460,87 @@
         <div class="summary">
             <h2>Summary</h2>
             <div class="summary-grid">
-                <div class="summary-card">
+                <div class="summary-card" onclick="scrollToSection('shared')">
                     <h3>Total Vulnerabilities</h3>
                     <div class="count">{{ total_vulns }}</div>
                 </div>
-                <div class="summary-card">
+                <div class="summary-card" onclick="scrollToSection('shared')">
                     <h3>Shared Vulnerabilities</h3>
                     <div class="count">{{ shared_count }}</div>
                 </div>
-                <div class="summary-card">
+                <div class="summary-card" onclick="scrollToSection('trivy')">
                     <h3>Trivy Unique</h3>
                     <div class="count">{{ trivy_count }}</div>
                 </div>
-                <div class="summary-card">
+                <div class="summary-card" onclick="scrollToSection('grype')">
                     <h3>Grype Unique</h3>
                     <div class="count">{{ grype_count }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="legend">
+            <h2>Understanding the Results</h2>
+            <div class="legend-grid">
+                <div class="legend-section">
+                    <h3>Severity Levels</h3>
+                    <div class="severity-legend">
+                        <div class="legend-item">
+                            <span class="legend-color" style="background-color: var(--critical-color)"></span>
+                            <span>Critical - Immediate action required</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background-color: var(--high-color)"></span>
+                            <span>High - Urgent attention needed</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background-color: var(--medium-color)"></span>
+                            <span>Medium - Should be addressed</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background-color: var(--low-color)"></span>
+                            <span>Low - Monitor and plan</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background-color: var(--unknown-color)"></span>
+                            <span>Unknown - Requires investigation</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="legend-section">
+                    <h3>Tool Differences</h3>
+                    <div class="tool-differences">
+                        <div class="tool-info">
+                            <h4>Trivy</h4>
+                            <ul>
+                                <li>Comprehensive OS package scanning</li>
+                                <li>Language-specific package scanning</li>
+                                <li>Container-specific vulnerabilities</li>
+                                <li>Detailed CVSS scoring</li>
+                            </ul>
+                        </div>
+                        <div class="tool-info">
+                            <h4>Grype</h4>
+                            <ul>
+                                <li>Deep dependency analysis</li>
+                                <li>Application-level scanning</li>
+                                <li>Custom vulnerability matching</li>
+                                <li>Integration with Anchore ecosystem</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="legend-section">
+                    <h3>Understanding the Data</h3>
+                    <ul class="data-info">
+                        <li><strong>Shared Vulnerabilities:</strong> Found by both tools, highest confidence</li>
+                        <li><strong>Tool-Specific:</strong> Unique findings that may require manual verification</li>
+                        <li><strong>CVSS Scores:</strong> Standardized severity scoring (0-10)</li>
+                        <li><strong>Last Modified:</strong> When the vulnerability was last updated</li>
+                        <li><strong>References:</strong> Links to detailed vulnerability information</li>
+                    </ul>
                 </div>
             </div>
         </div>
@@ -360,26 +556,50 @@
         <div class="action-buttons">
             <button class="action-button" onclick="downloadJSON()">Download JSON</button>
             <button class="action-button" onclick="downloadPDF()">Download PDF</button>
-            <button class="action-button" onclick="toggleRawData()">Show/Hide Raw Data</button>
         </div>
 
         <div class="vulnerabilities">
-            <h2>Shared Vulnerabilities</h2>
-            {{ shared_section }}
+            <div id="shared" class="section">
+                <div class="section-header">
+                    <h2>Shared Vulnerabilities</h2>
+                    <div class="section-filters">
+                        <button class="section-filter active" data-severity="Critical" style="background-color: var(--critical-color); color: white;">Critical</button>
+                        <button class="section-filter active" data-severity="High" style="background-color: var(--high-color); color: white;">High</button>
+                        <button class="section-filter active" data-severity="Medium" style="background-color: var(--medium-color); color: white;">Medium</button>
+                        <button class="section-filter active" data-severity="Low" style="background-color: var(--low-color); color: white;">Low</button>
+                        <button class="section-filter active" data-severity="Unknown" style="background-color: var(--unknown-color); color: white;">Unknown</button>
+                    </div>
+                </div>
+                {{ shared_section }}
+            </div>
 
-            <h2>Trivy Unique Vulnerabilities</h2>
-            {{ trivy_section }}
+            <div id="trivy" class="section">
+                <div class="section-header">
+                    <h2>Trivy Unique Vulnerabilities</h2>
+                    <div class="section-filters">
+                        <button class="section-filter active" data-severity="Critical" style="background-color: var(--critical-color); color: white;">Critical</button>
+                        <button class="section-filter active" data-severity="High" style="background-color: var(--high-color); color: white;">High</button>
+                        <button class="section-filter active" data-severity="Medium" style="background-color: var(--medium-color); color: white;">Medium</button>
+                        <button class="section-filter active" data-severity="Low" style="background-color: var(--low-color); color: white;">Low</button>
+                        <button class="section-filter active" data-severity="Unknown" style="background-color: var(--unknown-color); color: white;">Unknown</button>
+                    </div>
+                </div>
+                {{ trivy_section }}
+            </div>
 
-            <h2>Grype Unique Vulnerabilities</h2>
-            {{ grype_section }}
-        </div>
-
-        <div class="raw-data">
-            <h2>Raw Scan Data</h2>
-            <h3>Trivy Results</h3>
-            <pre id="raw-json">{{ trivy_raw }}</pre>
-            <h3>Grype Results</h3>
-            <pre>{{ grype_raw }}</pre>
+            <div id="grype" class="section">
+                <div class="section-header">
+                    <h2>Grype Unique Vulnerabilities</h2>
+                    <div class="section-filters">
+                        <button class="section-filter active" data-severity="Critical" style="background-color: var(--critical-color); color: white;">Critical</button>
+                        <button class="section-filter active" data-severity="High" style="background-color: var(--high-color); color: white;">High</button>
+                        <button class="section-filter active" data-severity="Medium" style="background-color: var(--medium-color); color: white;">Medium</button>
+                        <button class="section-filter active" data-severity="Low" style="background-color: var(--low-color); color: white;">Low</button>
+                        <button class="section-filter active" data-severity="Unknown" style="background-color: var(--unknown-color); color: white;">Unknown</button>
+                    </div>
+                </div>
+                {{ grype_section }}
+            </div>
         </div>
 
         {% if ghas_link %}
@@ -392,7 +612,43 @@
     </div>
 
     <script>
-        var coll = document.getElementsByClassName("collapsible");
+        // Scroll to section
+        function scrollToSection(sectionId) {
+            document.getElementById(sectionId).scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Global severity filters
+        const globalFilters = document.querySelectorAll('.severity-filters .severity-filter');
+        globalFilters.forEach(filter => {
+            filter.addEventListener('click', function() {
+                this.classList.toggle('active');
+                this.classList.toggle('inactive');
+                const severity = this.dataset.severity;
+                const blocks = document.querySelectorAll(`.severity-block[data-severity="${severity}"]`);
+                blocks.forEach(block => {
+                    block.style.display = this.classList.contains('active') ? 'flex' : 'none';
+                });
+            });
+        });
+
+        // Section-specific filters
+        document.querySelectorAll('.section-filters').forEach(section => {
+            const filters = section.querySelectorAll('.section-filter');
+            filters.forEach(filter => {
+                filter.addEventListener('click', function() {
+                    this.classList.toggle('active');
+                    this.classList.toggle('inactive');
+                    const severity = this.dataset.severity;
+                    const sectionBlocks = this.closest('.section').querySelectorAll(`.severity-block[data-severity="${severity}"]`);
+                    sectionBlocks.forEach(block => {
+                        block.style.display = this.classList.contains('active') ? 'flex' : 'none';
+                    });
+                });
+            });
+        });
+
+        // Collapsible sections
+        var coll = document.getElementsByClassName("severity-block");
         for (var i = 0; i < coll.length; i++) {
             coll[i].addEventListener("click", function() {
                 this.classList.toggle("active");
@@ -404,20 +660,6 @@
                 }
             });
         }
-
-        // Severity filters
-        const filters = document.querySelectorAll('.severity-filter');
-        filters.forEach(filter => {
-            filter.addEventListener('click', function() {
-                this.classList.toggle('active');
-                this.classList.toggle('inactive');
-                const severity = this.dataset.severity;
-                const blocks = document.querySelectorAll(`.severity-block[data-severity="${severity}"]`);
-                blocks.forEach(block => {
-                    block.style.display = this.classList.contains('active') ? 'flex' : 'none';
-                });
-            });
-        });
 
         // Download JSON
         function downloadJSON() {
@@ -444,12 +686,6 @@
                 jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
             };
             html2pdf().set(opt).from(element).save();
-        }
-
-        // Toggle raw data
-        function toggleRawData() {
-            const pre = document.getElementById('raw-json');
-            pre.classList.toggle('show');
         }
     </script>
 </body>
