@@ -140,7 +140,7 @@ def get_script_path():
         return sys.argv[0]
     
 def uninstall_scancompare():
-    tool_progress("uninstall","🧹 Uninstalling scancompare...")
+    tool_progress("uninstall", "🧹 Uninstalling scancompare...")
 
     paths_removed = False
 
@@ -160,7 +160,7 @@ def uninstall_scancompare():
 
     # Removing virtual environment
     if venv_path.exists() and venv_path.is_dir():
-        tool_progress(f"    🧹 Removing Python virtual environment: {venv_path}...")
+        tool_progress("    🧹 Removing", f"Python virtual environment: {venv_path}...")
         shutil.rmtree(venv_path)
         print(f"    🧹 Removed Python virtual environment: {venv_path}")
         tool_done()  # Completed this task
@@ -168,7 +168,7 @@ def uninstall_scancompare():
     # Removing scan_reports directory
     reports_dir = Path("scan_reports")
     if reports_dir.exists():
-        tool_progress(f"    🗑️ Removing scan_reports directory...")
+        tool_progress("    🗑️ Removing", "scan_reports directory...")
         shutil.rmtree(reports_dir)
         print("    🗑️ Removed scan_reports directory")
         tool_done()  # Completed this task
@@ -178,7 +178,7 @@ def uninstall_scancompare():
     for profile in profile_files:
         full_path = Path.home() / profile
         if full_path.exists():
-            tool_progress(f"    🧽 Cleaning up shell config in {full_path}...")
+            tool_progress("    🧽 Cleaning up", f"shell config in {full_path}...")
             content = full_path.read_text()
             new_content = "\n".join(
                 line for line in content.splitlines()
