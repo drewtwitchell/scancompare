@@ -60,16 +60,15 @@ if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
   fi
 fi
 
-echo "🔍 Attempting tool installation via Homebrew or fallback methods..."
-tool_progress "installation" "Attempting tool installation via Homebrew or fallback methods..."
+tool_progress ("installation", "🔍 Attempting tool installation via Homebrew or fallback methods...")
 echo ""  # Line break for clarity
-tool_done
 
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    echo "🍺 Homebrew not found. Attempting to install..."
+    tool_progress ("installation", "🍺 Homebrew not found. Attempting to install...")
     NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
       echo "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
+    tool_done ()
     }
   fi
 }
@@ -128,17 +127,21 @@ if ! command -v python3 &> /dev/null; then
   echo "❌ Python3 not found"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     command -v brew &> /dev/null || install_homebrew
-    echo "⚙️ Installing Python3 using Homebrew..."
+    tool_progress "installation" "⚙️ Installing Python3 using Homebrew..."
     brew install python &> /dev/null || echo "⚠️ Failed to install Python3 with Homebrew. Please install manually."
+    tool_done
   elif command -v apt &> /dev/null; then
-    echo "⚙️ Installing Python3 with apt..."
+    tool_progress "installation" "⚙️ Installing Python3 with apt..."
     sudo apt update &> /dev/null && sudo apt install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with apt. Please install manually."
+    tool_done
   elif command -v dnf &> /dev/null; then
-    echo "⚙️ Installing Python3 with dnf..."
+    tool_progress "installation" "⚙️ Installing Python3 with dnf..."
     sudo dnf install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with dnf. Please install manually."
+    tool_done
   elif command -v yum &> /dev/null; then
-    echo "⚙️ Installing Python3 with yum..."
+    tool_progress "installation" "⚙️ Installing Python3 with yum..."
     sudo yum install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with yum. Please install manually."
+    tool_done
   else
     echo "❌ Could not determine package manager. Please install Python3 manually."
     exit 1
@@ -154,7 +157,6 @@ fi
 source "$VENV_DIR/bin/activate"
 
 if ! python -c "import jinja2" &> /dev/null; then
-  tool_progress "jinja2" "Installing"
   if [[ "$VERBOSE" -eq 1 ]]; then
     pip install jinja2 --disable-pip-version-check --no-warn-script-location || {
       echo "❌ Failed to install jinja2. Try manually using pip inside the virtual environment."; exit 1;
@@ -164,7 +166,6 @@ if ! python -c "import jinja2" &> /dev/null; then
       echo "❌ Failed to install jinja2. Try manually using pip inside the virtual environment."; exit 1;
     }
   fi
-  tool_done
 fi
 
 deactivate
@@ -200,7 +201,8 @@ curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" &> /dev/null
 tool_done
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
-echo "   📦 Installing version: $VERSION"
+tool_progress "$SCRIPT_NAME version" "Installing version: $VERSION"
+tool_done
 
 if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
   sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null || sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
@@ -208,14 +210,12 @@ fi
 chmod +x "$PYTHON_SCRIPT"
 
 if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c \"$PYTHON_SCRIPT\" \"$WRAPPER_SCRIPT\")" -eq 0 ]]; then
-  tool_progress "CLI wrapper" "Creating"
   cat <<EOF > "$WRAPPER_SCRIPT"
 #!/bin/bash
 source "$VENV_DIR/bin/activate"
 exec python "$PYTHON_SCRIPT" "\$@"
 EOF
   chmod +x "$WRAPPER_SCRIPT"
-  tool_done
 else
   echo "🔹 Wrapper script already exists. Skipping."
 fi
