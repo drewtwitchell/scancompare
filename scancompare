@@ -630,12 +630,13 @@ def display_summary(trivy_cves, grype_cves):
     return shared_cves, only_trivy_cves, only_grype_cves
 
 def publish_to_github_pages(report_path, image_name):
+    """Publish the HTML report to GitHub Pages, choosing 'docs/' or 'gh-pages' based on the repo."""
     import os
+    from pathlib import Path
     import shutil
     import subprocess
-    import zipfile
-    from pathlib import Path
     from datetime import datetime
+    import zipfile
 
     if not args.repo_url:
         return None
@@ -645,8 +646,11 @@ def publish_to_github_pages(report_path, image_name):
 
     use_docs_folder = Path("docs").exists()
 
-    result = subprocess.run(["git", "branch", "-a"], stdout=subprocess.PIPE, check=True)
-    branches = result.stdout.decode()
+    try:
+        result = subprocess.run(["git", "branch", "-a"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        branches = result.stdout.decode()
+    except Exception:
+        branches = ""
     use_gh_pages = "remotes/origin/gh-pages" in branches or "gh-pages" in branches
 
     if use_docs_folder:
@@ -657,7 +661,6 @@ def publish_to_github_pages(report_path, image_name):
         target_branch = "gh-pages"
 
     target_dir.mkdir(exist_ok=True)
-
     timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
     report_filename = f"scan_report_{image_name.replace(':', '_')}_{timestamp}.html"
     target_path = target_dir / report_filename
@@ -671,70 +674,63 @@ def publish_to_github_pages(report_path, image_name):
 </body>
 </html>""")
 
-    current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
-
     if not Path(".git").exists():
         tool_progress("🔄", "Initializing git repository...")
         subprocess.run(["git", "init"], check=True)
         subprocess.run(["git", "remote", "add", "origin", args.repo_url], check=True)
         tool_done()
 
-    # Ensure gh-pages branch exists remotely
-    try:
-        subprocess.run(["git", "show-ref", "--verify", "--quiet", f"refs/remotes/origin/{target_branch}"], check=True)
-    except subprocess.CalledProcessError:
-        # Push the branch explicitly to create remote tracking
-        subprocess.run(["git", "push", "-u", "origin", target_branch], check=True)
-
+    current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
     if target_branch != current_branch:
         tool_progress("🔀", f"Switching to {target_branch} branch...")
-        subprocess.run(["git", "checkout", "-B", target_branch], check=True, stdout=subprocess.DEVNULL if not args.verbose else None)
+        subprocess.run(["git", "checkout", "-B", target_branch], check=True)
         tool_done()
 
     tool_progress("🔄", "Pulling latest gh-pages...")
     try:
-        subprocess.run(["git", "pull", "--autostash"], check=True, stdout=subprocess.DEVNULL if not args.verbose else None, stderr=subprocess.DEVNULL if not args.verbose else None)
-        tool_done()
+        subprocess.run(["git", "pull", "--autostash", "origin", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError:
         print("⚠️ Warning: failed to pull latest changes. Continuing anyway.")
-        tool_done()
+    tool_done()
+
+    # Create backups directory if it doesn't exist
+    backup_dir = Path("backups")
+    backup_dir.mkdir(exist_ok=True)
+    backup_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    zip_path = backup_dir / f"gh-pages-backup-{backup_timestamp}.zip"
 
     try:
-        if not args.keep_data:
-            backup_dir = Path("backups")
-            backup_dir.mkdir(exist_ok=True)
-            zip_name = f"backup_{timestamp}.zip"
-            zip_path = backup_dir / zip_name
-
-            with zipfile.ZipFile(zip_path, 'w') as zipf:
-                for file in target_dir.glob("*.html"):
-                    zipf.write(file, arcname=f"gh-pages/{file.name}")
-                for file in target_dir.glob("*.json"):
-                    zipf.write(file, arcname=f"gh-pages/{file.name}")
-
-            # Cleanup old backups
-            backups = sorted(backup_dir.glob("backup_*.zip"), key=os.path.getmtime)
-            for old in backups[:-3]:
-                old.unlink()
-
-            for f in target_dir.glob("*"):
-                f.unlink()
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for file in target_dir.glob("*"):
+                zipf.write(file, arcname=file.name)
+        backups = sorted(backup_dir.glob("gh-pages-backup-*.zip"), key=os.path.getmtime, reverse=True)
+        for old in backups[3:]:
+            old.unlink()
     except Exception as e:
         print(f"⚠️ Failed to backup or clean gh-pages: {e}")
 
-    tool_progress("📦", f"Adding {target_dir} contents to git...")
-    subprocess.run(["git", "add", "-f", str(target_dir)], check=True, stdout=subprocess.DEVNULL if not args.verbose else None)
-    subprocess.run(["git", "commit", "-m", f"📊 Add scan report for {image_name}"], check=True, stdout=subprocess.DEVNULL if not args.verbose else None)
-    subprocess.run(["git", "push", "-u", "origin", target_branch], check=True, stdout=subprocess.DEVNULL if not args.verbose else None)
-    tool_done()
+    if not args.keep_data:
+        for f in target_dir.glob("*"):
+            if f.is_file():
+                f.unlink()
+
+    # Stage, check, and optionally commit and push
+    devnull = subprocess.DEVNULL if not args.verbose else None
+    subprocess.run(["git", "add", "-f", str(target_dir)], check=True, stdout=devnull, stderr=devnull)
+
+    diff_check = subprocess.run(["git", "diff", "--cached", "--quiet"])
+    if diff_check.returncode != 0:
+        subprocess.run(["git", "commit", "-m", f"📊 Add scan report for {image_name}"], check=True, stdout=devnull, stderr=devnull)
+        subprocess.run(["git", "push", "-u", "origin", target_branch], check=True, stdout=devnull, stderr=devnull)
+        tool_done()
+    else:
+        if args.verbose:
+            print("ℹ️ No changes to commit.")
 
     if target_branch != current_branch:
-        subprocess.run(["git", "checkout", current_branch], check=True, stdout=subprocess.DEVNULL if not args.verbose else None)
+        subprocess.run(["git", "checkout", current_branch], check=True)
 
     base_url = f"https://{user}.github.io/{repo}"
-    if not use_docs_folder and target_branch != "gh-pages":
-        print(f"ℹ️ To enable GitHub Pages: visit https://github.com/{user}/{repo}/settings/pages and choose the '{target_branch}' branch as your source.")
-
     return f"{base_url}/{report_filename}"
 
 def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only_grype, trivy_version, grype_version):
