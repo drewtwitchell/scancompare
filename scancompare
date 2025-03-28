@@ -430,9 +430,10 @@ def validate_image_exists(image):
         if local_result.returncode == 0:
             return True
 
-        # If not found locally, check remote manifest
-        remote_result = subprocess.run(["docker", "manifest", "inspect", image], capture_output=True)
-        if remote_result.returncode == 0:
+        # If not found locally, try to pull the image
+        print(f"🔄 Image not found locally. Attempting to pull {image}...")
+        pull_result = subprocess.run(["docker", "pull", image], capture_output=True)
+        if pull_result.returncode == 0:
             return True
 
         return False
@@ -701,7 +702,7 @@ def main(args):
     else:
         image = args.image
         repo = None
-        tool_progress("scans","🛡️ Starting vulnerability scans against image: {image}")
+        print(f"🛡️ Starting vulnerability scans against image: {image}")
         summary_lines.append(f"🛡️ Scanning image: {image}")
 
     if not validate_image_exists(image):
