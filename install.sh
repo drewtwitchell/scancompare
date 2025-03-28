@@ -27,8 +27,8 @@ tool_progress() {
   TOOL_NAME="$2"
   INDENT="$3"  # Indentation level
 
-  # Print a new line and then add the indentation before printing the action
-  echo -e "\n$(printf '%*s' "$INDENT" "")$ACTION $TOOL_NAME..."
+  # Print the action and tool name with the correct indentation and no extra newlines
+  echo -n "$(printf '%*s' "$INDENT" "")$ACTION $TOOL_NAME..."
 }
 
 tool_done() {
@@ -160,4 +160,4 @@ else
   echo "✅ $INSTALL_BIN is in your PATH"
 fi
 
-echo "🎉 You can now run: $SCRIPT_NAME <image-name>"
+echo "🎉 You can now run: scancompare <image-name>"
