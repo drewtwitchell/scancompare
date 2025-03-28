@@ -25,7 +25,7 @@ log() {
 tool_progress() {
   TOOL_NAME="$2"
   ACTION="$1"
-  echo -n "$ACTION $TOOL_NAME..."
+  echo -n "    $ACTION $TOOL_NAME..."
 }
 
 tool_done() {
