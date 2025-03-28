@@ -65,13 +65,15 @@ echo ""  # Line break for clarity
 
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    tool_progress "Installing" "🍺 Homebrew"
+    tool_progress "🔍 Attempting tool installation " "🍺 Homebrew"
     NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
       echo "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
       tool_done
     }
   fi
 }
+
+tool_done
 
 ADDED_LINE='export PATH="$HOME/.local/bin:$PATH"'
 
