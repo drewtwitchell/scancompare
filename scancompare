@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.0
+# scancompare version 1.0.1
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -625,27 +625,22 @@ def publish_to_github_pages(report_path, image_name):
             print("📦 Initializing new git repository...")
             subprocess.run(["git", "init"], check=True, capture_output=True)
             
-            # Configure git user if not already configured
-            try:
-                subprocess.run(["git", "config", "user.name"], check=True, capture_output=True)
-            except subprocess.CalledProcessError:
-                print("📝 Setting up git configuration...")
-                subprocess.run(["git", "config", "user.name", "GitHub Actions"], check=True)
-                subprocess.run(["git", "config", "user.email", "actions@github.com"], check=True)
+            # Configure git user
+            print("📝 Setting up git configuration...")
+            subprocess.run(["git", "config", "user.name", "GitHub Actions"], check=True)
+            subprocess.run(["git", "config", "user.email", "actions@github.com"], check=True)
             
-            # Create and switch to main branch
-            subprocess.run(["git", "checkout", "-b", "main"], check=True, capture_output=True)
-            subprocess.run(["git", "add", "."], check=True, capture_output=True)
-            
+            # Create initial commit
+            subprocess.run(["git", "add", "."], check=True)
             try:
-                subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, capture_output=True)
+                subprocess.run(["git", "commit", "-m", "Initial commit"], check=True)
             except subprocess.CalledProcessError as e:
                 if "nothing to commit" not in str(e.stderr):
                     raise
             
             # Set up remote if we have a repo URL
             if args.repo_url:
-                subprocess.run(["git", "remote", "add", "origin", args.repo_url], check=True, capture_output=True)
+                subprocess.run(["git", "remote", "add", "origin", args.repo_url], check=True)
 
         # Get the current repository URL
         try:
@@ -660,12 +655,19 @@ def publish_to_github_pages(report_path, image_name):
                 
         repo_name = repo_url.split('/')[-1].replace('.git', '')
         
+        # Create and switch to main branch if not already on it
+        try:
+            current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
+            if current_branch != "main":
+                subprocess.run(["git", "checkout", "-b", "main"], check=True)
+        except subprocess.CalledProcessError:
+            subprocess.run(["git", "checkout", "-b", "main"], check=True)
+        
         # Create gh-pages branch if it doesn't exist
         try:
-            subprocess.run(["git", "show-ref", "--verify", "refs/heads/gh-pages"], check=True, capture_output=True)
+            subprocess.run(["git", "show-ref", "--verify", "refs/heads/gh-pages"], check=True)
         except subprocess.CalledProcessError:
             print("🔄 Creating gh-pages branch...")
-            current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
             subprocess.run(["git", "checkout", "--orphan", "gh-pages"], check=True)
             subprocess.run(["git", "rm", "-rf", "."], check=True)
             
@@ -675,7 +677,7 @@ def publish_to_github_pages(report_path, image_name):
                 if "nothing to commit" not in str(e.stderr):
                     raise
                     
-            subprocess.run(["git", "checkout", current_branch], check=True)
+            subprocess.run(["git", "checkout", "main"], check=True)
 
         # Create a temporary directory for gh-pages content
         with tempfile.TemporaryDirectory() as temp_dir:
