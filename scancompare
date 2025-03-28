@@ -639,11 +639,18 @@ def publish_to_github_pages(report_path, image):
     import zipfile
     from urllib.parse import urlparse
 
+    # Exit gracefully if no --repo-url is supplied and a link is added as an arg to the terminal
+    if not args.repo_url and (args.repo_url_link if hasattr(args, 'repo_url_link') else None):
+        print("⚠️ You must use the --repo-url flag to specify the repository URL.")
+        print("Usage: --repo-url <url> [--other-options]")
+        sys.exit(1)
+
+    # Proceed if --repo-url is supplied
     if not args.repo_url:
-        return None
+        print("⚠️ No --repo-url supplied. Publishing to the default fork.")
+        return None  # If no repo URL, do nothing
 
     try:
-        # Pull the latest gh-pages branch changes
         tool_progress("🔄", "Pulling latest gh-pages")
         subprocess.run(["git", "pull", "--autostash", "origin", "gh-pages"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         tool_done()
@@ -705,15 +712,13 @@ def publish_to_github_pages(report_path, image):
         if file.name != "index.html" and file.is_file():
             file.unlink()
 
-    # Git setup
+    # Git setup (ensure it's pushing to the correct remote)
     if not Path(".git").exists():
         subprocess.run(["git", "init"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["git", "remote", "add", "origin", args.repo_url], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # Get the current branch
     current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
 
-    # Switch to target branch if necessary
     if target_branch != current_branch:
         subprocess.run(["git", "checkout", "-B", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -727,11 +732,10 @@ def publish_to_github_pages(report_path, image):
     subprocess.run(["git", "push", "-u", "origin", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     tool_done()
 
-    # Return to the original branch if switched
     if target_branch != current_branch:
         subprocess.run(["git", "checkout", current_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # Return the public report URL
+    # Return public report URL
     base_url = f"https://{user}.github.io/{repo}"
     return f"{base_url}/{report_filename}"
 
