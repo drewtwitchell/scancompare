@@ -61,6 +61,9 @@ if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
 fi
 
 echo "🔍 Attempting tool installation via Homebrew or fallback methods..."
+tool_progress "installation" "Attempting tool installation via Homebrew or fallback methods..."
+echo ""  # Line break for clarity
+tool_done
 
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -216,8 +219,6 @@ EOF
 else
   echo "🔹 Wrapper script already exists. Skipping."
 fi
-
-echo "✅ Installed $SCRIPT_NAME version $VERSION"
 
 if ! command -v scancompare &> /dev/null; then
   echo ""
