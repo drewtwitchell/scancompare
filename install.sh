@@ -65,10 +65,10 @@ echo ""  # Line break for clarity
 
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    tool_progress ("installation", "🍺 Homebrew not found. Attempting to install...")
+    tool_progress "installation" "🍺 Homebrew not found. Attempting to install..."
     NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
       echo "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
-    tool_done ()
+      tool_done
     }
   fi
 }
