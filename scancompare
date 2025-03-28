@@ -140,10 +140,9 @@ def get_script_path():
         return sys.argv[0]
     
 def uninstall_scancompare():
-    tool_progress("uninstall", "🧹 Uninstalling scancompare...")
+    print("🧹 Uninstalling scancompare...")
 
     paths_removed = False
-
     lib_dir = Path.home() / ".local" / "lib" / "scancompare"
     script_path = lib_dir / "scancompare"
     wrapper_path = Path.home() / ".local" / "bin" / "scancompare"
@@ -152,48 +151,43 @@ def uninstall_scancompare():
     # Removing script and wrapper paths
     for path in [script_path, wrapper_path]:
         if path.exists():
-            tool_progress("    🗑️ Removing", f"{path}...")
+            print(f"🗑️  Removing {path}...", end=" ")
             path.unlink()
-            print(f"    🗑️ Removed {path}")
+            print("✔")
             paths_removed = True
-            tool_done()  # Completed this task
 
     # Removing virtual environment
     if venv_path.exists() and venv_path.is_dir():
-        tool_progress("    🧹 Removing", f"Python virtual environment: {venv_path}...")
+        print("🧹 Removing virtual environment...", end=" ")
         shutil.rmtree(venv_path)
-        print(f"    🧹 Removed Python virtual environment: {venv_path}")
-        tool_done()  # Completed this task
+        print("✔")
 
     # Removing scan_reports directory
     reports_dir = Path("scan_reports")
     if reports_dir.exists():
-        tool_progress("    🗑️ Removing", "scan_reports directory...")
+        print("🗑️  Removing scan reports...", end=" ")
         shutil.rmtree(reports_dir)
-        print("    🗑️ Removed scan_reports directory")
-        tool_done()  # Completed this task
+        print("✔")
 
     # Cleaning up shell config in profile files
     profile_files = [".zshrc", ".bashrc", ".profile", ".bash_profile", ".zprofile"]
     for profile in profile_files:
         full_path = Path.home() / profile
         if full_path.exists():
-            tool_progress("    🧽 Cleaning up", f"shell config in {full_path}...")
+            print(f"🧽 Cleaning up {profile}...", end=" ")
             content = full_path.read_text()
             new_content = "\n".join(
                 line for line in content.splitlines()
                 if 'export PATH="$HOME/.local/bin:$PATH"' not in line and 'source "$HOME/.config/scancompare/env.shexport"' not in line
             )
             full_path.write_text(new_content)
-            print(f"    🧽 Cleaned up shell config in {full_path}")
-            tool_done()  # Completed this task
+            print("✔")
 
     if paths_removed:
-        print("✅ scancompare successfully uninstalled.")
+        print("\n✅ scancompare successfully uninstalled.")
     else:
-        print("ℹ️ scancompare was not found or already uninstalled.")
+        print("\nℹ️  scancompare was not found or already uninstalled.")
     
-    tool_done()  # Mark uninstallation as completed
     sys.exit(0)
 
 def handle_cli_args():
