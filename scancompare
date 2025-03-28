@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.0
+# scancompare version 1.0.1
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -386,8 +386,10 @@ def extract_cves_with_severity(file_path, verbose=False):
                             "published": vuln.get("PublishedDate"),
                             "last_modified": vuln.get("LastModifiedDate")
                         }
-        elif "matches" in data:  # Grype format
-            for match in data.get("matches", []):
+        elif isinstance(data, list):  # Grype format
+            for match in data:
+                if not isinstance(match, dict):
+                    continue
                 vuln = match.get("vulnerability", {})
                 cve = vuln.get("id")
                 severity = vuln.get("severity", "UNKNOWN").capitalize()
