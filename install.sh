@@ -23,8 +23,8 @@ log() {
 }
 
 tool_progress() {
-  TOOL_NAME="$1"
-  ACTION="$2"
+  TOOL_NAME="$2"
+  ACTION="$1"
   echo -n "$ACTION $TOOL_NAME..."
 }
 
@@ -65,7 +65,7 @@ echo ""  # Line break for clarity
 
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    tool_progress "installation" "🍺 Homebrew not found. Attempting to install..."
+    tool_progress "Installing" "🍺 Homebrew"
     NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
       echo "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
       tool_done
@@ -127,21 +127,25 @@ if ! command -v python3 &> /dev/null; then
   echo "❌ Python3 not found"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     command -v brew &> /dev/null || install_homebrew
-    tool_progress "installation" "⚙️ Installing Python3 using Homebrew..."
+    tool_progress "⚙️ Installing" "Python3 using Homebrew..."
     brew install python &> /dev/null || echo "⚠️ Failed to install Python3 with Homebrew. Please install manually."
     tool_done
   elif command -v apt &> /dev/null; then
-    tool_progress "installation" "⚙️ Installing Python3 with apt..."
+    tool_progress "⚙️ Installing" "⚙️ Installing Python3 with apt..."
     sudo apt update &> /dev/null && sudo apt install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with apt. Please install manually."
+    tool_done
   elif command -v dnf &> /dev/null; then
-    tool_progress "installation" "⚙️ Installing Python3 with dnf..."
+    tool_progress "⚙️ Installing" "Python3 with dnf..."
     sudo dnf install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with dnf. Please install manually."
+    tool_done
   elif command -v yum &> /dev/null; then
-    tool_progress "installation" "⚙️ Installing Python3 with yum..."
+    tool_progress "⚙️ Installing" "Python3 with yum..."
     sudo yum install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with yum. Please install manually."
+    tool_done
   else
     echo "❌ Could not determine package manager. Please install Python3 manually."
     exit 1
+    tool_done
   fi
 fi
 
@@ -166,7 +170,7 @@ fi
 deactivate
 
 if ! command -v trivy &> /dev/null; then
-  tool_progress "Trivy" "Installing"
+  tool_progress "Installing" "Trivy"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     command -v brew &> /dev/null || install_homebrew
     brew install trivy &> /dev/null || echo "⚠️ Failed to install Trivy with Homebrew. Please install manually."
@@ -179,7 +183,7 @@ if ! command -v trivy &> /dev/null; then
 fi
 
 if ! command -v grype &> /dev/null; then
-  tool_progress "Grype" "Installing"
+  tool_progress "Installing" "Grype"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     command -v brew &> /dev/null || install_homebrew
     brew install grype &> /dev/null || echo "⚠️ Failed to install Grype with Homebrew. Please install manually."
@@ -191,12 +195,12 @@ if ! command -v grype &> /dev/null; then
   tool_done
 fi
 
-tool_progress "$SCRIPT_NAME script" "Downloading"
+tool_progress "Downloading" "$SCRIPT_NAME script" 
 curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" &> /dev/null
 tool_done
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
-tool_progress "$SCRIPT_NAME version" "Installing version: $VERSION"
+tool_progress "Installing version: " "$VERSION" 
 tool_done
 
 if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
