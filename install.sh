@@ -23,9 +23,12 @@ log() {
 }
 
 tool_progress() {
-  TOOL_NAME="$2"
   ACTION="$1"
-  echo -n "    $ACTION $TOOL_NAME..."
+  TOOL_NAME="$2"
+  INDENT="$3"  # Indentation level
+
+  # Print a new line and then add the indentation before printing the action
+  echo -e "\n$(printf '%*s' "$INDENT" "")$ACTION $TOOL_NAME..."
 }
 
 tool_done() {
@@ -47,11 +50,11 @@ if [[ -f "$PYTHON_SCRIPT" && "$FORCE_REINSTALL" -eq 0 ]]; then
 fi
 
 # Install necessary tools
-tool_progress "🔍 Attempting" "tool installation via Homebrew or fallback methods..."
+tool_progress "🔍 Attempting" "tool installation via Homebrew or fallback methods..." 0
 
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    tool_progress "🍺 Installing" "Homebrew"
+    tool_progress "🍺 Installing" "Homebrew" 4
     NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
       echo "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
       tool_done
@@ -64,19 +67,19 @@ if ! command -v python3 &> /dev/null; then
   echo "❌ Python3 not found"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     command -v brew &> /dev/null || install_homebrew
-    tool_progress "⚙️ Installing" "Python3 using Homebrew..."
+    tool_progress "⚙️ Installing" "Python3 using Homebrew..." 4
     brew install python &> /dev/null || echo "⚠️ Failed to install Python3 with Homebrew. Please install manually."
     tool_done
   elif command -v apt &> /dev/null; then
-    tool_progress "⚙️ Installing" "Python3 with apt..."
+    tool_progress "⚙️ Installing" "Python3 with apt..." 4
     sudo apt update &> /dev/null && sudo apt install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with apt. Please install manually."
     tool_done
   elif command -v dnf &> /dev/null; then
-    tool_progress "⚙️ Installing" "Python3 with dnf..."
+    tool_progress "⚙️ Installing" "Python3 with dnf..." 4
     sudo dnf install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with dnf. Please install manually."
     tool_done
   elif command -v yum &> /dev/null; then
-    tool_progress "⚙️ Installing" "Python3 with yum..."
+    tool_progress "⚙️ Installing" "Python3 with yum..." 4
     sudo yum install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with yum. Please install manually."
     tool_done
   else
@@ -87,7 +90,7 @@ fi
 
 # Set up virtual environment
 if [[ ! -d "$VENV_DIR" ]]; then
-  tool_progress "⚙️ Creating" "Virtual environment..."
+  tool_progress "⚙️ Creating" "Virtual environment..." 4
   python3 -m venv "$VENV_DIR" &> /dev/null
   tool_done
 fi
@@ -96,7 +99,7 @@ source "$VENV_DIR/bin/activate"
 
 # Install jinja2 if not installed
 if ! python -c "import jinja2" &> /dev/null; then
-  tool_progress "⚙️ Installing" "jinja2..."
+  tool_progress "⚙️ Installing" "jinja2..." 8
   pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location || {
     echo "❌ Failed to install jinja2."; exit 1;
   }
@@ -105,7 +108,7 @@ fi
 
 # Install trivy if not installed
 if ! command -v trivy &> /dev/null; then
-  tool_progress "⚙️ Installing" "Trivy..."
+  tool_progress "⚙️ Installing" "Trivy..." 8
   curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
     echo "❌ Failed to install Trivy."; exit 1;
   }
@@ -114,7 +117,7 @@ fi
 
 # Install grype if not installed
 if ! command -v grype &> /dev/null; then
-  tool_progress "⚙️ Installing" "Grype..."
+  tool_progress "⚙️ Installing" "Grype..." 8
   curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
     echo "❌ Failed to install Grype."; exit 1;
   }
@@ -122,12 +125,12 @@ if ! command -v grype &> /dev/null; then
 fi
 
 # Download the scancompare script
-tool_progress "📦 Downloading and Installing" "scancompare script version..."
+tool_progress "📦 Downloading and Installing" "scancompare script version..." 0
 curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" &> /dev/null
 tool_done
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
-tool_progress "⚙️ Installing version:" "$VERSION"
+tool_progress "⚙️ Installing version:" "$VERSION" 4
 tool_done
 
 # Ensure the script is executable
