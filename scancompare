@@ -692,9 +692,9 @@ def publish_to_github_pages(report_path, image_name):
         subprocess.run(["git", "checkout", "-B", target_branch], check=True)
         tool_done()
 
-    # Stage and commit
+    # Stage and commit (force add to bypass .gitignore)
     tool_progress("📦", f"Adding {target_dir} contents to git...")
-    subprocess.run(["git", "add", str(target_dir)], check=True)
+    subprocess.run(["git", "add", "-f", str(target_dir)], check=True)
     subprocess.run(["git", "commit", "-m", f"📊 Add scan report for {image_name}"], check=True)
     subprocess.run(["git", "push", "-u", "origin", target_branch], check=True)
     tool_done()
@@ -705,10 +705,7 @@ def publish_to_github_pages(report_path, image_name):
 
     # Return the public report URL
     base_url = f"https://{user}.github.io/{repo}"
-    if use_docs_folder:
-        return f"{base_url}/{report_filename}"
-    else:
-        return f"{base_url}/{report_filename}"
+    return f"{base_url}/{report_filename}"
 
 def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only_grype, trivy_version, grype_version):
     """Generate a detailed HTML report of vulnerability findings."""
