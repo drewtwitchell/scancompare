@@ -25,7 +25,7 @@ log() {
 tool_progress() {
 	TOOL_NAME="$2"
 	ACTION="$1"
-	printf "\t$ACTION $TOOL_NAME..."
+	printf "$ACTION $TOOL_NAME..."
 }
 
 tool_done() {
@@ -48,7 +48,7 @@ if [[ -f "$PYTHON_SCRIPT" && "$FORCE_REINSTALL" -eq 0 ]]; then
 fi
 
 # Installing required tools
-printf "\n\t📦 Installing required tools: python3, jinja2, trivy, grype..."
+printf "📦 Installing required tools: python3, jinja2, trivy, grype..."
 
 tool_progress "🔍 Attempting" "tool installation via Homebrew or fallback methods..."
 install_homebrew() {
