@@ -60,6 +60,10 @@ def check_latest_version(only_check=False):
         return
 
     try:
+        if only_check:
+            print("📦 scancompare version", get_current_version())
+            return
+
         print("🔄 Checking for updates...")
         urlretrieve(SCRIPT_URL, get_script_path())
 
@@ -73,12 +77,9 @@ def check_latest_version(only_check=False):
             current = get_current_version()
 
             if latest == current:
-                if only_check:
-                    print(f"📦 scancompare version {current}")
-                    sys.exit(0)
-                else:
-                    print(f"📦 scancompare version {current}")
-                    return
+                print(f"📦 scancompare version {current}")
+                print("✅ You are running the latest version.")
+                return
 
             print(f"🔄 Updating scancompare from {current} to {latest}...")
             update_script(new_code)
@@ -1242,40 +1243,13 @@ def main():
         print(f"📦 scancompare version {get_current_version()}")
         return
 
-    # Check for updates before proceeding with other operations
-    check_latest_version()
-
     if args.update:
-        print("🔄 Checking for updates...")
-        try:
-            urlretrieve(SCRIPT_URL, get_script_path())
-            with open(get_script_path(), 'r') as f:
-                new_code = f.read()
-                latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
-                if not latest_match:
-                    raise ValueError("Could not determine latest version from script.")
-
-                latest = latest_match.group(1)
-                current = get_current_version()
-
-                if latest == current:
-                    print(f"📦 scancompare version {current}")
-                    print("✅ You are running the latest version.")
-                    return
-
-                print(f"🔄 Updating scancompare from {current} to {latest}...")
-                update_script(new_code)
-                print("♻️ Restarting with updated version...")
-                script_path = get_script_path()
-                os.execve(
-                    sys.executable,
-                    [sys.executable, script_path] + sys.argv[1:],
-                    {**os.environ, "SCANCOMPARE_UPDATED": "1"}
-                )
-        except Exception as e:
-            print(f"⚠️ Update failed: {e}")
-            sys.exit(1)
+        # This will update and restart the script if needed
+        check_latest_version()
         return
+    else:
+        # For normal runs, just check and show current version info
+        check_latest_version(only_check=True)
 
     if not args.image and not args.repo_url:
         print("Usage: scancompare <image> [--repo-url <repo>, --keep-data, --verbose, --version, --update, --uninstall]")
