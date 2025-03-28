@@ -232,9 +232,9 @@
         }
 
         .tool-link img {
-            width: 24px;
-            height: 24px;
-            margin-right: 8px;
+            width: 32px;
+            height: 32px;
+            margin-right: 12px;
             object-fit: contain;
         }
 
@@ -307,9 +307,30 @@
 
         .section-header {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            flex-direction: column;
+            gap: 15px;
             margin-bottom: 20px;
+            background-color: var(--card-background);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .section-header h2 {
+            margin: 0;
+        }
+
+        .filter-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .filter-instructions {
+            font-size: 0.9em;
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
         }
 
         .section-filters {
@@ -319,21 +340,34 @@
         }
 
         .section-filter {
-            padding: 5px 15px;
-            border-radius: 15px;
+            padding: 8px 20px;
+            border-radius: 20px;
             cursor: pointer;
-            border: none;
-            font-weight: bold;
-            transition: opacity 0.2s;
-            font-size: 0.9em;
+            border: 2px solid transparent;
+            font-weight: 600;
+            transition: all 0.2s;
+            font-size: 0.95em;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
 
-        .section-filter.active {
-            opacity: 1;
+        .section-filter::before {
+            content: '✓';
+            font-weight: bold;
         }
 
         .section-filter.inactive {
             opacity: 0.5;
+        }
+
+        .section-filter.inactive::before {
+            content: '×';
+        }
+
+        .section-filter:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
         .legend {
@@ -420,6 +454,128 @@
                 break-inside: avoid;
             }
         }
+
+        .quick-filters {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .quick-filter {
+            padding: 10px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            border: 2px solid var(--primary-color);
+            background-color: white;
+            color: var(--primary-color);
+            font-weight: 600;
+            transition: all 0.2s;
+            font-size: 1em;
+        }
+
+        .quick-filter.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .quick-filter:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .section {
+            display: none;
+        }
+
+        .section.visible {
+            display: block;
+        }
+
+        .quick-filters-container {
+            background-color: var(--card-background);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .quick-filters-instructions {
+            margin-bottom: 15px;
+            color: var(--text-color);
+        }
+
+        .helpful-links {
+            background-color: var(--card-background);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin: 20px 0;
+        }
+
+        .helpful-links h2 {
+            color: var(--primary-color);
+            margin-top: 0;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .links-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .link-category {
+            background-color: var(--background-color);
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .link-category h3 {
+            color: var(--primary-color);
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+
+        .link-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .resource-link {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            background-color: white;
+            border-radius: 6px;
+            text-decoration: none;
+            color: var(--text-color);
+            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .resource-link:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+        }
+
+        .resource-link img {
+            width: 24px;
+            height: 24px;
+            margin-right: 10px;
+            object-fit: contain;
+        }
+
+        .link-description {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body>
@@ -448,11 +604,11 @@
 
         <div class="tool-links">
             <a href="https://aquasecurity.github.io/trivy/" target="_blank" class="tool-link">
-                <img src="https://raw.githubusercontent.com/aquasecurity/trivy/main/docs/imgs/logo.png" alt="Trivy Logo">
+                <img src="https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/trivy.png" alt="Trivy Logo">
                 Learn more about Trivy
             </a>
             <a href="https://github.com/anchore/grype" target="_blank" class="tool-link">
-                <img src="https://raw.githubusercontent.com/anchore/grype/main/docs/img/grype-logo.png" alt="Grype Logo">
+                <img src="https://raw.githubusercontent.com/anchore/grype/main/docs/static/images/grype-logo-small.png" alt="Grype Logo">
                 Learn more about Grype
             </a>
         </div>
@@ -545,12 +701,69 @@
             </div>
         </div>
 
-        <div class="severity-filters">
-            <button class="severity-filter active" data-severity="Critical" style="background-color: var(--critical-color); color: white;">Critical</button>
-            <button class="severity-filter active" data-severity="High" style="background-color: var(--high-color); color: white;">High</button>
-            <button class="severity-filter active" data-severity="Medium" style="background-color: var(--medium-color); color: white;">Medium</button>
-            <button class="severity-filter active" data-severity="Low" style="background-color: var(--low-color); color: white;">Low</button>
-            <button class="severity-filter active" data-severity="Unknown" style="background-color: var(--unknown-color); color: white;">Unknown</button>
+        <div class="helpful-links">
+            <h2>Helpful Resources</h2>
+            <div class="links-grid">
+                <div class="link-category">
+                    <h3>Scanning Tools</h3>
+                    <div class="link-list">
+                        <a href="https://aquasecurity.github.io/trivy/" target="_blank" class="resource-link">
+                            <img src="https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/trivy.png" alt="Trivy Logo">
+                            <div>
+                                <div>Trivy Documentation</div>
+                                <div class="link-description">Learn about Trivy's features and usage</div>
+                            </div>
+                        </a>
+                        <a href="https://github.com/anchore/grype" target="_blank" class="resource-link">
+                            <img src="https://raw.githubusercontent.com/anchore/grype/main/docs/static/images/grype-logo-small.png" alt="Grype Logo">
+                            <div>
+                                <div>Grype Documentation</div>
+                                <div class="link-description">Explore Grype's capabilities and setup</div>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="link-category">
+                    <h3>Vulnerability Scoring</h3>
+                    <div class="link-list">
+                        <a href="https://nvd.nist.gov/vuln-metrics/cvss" target="_blank" class="resource-link">
+                            <img src="https://raw.githubusercontent.com/aquasecurity/trivy/main/docs/imgs/severity-critical.png" alt="CVSS Icon">
+                            <div>
+                                <div>CVSS Scoring Guide</div>
+                                <div class="link-description">Understanding vulnerability severity scores</div>
+                            </div>
+                        </a>
+                        <a href="https://www.first.org/cvss/user-guide" target="_blank" class="resource-link">
+                            <img src="https://raw.githubusercontent.com/aquasecurity/trivy/main/docs/imgs/severity-high.png" alt="CVSS Guide Icon">
+                            <div>
+                                <div>CVSS User Guide</div>
+                                <div class="link-description">Detailed guide to CVSS scoring system</div>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="link-category">
+                    <h3>Vulnerability Databases</h3>
+                    <div class="link-list">
+                        <a href="https://nvd.nist.gov/" target="_blank" class="resource-link">
+                            <img src="https://raw.githubusercontent.com/aquasecurity/trivy/main/docs/imgs/severity-medium.png" alt="NVD Icon">
+                            <div>
+                                <div>National Vulnerability Database</div>
+                                <div class="link-description">Comprehensive vulnerability database</div>
+                            </div>
+                        </a>
+                        <a href="https://github.com/advisories" target="_blank" class="resource-link">
+                            <img src="https://raw.githubusercontent.com/aquasecurity/trivy/main/docs/imgs/severity-low.png" alt="GitHub Icon">
+                            <div>
+                                <div>GitHub Advisory Database</div>
+                                <div class="link-description">Security advisories for open source projects</div>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="action-buttons">
@@ -559,15 +772,28 @@
         </div>
 
         <div class="vulnerabilities">
-            <div id="shared" class="section">
+            <div class="quick-filters-container">
+                <p class="quick-filters-instructions">Quick view filters - click to show specific sections:</p>
+                <div class="quick-filters">
+                    <button class="quick-filter active" data-show="all">Show All</button>
+                    <button class="quick-filter" data-show="shared">Only Shared</button>
+                    <button class="quick-filter" data-show="trivy">Only Trivy</button>
+                    <button class="quick-filter" data-show="grype">Only Grype</button>
+                </div>
+            </div>
+
+            <div id="shared" class="section visible">
                 <div class="section-header">
                     <h2>Shared Vulnerabilities</h2>
-                    <div class="section-filters">
-                        <button class="section-filter active" data-severity="Critical" style="background-color: var(--critical-color); color: white;">Critical</button>
-                        <button class="section-filter active" data-severity="High" style="background-color: var(--high-color); color: white;">High</button>
-                        <button class="section-filter active" data-severity="Medium" style="background-color: var(--medium-color); color: white;">Medium</button>
-                        <button class="section-filter active" data-severity="Low" style="background-color: var(--low-color); color: white;">Low</button>
-                        <button class="section-filter active" data-severity="Unknown" style="background-color: var(--unknown-color); color: white;">Unknown</button>
+                    <div class="filter-container">
+                        <p class="filter-instructions">Click severity levels to show/hide vulnerabilities:</p>
+                        <div class="section-filters">
+                            <button class="section-filter active" data-severity="Critical" style="background-color: var(--critical-color); color: white;">Critical</button>
+                            <button class="section-filter active" data-severity="High" style="background-color: var(--high-color); color: white;">High</button>
+                            <button class="section-filter active" data-severity="Medium" style="background-color: var(--medium-color); color: white;">Medium</button>
+                            <button class="section-filter active" data-severity="Low" style="background-color: var(--low-color); color: white;">Low</button>
+                            <button class="section-filter active" data-severity="Unknown" style="background-color: var(--unknown-color); color: white;">Unknown</button>
+                        </div>
                     </div>
                 </div>
                 {{ shared_section }}
@@ -576,12 +802,15 @@
             <div id="trivy" class="section">
                 <div class="section-header">
                     <h2>Trivy Unique Vulnerabilities</h2>
-                    <div class="section-filters">
-                        <button class="section-filter active" data-severity="Critical" style="background-color: var(--critical-color); color: white;">Critical</button>
-                        <button class="section-filter active" data-severity="High" style="background-color: var(--high-color); color: white;">High</button>
-                        <button class="section-filter active" data-severity="Medium" style="background-color: var(--medium-color); color: white;">Medium</button>
-                        <button class="section-filter active" data-severity="Low" style="background-color: var(--low-color); color: white;">Low</button>
-                        <button class="section-filter active" data-severity="Unknown" style="background-color: var(--unknown-color); color: white;">Unknown</button>
+                    <div class="filter-container">
+                        <p class="filter-instructions">Click severity levels to show/hide vulnerabilities:</p>
+                        <div class="section-filters">
+                            <button class="section-filter active" data-severity="Critical" style="background-color: var(--critical-color); color: white;">Critical</button>
+                            <button class="section-filter active" data-severity="High" style="background-color: var(--high-color); color: white;">High</button>
+                            <button class="section-filter active" data-severity="Medium" style="background-color: var(--medium-color); color: white;">Medium</button>
+                            <button class="section-filter active" data-severity="Low" style="background-color: var(--low-color); color: white;">Low</button>
+                            <button class="section-filter active" data-severity="Unknown" style="background-color: var(--unknown-color); color: white;">Unknown</button>
+                        </div>
                     </div>
                 </div>
                 {{ trivy_section }}
@@ -590,12 +819,15 @@
             <div id="grype" class="section">
                 <div class="section-header">
                     <h2>Grype Unique Vulnerabilities</h2>
-                    <div class="section-filters">
-                        <button class="section-filter active" data-severity="Critical" style="background-color: var(--critical-color); color: white;">Critical</button>
-                        <button class="section-filter active" data-severity="High" style="background-color: var(--high-color); color: white;">High</button>
-                        <button class="section-filter active" data-severity="Medium" style="background-color: var(--medium-color); color: white;">Medium</button>
-                        <button class="section-filter active" data-severity="Low" style="background-color: var(--low-color); color: white;">Low</button>
-                        <button class="section-filter active" data-severity="Unknown" style="background-color: var(--unknown-color); color: white;">Unknown</button>
+                    <div class="filter-container">
+                        <p class="filter-instructions">Click severity levels to show/hide vulnerabilities:</p>
+                        <div class="section-filters">
+                            <button class="section-filter active" data-severity="Critical" style="background-color: var(--critical-color); color: white;">Critical</button>
+                            <button class="section-filter active" data-severity="High" style="background-color: var(--high-color); color: white;">High</button>
+                            <button class="section-filter active" data-severity="Medium" style="background-color: var(--medium-color); color: white;">Medium</button>
+                            <button class="section-filter active" data-severity="Low" style="background-color: var(--low-color); color: white;">Low</button>
+                            <button class="section-filter active" data-severity="Unknown" style="background-color: var(--unknown-color); color: white;">Unknown</button>
+                        </div>
                     </div>
                 </div>
                 {{ grype_section }}
@@ -612,40 +844,34 @@
     </div>
 
     <script>
-        // Scroll to section
-        function scrollToSection(sectionId) {
-            document.getElementById(sectionId).scrollIntoView({ behavior: 'smooth' });
-        }
+        // Quick filters functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const quickFilters = document.querySelectorAll('.quick-filter');
+            const sections = document.querySelectorAll('.section');
 
-        // Global severity filters
-        const globalFilters = document.querySelectorAll('.severity-filters .severity-filter');
-        globalFilters.forEach(filter => {
-            filter.addEventListener('click', function() {
-                this.classList.toggle('active');
-                this.classList.toggle('inactive');
-                const severity = this.dataset.severity;
-                const blocks = document.querySelectorAll(`.severity-block[data-severity="${severity}"]`);
-                blocks.forEach(block => {
-                    block.style.display = this.classList.contains('active') ? 'flex' : 'none';
-                });
-            });
-        });
-
-        // Section-specific filters
-        document.querySelectorAll('.section-filters').forEach(section => {
-            const filters = section.querySelectorAll('.section-filter');
-            filters.forEach(filter => {
+            quickFilters.forEach(filter => {
                 filter.addEventListener('click', function() {
-                    this.classList.toggle('active');
-                    this.classList.toggle('inactive');
-                    const severity = this.dataset.severity;
-                    const sectionBlocks = this.closest('.section').querySelectorAll(`.severity-block[data-severity="${severity}"]`);
-                    sectionBlocks.forEach(block => {
-                        block.style.display = this.classList.contains('active') ? 'flex' : 'none';
+                    // Update active state of filters
+                    quickFilters.forEach(f => f.classList.remove('active'));
+                    this.classList.add('active');
+
+                    // Show/hide sections based on filter
+                    const showType = this.dataset.show;
+                    sections.forEach(section => {
+                        if (showType === 'all') {
+                            section.classList.add('visible');
+                        } else {
+                            section.classList.toggle('visible', section.id === showType);
+                        }
                     });
                 });
             });
         });
+
+        // Scroll to section
+        function scrollToSection(sectionId) {
+            document.getElementById(sectionId).scrollIntoView({ behavior: 'smooth' });
+        }
 
         // Collapsible sections
         var coll = document.getElementsByClassName("severity-block");
