@@ -735,8 +735,12 @@ def publish_to_github_pages(report_path, image):
         else:
             print(f"🔄 Keeping the forked repository URL: {args.repo_url}")
 
+            # Ensure the git remote is set to the forked repo URL
+            subprocess.run(["git", "remote", "set-url", "origin", args.repo_url], check=True)
+
     else:
         print(f"⚠️ You are using your forked repository URL: {args.repo_url}")
+        subprocess.run(["git", "remote", "set-url", "origin", args.repo_url], check=True)
 
     # Parse the user and repo from the updated repo URL
     parsed = urlparse(args.repo_url)
