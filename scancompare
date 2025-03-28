@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.0
+# scancompare version 1.0.1
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -88,8 +88,6 @@ def check_latest_version(only_check=False):
 
 def update_script(new_code):
     try:
-        import urllib.request
-
         # Resolve real script path, even if run from a wrapper
         script_path = Path(get_script_path()).resolve()
         install_dir = script_path.parent
@@ -109,9 +107,7 @@ def update_script(new_code):
         tool_progress("updates"," Getting latest scan_template.html")
         template_url = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html"
         try:
-            with urllib.request.urlopen(template_url) as response:
-                template_html = response.read().decode("utf-8")
-                template_path.write_text(template_html)
+            urlretrieve(template_url, template_path)
             tool_done()  # Complete scan_template.html update
         except Exception as e:
             print(f"❌ Failed to update scan_template.html: {e}")
@@ -620,6 +616,7 @@ def publish_to_github_pages(report_path, image_name):
         
         # Initialize git repository if not already initialized
         if not os.path.exists('.git'):
+            print("🔄 Initializing git repository...")
             subprocess.run(["git", "init"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run(["git", "config", "user.name", "GitHub Actions"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run(["git", "config", "user.email", "actions@github.com"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -799,17 +796,32 @@ def publish_to_github_pages(report_path, image_name):
 </html>""")
 
         # Add and commit all files
-        subprocess.run(["git", "add", "-f", "."], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("\n🔄 Adding files to git...")
+        try:
+            subprocess.run(["git", "add", "-f", "."], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print("✅ Files added successfully")
+        except subprocess.CalledProcessError as e:
+            print(f"⚠️ Failed to add files: {str(e)}")
+            print("\nTroubleshooting steps:")
+            print("1. Check if you have write permissions in the current directory")
+            print("2. Ensure git is properly initialized")
+            print("3. Try running 'git status' to see the current state")
+            return None
+
         try:
             subprocess.run(["git", "commit", "-m", f"Add scan report for {image_name}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print("✅ Changes committed successfully")
         except subprocess.CalledProcessError as e:
             if "nothing to commit" not in str(e.stderr):
-                raise
+                print(f"⚠️ Failed to commit changes: {str(e)}")
+                return None
+            print("ℹ️ No changes to commit")
                     
         # Push to remote repository
-        print(f"📤 Publishing report to GitHub Pages on branch '{target_branch}'...")
+        print(f"\n📤 Publishing report to GitHub Pages on branch '{target_branch}'...")
         try:
             subprocess.run(["git", "push", "origin", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print("✅ Changes pushed successfully")
         except subprocess.CalledProcessError as e:
             print(f"⚠️ Failed to push to remote repository: {str(e)}")
             print("\nTroubleshooting steps:")
@@ -833,7 +845,7 @@ def publish_to_github_pages(report_path, image_name):
             print("2. Check if you have write access to the repository")
             print("3. Verify your GitHub authentication is set up correctly")
         return None
-
+        
 def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only_grype, trivy_version, grype_version):
     """Generate a detailed HTML report of vulnerability findings."""
     def format_cves(cve_map):
@@ -1365,8 +1377,40 @@ def main(args):
         sys.exit(0)
 
     if args.update:
-        check_latest_version(only_check=True)
-        sys.exit(0)
+        print("🔄 Checking for updates...")
+        try:
+            # Download the latest version directly from GitHub
+            urlretrieve(SCRIPT_URL, get_script_path())
+            
+            # Read the new version
+            with open(get_script_path(), 'r') as f:
+                new_code = f.read()
+                latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
+                if not latest_match:
+                    raise ValueError("Could not determine latest version from script.")
+                
+                latest = latest_match.group(1)
+                current = get_current_version()
+
+                if latest == current:
+                    print(f"📦 scancompare version {current}")
+                    print("✅ You are running the latest version.")
+                    sys.exit(0)
+
+                print(f"🔄 Updating scancompare from {current} to {latest}...")
+                
+                # Update the script with the new code
+                update_script(new_code)
+                
+                print("♻️ Restarting with updated version...")
+                os.execve(
+                    sys.executable,
+                    [sys.executable, str(get_script_path())] + sys.argv[1:],
+                    {**os.environ, "SCANCOMPARE_UPDATED": "1"}
+                )
+        except Exception as e:
+            print(f"⚠️ Update failed: {e}")
+            sys.exit(1)
 
     # Check for updates before proceeding with other operations
     check_latest_version()
