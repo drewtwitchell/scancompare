@@ -25,7 +25,7 @@ log() {
 tool_progress() {
   TOOL_NAME="$2"
   ACTION="$1"
-  echo -n "$ACTION $TOOL_NAME..."
+  echo -e "\t\t$ACTION $TOOL_NAME..."
 }
 
 tool_done() {
@@ -36,29 +36,29 @@ echo "🛠️  Starting scancompare installation..."
 
 # Check if already installed and check for updates
 if [[ -f "$PYTHON_SCRIPT" && "$FORCE_REINSTALL" -eq 0 ]]; then
-	echo "	🔍 scancompare is already installed. Checking for updates and verifying dependencies..."
-	if scancompare --update > /dev/null 2>&1; then
-		CURRENT_VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
-		echo "	✅ All tools verified and updated."
-		exit 0
-	else
-		echo "	⚠️  Failed to run 'scancompare --update'. Forcing reinstall..."
-	fi
+  echo -e "\t🔍 scancompare is already installed. Checking for updates and verifying dependencies..."
+  if scancompare --update > /dev/null 2>&1; then  # Suppressing output of `scancompare --update` to avoid redundancy
+    CURRENT_VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
+    echo -e "\t✅ All tools verified and updated."
+    exit 0
+  else
+    echo -e "\t⚠️  Failed to run 'scancompare --update'. Forcing reinstall..."
+  fi
 fi
 
-echo "	📦 Installing required tools: python3, jinja2, trivy, grype..."
+echo -e "\t📦 Installing required tools: python3, jinja2, trivy, grype..."
 
 # Install necessary tools
 tool_progress "🔍 Attempting" "tool installation via Homebrew or fallback methods..."
-    install_homebrew() {
-      if [[ "$OSTYPE" == "darwin"* ]]; then
-        tool_progress "🍺 Installing" "Homebrew"
-        NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
-          echo "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
-          tool_done
-        }
-      fi
+install_homebrew() {
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    tool_progress "🍺 Installing" "Homebrew"
+    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
+      echo "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
+      tool_done
     }
+  fi
+}
 
 # Check if Python3 is installed, otherwise install using Homebrew or fallback
 if ! command -v python3 &> /dev/null; then
@@ -123,7 +123,7 @@ if ! command -v grype &> /dev/null; then
 fi
 
 # Download the scancompare script
-echo "	📦 Downloading and Installing scancompare script version..."
+echo -e "\t📦 Downloading and Installing scancompare script version..."
 curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" &> /dev/null
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
@@ -132,29 +132,29 @@ tool_done
 
 # Ensure the script is executable
 if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
-	sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null || sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
+  sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null || sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
 fi
 chmod +x "$PYTHON_SCRIPT"
 
 # Create the wrapper script if necessary
 if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c \"$PYTHON_SCRIPT\" \"$WRAPPER_SCRIPT\")" -eq 0 ]]; then
-	cat <<EOF > "$WRAPPER_SCRIPT"
+  cat <<EOF > "$WRAPPER_SCRIPT"
 #!/bin/bash
 source "$VENV_DIR/bin/activate"
 exec python "$PYTHON_SCRIPT" "\$@"
 EOF
-	chmod +x "$WRAPPER_SCRIPT"
+  chmod +x "$WRAPPER_SCRIPT"
 else
-	echo "	🔹 Wrapper script already exists. Skipping."
+  echo -e "\t🔹 Wrapper script already exists. Skipping."
 fi
 
 # Verify installation
 if ! command -v scancompare &> /dev/null; then
-	echo "	⚠️ scancompare was installed but isn't available in this shell session."
-	echo "	➡️  Try running: export PATH=\"\$HOME/.local/bin:\$PATH\""
-	echo "	   or close and reopen your terminal."
+  echo -e "\t⚠️ scancompare was installed but isn't available in this shell session."
+  echo -e "\t➡️  Try running: export PATH=\"\$HOME/.local/bin:\$PATH\""
+  echo -e "\t   or close and reopen your terminal."
 else
-	echo "	✅ $INSTALL_BIN is in your PATH"
+  echo -e "\t✅ $INSTALL_BIN is in your PATH"
 fi
 
 echo "🎉 You can now run: $SCRIPT_NAME <image-name>"
