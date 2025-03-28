@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.1
+# scancompare version 1.0.0
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.1"
+VERSION = "1.0.0"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -660,13 +660,26 @@ def publish_to_github_pages(report_path, image_name):
 
         # Get list of available branches
         try:
-            branches = subprocess.check_output(["git", "branch", "-r"], stderr=subprocess.DEVNULL).decode().strip().split('\n')
-            # Clean up branch names and remove 'origin/' prefix
-            branches = [b.strip().replace('origin/', '') for b in branches if b.strip()]
-            if not branches:
-                branches = ['main', 'gh-pages']  # Default options if no remote branches found
+            # First try to get local branches
+            local_branches = subprocess.check_output(["git", "branch"], stderr=subprocess.DEVNULL).decode().strip().split('\n')
+            local_branches = [b.strip().replace('* ', '') for b in local_branches if b.strip()]
+            
+            # Then try to get remote branches
+            remote_branches = subprocess.check_output(["git", "branch", "-r"], stderr=subprocess.DEVNULL).decode().strip().split('\n')
+            remote_branches = [b.strip().replace('origin/', '') for b in remote_branches if b.strip()]
+            
+            # Combine and deduplicate branches
+            branches = list(set(local_branches + remote_branches))
+            
+            # Ensure 'main' is always an option
+            if 'main' not in branches:
+                branches.append('main')
+                
         except subprocess.CalledProcessError:
-            branches = ['main', 'gh-pages']  # Fallback to default options
+            branches = ['main']  # Default to main if we can't get branch list
+            
+        # Sort branches with 'main' first
+        branches.sort(key=lambda x: (x != 'main', x))
 
         # Present branch options to user
         print("\n📋 Available branches for GitHub Pages deployment:")
@@ -678,28 +691,54 @@ def publish_to_github_pages(report_path, image_name):
             try:
                 choice = input("\n🔄 Choose branch number for deployment (or enter new branch name): ").strip()
                 if choice == "0":
-                    new_branch = input("Enter new branch name: ").strip()
-                    if new_branch:
-                        target_branch = new_branch
-                        break
+                    while True:
+                        new_branch = input("Enter new branch name (or 'cancel' to go back): ").strip()
+                        if new_branch.lower() == 'cancel':
+                            break
+                        if new_branch and re.match(r'^[a-zA-Z0-9_-]+$', new_branch):
+                            target_branch = new_branch
+                            print(f"Creating new branch: {target_branch}")
+                            try:
+                                subprocess.run(["git", "checkout", "-b", target_branch], 
+                                            check=True, 
+                                            stdout=subprocess.DEVNULL, 
+                                            stderr=subprocess.DEVNULL)
+                                break
+                            except subprocess.CalledProcessError:
+                                print(f"⚠️ Failed to create branch '{new_branch}'. Please try a different name.")
+                                continue
+                        else:
+                            print("⚠️ Invalid branch name. Use only letters, numbers, hyphens, and underscores.")
+                    if new_branch.lower() == 'cancel':
+                        continue
+                    break
                 elif choice.isdigit() and 1 <= int(choice) <= len(branches):
                     target_branch = branches[int(choice) - 1]
-                    break
-                elif choice:  # If they entered a custom branch name
-                    target_branch = choice
-                    break
+                    print(f"Switching to branch: {target_branch}")
+                    try:
+                        # Try to check out the branch
+                        subprocess.run(["git", "checkout", target_branch], 
+                                    check=True, 
+                                    stdout=subprocess.DEVNULL, 
+                                    stderr=subprocess.DEVNULL)
+                        break
+                    except subprocess.CalledProcessError:
+                        # If checkout fails, try to create it
+                        try:
+                            print(f"Branch {target_branch} doesn't exist locally, creating it...")
+                            subprocess.run(["git", "checkout", "-b", target_branch], 
+                                        check=True, 
+                                        stdout=subprocess.DEVNULL, 
+                                        stderr=subprocess.DEVNULL)
+                            break
+                        except subprocess.CalledProcessError as e:
+                            print(f"⚠️ Failed to switch to or create branch '{target_branch}': {str(e)}")
+                            continue
                 else:
-                    print("⚠️ Invalid choice. Please try again.")
-            except (ValueError, IndexError):
-                print("⚠️ Invalid choice. Please try again.")
+                    print("⚠️ Invalid choice. Please enter a number from the list or 0 to create a new branch.")
+            except (ValueError, IndexError) as e:
+                print(f"⚠️ Invalid input: {str(e)}")
 
-        # Switch to or create the target branch
-        try:
-            subprocess.run(["git", "checkout", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except subprocess.CalledProcessError:
-            print(f"🔄 Creating new branch: {target_branch}")
-            subprocess.run(["git", "checkout", "-b", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
         # Create reports directory if it doesn't exist
         os.makedirs(report_dir, exist_ok=True)
             
