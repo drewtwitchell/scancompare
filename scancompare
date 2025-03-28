@@ -22,7 +22,14 @@ from io import BytesIO
 from jinja2 import Environment, FileSystemLoader
 import difflib
 from typing import Dict, List, Set, Tuple, Optional
-import requests
+
+# Check if 'requests' is installed
+try:
+    import requests
+except ImportError:
+    # Use `python3` if available
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "requests"])
+    import requests
 from urllib.parse import urlparse
 
 SCRIPT_NAME = "scancompare"
