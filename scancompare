@@ -1266,8 +1266,8 @@ def main(args):
 
     # Cleanup: Show progress
     if not args.keep_data:
-        print("🧹 Cleaning up old scan artifacts...")
-        summary_lines.append("🧹 Cleaned up old scan artifacts.")
+        print("🧹 Cleaning up scan artifacts...")
+        summary_lines.append("🧹 Cleaned up scan artifacts.")
         
         # Define report path based on whether we're scanning multiple images or not
         if args.repo_url and built_images:
@@ -1284,21 +1284,29 @@ def main(args):
         for path in scan_dir.glob("*.html"):
             if path != report_path:  # Don't delete the current report
                 path.unlink()
-        print("🧹 Cleaned up old HTML reports.")
+        print("🧹 Cleaned up scan reports.")
 
-        # Clean up Docker images
-        if args.repo_url and built_images:
+        # Clean up Docker images and temporary files
+        if args.repo_url:
+            # Clean up built images from repository
             for image_tag in built_images:
-                print(f"🧼 Removing temporary Docker image '{image_tag}'...")
+                print(f"🧼 Removing built image '{image_tag}'...")
                 subprocess.run(["docker", "rmi", "-f", image_tag], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        elif image:
-            print(f"🧼 Removing temporary Docker image '{image}'...")
-            subprocess.run(["docker", "rmi", "-f", image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-        # Clean up cloned repository if it exists
-        if temp_dir and os.path.isdir(temp_dir):
-            print(f"🧹 Removing temporary cloned repository from '{temp_dir}'...")
-            shutil.rmtree(temp_dir)
+            
+            # Clean up cloned repository
+            if temp_dir and os.path.isdir(temp_dir):
+                print(f"🧹 Removing cloned repository from '{temp_dir}'...")
+                shutil.rmtree(temp_dir)
+        else:
+            # For direct image scans, only clean up if we pulled the image
+            try:
+                # Check if image was pulled (not present before scan)
+                subprocess.run(["docker", "image", "inspect", image], check=True, capture_output=True)
+                print(f"🧼 Removing pulled image '{image}'...")
+                subprocess.run(["docker", "rmi", "-f", image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except subprocess.CalledProcessError:
+                # Image wasn't pulled, so don't remove it
+                pass
     else:
         print("🛑 Keeping all scan artifacts due to --keep-data flag.")
         summary_lines.append("🛑 Keeping all scan artifacts due to --keep-data flag.")
