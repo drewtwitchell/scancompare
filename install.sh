@@ -39,7 +39,7 @@ if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
   echo "    🔍 scancompare is already installed. Checking for updates and verifying dependencies..."
 
   # Try to check for updates via `scancompare --update`
-  if scancompare --update; then
+  if scancompare --update > /dev/null 2>&1; then  # Suppressing output of `scancompare --update` to avoid redundancy
     CURRENT_VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
     echo "    ✅ All tools verified and updated."
     exit 0
