@@ -729,6 +729,9 @@ def publish_to_github_pages(report_path, image):
             # Update the repo_url to the upstream URL
             print(f"🔄 Changing to upstream repository URL: {upstream_url}")
             args.repo_url = upstream_url
+
+            # Change the git remote to upstream URL
+            subprocess.run(["git", "remote", "set-url", "origin", upstream_url], check=True)
         else:
             print(f"🔄 Keeping the forked repository URL: {args.repo_url}")
 
