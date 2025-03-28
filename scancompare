@@ -630,7 +630,6 @@ def display_summary(trivy_cves, grype_cves):
     return shared_cves, only_trivy_cves, only_grype_cves
 
 def publish_to_github_pages(report_path, image_name):
-    """Publish the HTML report to GitHub Pages at the root of the gh-pages branch."""
     import os
     import shutil
     import subprocess
@@ -641,78 +640,76 @@ def publish_to_github_pages(report_path, image_name):
     if not args.repo_url:
         return None
 
+    # Extract GitHub username and repo
     repo_parts = args.repo_url.rstrip(".git").split('/')
     user, repo = repo_parts[-2], repo_parts[-1]
 
-    verbose = args.verbose
-    cwd = Path.cwd()
-    gh_pages_dir = cwd / "gh-pages"
-    backup_dir = cwd / "backups"
-    scan_dir = cwd / "scan_reports"
-    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    # Determine branch and target dir
+    target_branch = "gh-pages"
+    target_dir = Path(".")  # push directly to root of gh-pages branch
 
-    # Ensure gh-pages folder exists and is a clean state
-    gh_pages_dir.mkdir(exist_ok=True)
-    
-    # Unique filename
-    report_filename = f"scan_report_{image_name}_{timestamp}.html"
-    target_path = gh_pages_dir / report_filename
-    shutil.copy2(report_path, target_path)
+    # Switch to gh-pages branch (create if needed)
+    current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
+    if current_branch != target_branch:
+        tool_progress("🔀", f"Switching to {target_branch} branch...")
+        subprocess.run(["git", "checkout", "-B", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        tool_done()
 
-    # Create index.html redirecting to latest report
-    index_html = gh_pages_dir / "index.html"
-    index_html.write_text(f"""<html>
-<head><meta http-equiv=\"refresh\" content=\"0; URL={report_filename}\"></head>
-<body>
-<p>Redirecting to <a href=\"{report_filename}\">{report_filename}</a></p>
-</body>
-</html>""")
-
-    # Backup existing contents
+    # Pull latest changes (autostash if needed)
+    tool_progress("🔄", "Pulling latest gh-pages...")
     try:
-        backup_dir.mkdir(exist_ok=True)
-        backup_path = backup_dir / f"backup_{timestamp}.zip"
-        with zipfile.ZipFile(backup_path, 'w') as zipf:
-            for f in scan_dir.glob("*.json"):
-                zipf.write(f, arcname=f.name)
-            for f in gh_pages_dir.glob("*.html"):
-                zipf.write(f, arcname=f.name)
+        subprocess.run(["git", "pull", "--autostash", "origin", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        print("⚠️ Warning: failed to pull latest changes. Continuing anyway.")
+    tool_done()
 
-        # Keep only last 3 backups
-        backups = sorted(backup_dir.glob("*.zip"), key=os.path.getmtime, reverse=True)
-        for old in backups[3:]:
+    # Backup previous reports (retain only last 3)
+    try:
+        backup_dir = Path("backups")
+        backup_dir.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        archive_name = backup_dir / f"report_backup_{timestamp}.zip"
+
+        with zipfile.ZipFile(archive_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for f in Path(".").glob("scan_report_*.html"):
+                zipf.write(f, f.name)
+            for f in Path(".").glob("original_*.json"):
+                zipf.write(f, f.name)
+
+        # Retain only last 3 backups
+        all_backups = sorted(backup_dir.glob("report_backup_*.zip"), key=os.path.getmtime, reverse=True)
+        for old in all_backups[3:]:
             old.unlink()
     except Exception as e:
-        if verbose:
-            print(f"⚠️ Failed to backup gh-pages content: {e}")
+        print(f"⚠️ Failed to backup or clean gh-pages: {e}")
 
-    # GitHub Pages logic
-    tool_progress("🔄", "Pulling latest gh-pages")
+    # Copy report and create index.html
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    report_filename = report_path.name.replace(".html", f"_{timestamp}.html")
+    final_path = target_dir / report_filename
+    shutil.copy2(report_path, final_path)
+
+    index_path = target_dir / "index.html"
+    index_path.write_text(f"""<html>
+<head><meta http-equiv='refresh' content='0; URL={report_filename}'></head>
+<body>
+<p>Redirecting to <a href='{report_filename}'>{report_filename}</a></p>
+</body></html>""")
+
+    # Stage, commit, and push
+    tool_progress("📦", f"Adding {target_dir} contents to git...")
     try:
-        subprocess.run(["git", "fetch"], stdout=subprocess.DEVNULL if not verbose else None, stderr=subprocess.DEVNULL if not verbose else None, check=True)
-        subprocess.run(["git", "checkout", "gh-pages"], stdout=subprocess.DEVNULL if not verbose else None, stderr=subprocess.DEVNULL if not verbose else None)
+        subprocess.run(["git", "add", "-f", str(final_path)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["git", "add", "-f", str(index_path)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["git", "commit", "-m", f"📊 Add scan report for {image_name}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError:
-        subprocess.run(["git", "checkout", "--orphan", "gh-pages"], check=True)
-        subprocess.run(["git", "rm", "-rf", "."], check=True)
+        pass  # allow empty commit errors (e.g., no changes)
+    subprocess.run(["git", "push", "-u", "origin", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     tool_done()
 
-    # Copy contents into root of gh-pages branch
-    for f in gh_pages_dir.glob("*"):
-        shutil.copy2(f, cwd / f.name)
-
-    # Git add/commit/push
-    tool_progress("📦", "Adding gh-pages contents to git")
-    try:
-        subprocess.run(["git", "add", "*.html"], stdout=subprocess.DEVNULL if not verbose else None, stderr=subprocess.DEVNULL if not verbose else None, check=True)
-        subprocess.run(["git", "commit", "-m", f"📊 Add scan report for {image_name}"], stdout=subprocess.DEVNULL if not verbose else None, stderr=subprocess.DEVNULL if not verbose else None, check=True)
-    except subprocess.CalledProcessError:
-        if verbose:
-            print("⚠️ Nothing new to commit.")
-    subprocess.run(["git", "push", "-u", "origin", "gh-pages"], stdout=subprocess.DEVNULL if not verbose else None, stderr=subprocess.DEVNULL if not verbose else None, check=True)
-    tool_done()
-
-    # Switch back to previous branch
-    subprocess.run(["git", "checkout", "-"], stdout=subprocess.DEVNULL if not verbose else None, stderr=subprocess.DEVNULL if not verbose else None)
+    # Switch back to original branch
+    if current_branch != target_branch:
+        subprocess.run(["git", "checkout", current_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     return f"https://{user}.github.io/{repo}/{report_filename}"
 
