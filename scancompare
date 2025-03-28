@@ -639,30 +639,40 @@ def publish_to_github_pages(report_path, image):
     import zipfile
     from urllib.parse import urlparse
 
-    # Exit gracefully if no --repo-url is supplied and a link is added as an arg to the terminal
     if not args.repo_url:
-        print("⚠️ You must use the --repo-url flag to specify the repository URL.")
-        print("Usage: --repo-url <url> [--other-options]")
+        print("⚠️ No repository URL supplied. Please provide the URL using --repo-url.")
         sys.exit(1)
 
-    # Parse GitHub info safely
+    # Parse the repo URL to get user and repo info
     parsed = urlparse(args.repo_url)
     repo_path = parsed.path.strip("/")
     if repo_path.endswith(".git"):
         repo_path = repo_path[:-4]
     user, repo = repo_path.split("/")[-2:]
 
-    # Logic for whether the repository is a fork or not
-    fork_url = f"https://github.com/{user}/{repo}"
+    # Determine if the repository is a fork
     upstream_url = f"https://github.com/{repo}"
+    fork_url = f"https://github.com/{user}/{repo}"
+    is_fork = user != repo  # Check if user is not the same as the repo owner, indicating it's a fork
 
-    # Check if the URL corresponds to a fork or the original repo
-    if args.repo_url != upstream_url:
+    if is_fork:
         print(f"⚠️ This appears to be a fork of the repository: {user}/{repo}")
-        confirm = input(f"Do you want to continue and publish to your fork ({user}/{repo})? (y/n): ").strip().lower()
-        if confirm != 'y':
-            print("⚠️ Operation aborted. Please provide the correct repo URL.")
-            sys.exit(1)
+        print(f"    The upstream repository is: {upstream_url}")
+        change_url = input("Do you want to update the URL to the **upstream** repository? (y/n): ").strip().lower()
+        
+        if change_url == 'y':
+            print(f"🔄 Changing to upstream repository URL: {upstream_url}")
+            args.repo_url = upstream_url
+        else:
+            print(f"🔄 Using the forked repository URL: {args.repo_url}")
+    
+    try:
+        tool_progress("🔄", "Pulling latest gh-pages")
+        subprocess.run(["git", "pull", "--autostash", "origin", "gh-pages"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        tool_done()
+    except Exception:
+        print("⚠️ Warning: failed to pull latest changes. Continuing anyway.")
+        tool_done()
 
     # Check if docs/ folder exists
     use_docs_folder = Path("docs").exists()
@@ -711,14 +721,13 @@ def publish_to_github_pages(report_path, image):
         if file.name != "index.html" and file.is_file():
             file.unlink()
 
-    # Git setup (ensure it's pushing to the correct remote)
+    # Git setup
     if not Path(".git").exists():
         subprocess.run(["git", "init"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["git", "remote", "add", "origin", args.repo_url], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
 
-    # Ensure we're on the correct branch (gh-pages or docs)
     if target_branch != current_branch:
         subprocess.run(["git", "checkout", "-B", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -729,9 +738,6 @@ def publish_to_github_pages(report_path, image):
         subprocess.run(["git", "commit", "-m", f"📊 Add scan report for {image}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError:
         pass  # No changes to commit
-
-    # Push to the correct repo (fork or upstream)
-    repo_url_to_push = fork_url if user != 'drewtwitchell' else args.repo_url
     subprocess.run(["git", "push", "-u", "origin", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     tool_done()
 
@@ -1183,7 +1189,7 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
                     print("\n   To fix this, run:")
                     print("   gh auth refresh -h github.com -s security_events,admin:repo_hook")
                     print("\n   Or visit: https://github.com/settings/tokens")
-                    print("   to create a new token with the required scopes.")
+                    print("\n   to create a new token with the required scopes.")
                     return "insufficient_scope"
                 elif "not found" in error_msg.lower():
                     print(f"⚠️ Repository {repo} not found or not accessible.")
