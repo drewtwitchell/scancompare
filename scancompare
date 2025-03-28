@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.1
+# scancompare version 1.0.0
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.1"
+VERSION = "1.0.0"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -46,42 +46,39 @@ def check_latest_version(only_check=False):
         return
 
     try:
-        # First try to get version from GitHub API
-        api_url = "https://api.github.com/repos/drewtwitchell/scancompare/contents/scancompare"
-        req = Request(api_url, headers={"User-Agent": "scancompare-updater"})
-        with urlopen(req) as response:
-            metadata = json.load(response)
+        # Download the latest version directly from GitHub
+        print("🔄 Checking for updates...")
+        urlretrieve(SCRIPT_URL, get_script_path())
+        
+        # Read the new version
+        with open(get_script_path(), 'r') as f:
+            new_code = f.read()
+            latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
+            if not latest_match:
+                raise ValueError("Could not determine latest version from script.")
+            
+            latest = latest_match.group(1)
+            current = get_current_version()
 
-        if "content" not in metadata or "encoding" not in metadata or metadata["encoding"] != "base64":
-            raise ValueError("Could not decode GitHub API content")
+            if latest == current:
+                if only_check:
+                    print(f"📦 scancompare version {current}")
+                    sys.exit(0)
+                else:
+                    print(f"📦 scancompare version {current}")
+                    return
 
-        new_code = base64.b64decode(metadata["content"]).decode("utf-8")
-        latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
-        if not latest_match:
-            raise ValueError("Could not determine latest version from script.")
-
-        latest = latest_match.group(1)
-        current = get_current_version()
-
-        if latest == current:
-            if only_check:
-                print(f"📦 scancompare version {current}")
-                sys.exit(0)
-            else:
-                print(f"📦 scancompare version {current}")
-                return
-
-        print(f"🔄 Updating scancompare from {current} to {latest}...")
-        update_script(new_code)  # This will handle the update, with its own progress steps
-
-        print(f"✅ scancompare updated to version {latest}")
-        print("♻️ Restarting with updated version...")
-
-        os.execve(
-            sys.executable,
-            [sys.executable, str(get_script_path())] + sys.argv[1:],
-            {**os.environ, "SCANCOMPARE_UPDATED": "1"}
-        )
+            print(f"🔄 Updating scancompare from {current} to {latest}...")
+            
+            # Update the script with the new code
+            update_script(new_code)
+            
+            print("♻️ Restarting with updated version...")
+            os.execve(
+                sys.executable,
+                [sys.executable, str(get_script_path())] + sys.argv[1:],
+                {**os.environ, "SCANCOMPARE_UPDATED": "1"}
+            )
 
     except Exception as e:
         print(f"⚠️ Auto-update check failed: {e}")
@@ -1371,6 +1368,9 @@ def main(args):
         check_latest_version(only_check=True)
         sys.exit(0)
 
+    # Check for updates before proceeding with other operations
+    check_latest_version()
+    
     if not args.image and not args.repo_url:
         print("Usage: scancompare <image> [--repo-url <repo>, --keep-data, --verbose, --version, --update, --uninstall]")
         print("\nFlags:")
@@ -1382,8 +1382,6 @@ def main(args):
         print("  --uninstall        Uninstall scancompare CLI")
         sys.exit(1)
 
-    check_latest_version()
-    
     # Validate image exists before starting any scan process
     if args.image and not validate_image_exists(args.image):
         explain_exit(f"Docker image '{args.image}' could not be found locally or remotely.")
