@@ -36,15 +36,17 @@ echo "🛠️  Starting scancompare installation..."
 
 # Check if already installed and check for updates
 if [[ -f "$PYTHON_SCRIPT" && "$FORCE_REINSTALL" -eq 0 ]]; then
-  echo "🔍 scancompare is already installed. Checking for updates and verifying dependencies..."
-  if scancompare --update > /dev/null 2>&1; then  # Suppressing output of `scancompare --update` to avoid redundancy
-    CURRENT_VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
-    echo "✅ All tools verified and updated."
-    exit 0
-  else
-    echo "⚠️  Failed to run 'scancompare --update'. Forcing reinstall..."
-  fi
+	echo "	🔍 scancompare is already installed. Checking for updates and verifying dependencies..."
+	if scancompare --update > /dev/null 2>&1; then
+		CURRENT_VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
+		echo "	✅ All tools verified and updated."
+		exit 0
+	else
+		echo "	⚠️  Failed to run 'scancompare --update'. Forcing reinstall..."
+	fi
 fi
+
+echo "	📦 Installing required tools: python3, jinja2, trivy, grype..."
 
 # Install necessary tools
 tool_progress "🔍 Attempting" "tool installation via Homebrew or fallback methods..."
@@ -121,39 +123,38 @@ if ! command -v grype &> /dev/null; then
 fi
 
 # Download the scancompare script
-tool_progress "📦 Downloading and Installing" "scancompare script version..."
+echo "	📦 Downloading and Installing scancompare script version..."
 curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" &> /dev/null
-tool_done
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
-tool_progress "⚙️ Installing version:" "$VERSION"
+tool_progress "		⚙️ Installing version:" "$VERSION"
 tool_done
 
 # Ensure the script is executable
 if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
-  sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null || sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
+	sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null || sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
 fi
 chmod +x "$PYTHON_SCRIPT"
 
 # Create the wrapper script if necessary
 if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c \"$PYTHON_SCRIPT\" \"$WRAPPER_SCRIPT\")" -eq 0 ]]; then
-  cat <<EOF > "$WRAPPER_SCRIPT"
+	cat <<EOF > "$WRAPPER_SCRIPT"
 #!/bin/bash
 source "$VENV_DIR/bin/activate"
 exec python "$PYTHON_SCRIPT" "\$@"
 EOF
-  chmod +x "$WRAPPER_SCRIPT"
+	chmod +x "$WRAPPER_SCRIPT"
 else
-  echo "🔹 Wrapper script already exists. Skipping."
+	echo "	🔹 Wrapper script already exists. Skipping."
 fi
 
 # Verify installation
 if ! command -v scancompare &> /dev/null; then
-  echo "⚠️ scancompare was installed but isn't available in this shell session."
-  echo "➡️  Try running: export PATH=\"\$HOME/.local/bin:\$PATH\""
-  echo "   or close and reopen your terminal."
+	echo "	⚠️ scancompare was installed but isn't available in this shell session."
+	echo "	➡️  Try running: export PATH=\"\$HOME/.local/bin:\$PATH\""
+	echo "	   or close and reopen your terminal."
 else
-  echo "✅ $INSTALL_BIN is in your PATH"
+	echo "	✅ $INSTALL_BIN is in your PATH"
 fi
 
 echo "🎉 You can now run: $SCRIPT_NAME <image-name>"
