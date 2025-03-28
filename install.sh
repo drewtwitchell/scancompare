@@ -36,20 +36,20 @@ echo "🛠️  Starting scancompare installation..."
 
 # Check if already installed and check for updates
 if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
-  echo "🔍 scancompare is already installed. Checking for updates and verifying dependencies..."
+  echo "    🔍 scancompare is already installed. Checking for updates and verifying dependencies..."
 
   # Try to check for updates via `scancompare --update`
   if scancompare --update; then
     CURRENT_VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
-    echo "✅ All tools verified and updated."
+    echo "    ✅ All tools verified and updated."
     exit 0
   else
-    echo "⚠️  Failed to run 'scancompare --update'. Forcing reinstall..."
+    echo "    ⚠️  Failed to run 'scancompare --update'. Forcing reinstall..."
   fi
 fi
 
 # If it's not installed or failed to update, proceed with reinstalling
-echo "📦 Proceeding with reinstallation of scancompare and dependencies..."
+echo "    📦 Proceeding with reinstallation of scancompare and dependencies..."
 
 # Install necessary tools
 tool_progress "🔍 Attempting" "tool installation via Homebrew or fallback methods..."
@@ -58,7 +58,7 @@ install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
     tool_progress "🍺 Installing" "Homebrew"
     NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
-      echo "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
+      echo "    ⚠️ Failed to install Homebrew. Falling back to manual installation methods."
       tool_done
     }
   fi
@@ -66,26 +66,26 @@ install_homebrew() {
 
 # Check if Python3 is installed, otherwise install using Homebrew or fallback
 if ! command -v python3 &> /dev/null; then
-  echo "❌ Python3 not found"
+  echo "    ❌ Python3 not found"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     command -v brew &> /dev/null || install_homebrew
     tool_progress "⚙️ Installing" "Python3 using Homebrew..."
-    brew install python &> /dev/null || echo "⚠️ Failed to install Python3 with Homebrew. Please install manually."
+    brew install python &> /dev/null || echo "    ⚠️ Failed to install Python3 with Homebrew. Please install manually."
     tool_done
   elif command -v apt &> /dev/null; then
     tool_progress "⚙️ Installing" "Python3 with apt..."
-    sudo apt update &> /dev/null && sudo apt install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with apt. Please install manually."
+    sudo apt update &> /dev/null && sudo apt install -y python3 python3-venv python3-pip &> /dev/null || echo "    ⚠️ Failed to install Python3 with apt. Please install manually."
     tool_done
   elif command -v dnf &> /dev/null; then
     tool_progress "⚙️ Installing" "Python3 with dnf..."
-    sudo dnf install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with dnf. Please install manually."
+    sudo dnf install -y python3 python3-venv python3-pip &> /dev/null || echo "    ⚠️ Failed to install Python3 with dnf. Please install manually."
     tool_done
   elif command -v yum &> /dev/null; then
     tool_progress "⚙️ Installing" "Python3 with yum..."
-    sudo yum install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with yum. Please install manually."
+    sudo yum install -y python3 python3-venv python3-pip &> /dev/null || echo "    ⚠️ Failed to install Python3 with yum. Please install manually."
     tool_done
   else
-    echo "❌ Could not determine package manager. Please install Python3 manually."
+    echo "    ❌ Could not determine package manager. Please install Python3 manually."
     exit 1
   fi
 fi
@@ -103,7 +103,7 @@ source "$VENV_DIR/bin/activate"
 if ! python -c "import jinja2" &> /dev/null; then
   tool_progress "⚙️ Installing" "jinja2..."
   pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location || {
-    echo "❌ Failed to install jinja2."; exit 1;
+    echo "    ❌ Failed to install jinja2."; exit 1;
   }
   tool_done
 fi
@@ -112,7 +112,7 @@ fi
 if ! command -v trivy &> /dev/null; then
   tool_progress "⚙️ Installing" "Trivy..."
   curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
-    echo "❌ Failed to install Trivy."; exit 1;
+    echo "    ❌ Failed to install Trivy."; exit 1;
   }
   tool_done
 fi
@@ -121,7 +121,7 @@ fi
 if ! command -v grype &> /dev/null; then
   tool_progress "⚙️ Installing" "Grype..."
   curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
-    echo "❌ Failed to install Grype."; exit 1;
+    echo "    ❌ Failed to install Grype."; exit 1;
   }
   tool_done
 fi
@@ -150,16 +150,16 @@ exec python "$PYTHON_SCRIPT" "\$@"
 EOF
   chmod +x "$WRAPPER_SCRIPT"
 else
-  echo "🔹 Wrapper script already exists. Skipping."
+  echo "    🔹 Wrapper script already exists. Skipping."
 fi
 
 # Verify installation
 if ! command -v scancompare &> /dev/null; then
-  echo "⚠️ scancompare was installed but isn't available in this shell session."
-  echo "➡️  Try running: export PATH=\"\$HOME/.local/bin:\$PATH\""
-  echo "   or close and reopen your terminal."
+  echo "    ⚠️ scancompare was installed but isn't available in this shell session."
+  echo "    ➡️  Try running: export PATH=\"\$HOME/.local/bin:\$PATH\""
+  echo "       or close and reopen your terminal."
 else
-  echo "✅ $INSTALL_BIN is in your PATH"
+  echo "    ✅ $INSTALL_BIN is in your PATH"
 fi
 
 echo "🎉 You can now run: $SCRIPT_NAME <image-name>"
