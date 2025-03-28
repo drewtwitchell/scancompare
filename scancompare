@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.0
+# scancompare version 1.0.1
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -637,17 +637,15 @@ def publish_to_github_pages(report_path, image_name):
             except subprocess.CalledProcessError as e:
                 if "nothing to commit" not in str(e.stderr):
                     raise
-            
-            # Set up remote if we have a repo URL
-            if args.repo_url:
-                subprocess.run(["git", "remote", "add", "origin", args.repo_url], check=True)
 
-        # Get the current repository URL
+        # Get or set up the repository URL
         try:
             repo_url = subprocess.check_output(["git", "config", "--get", "remote.origin.url"]).decode().strip()
         except subprocess.CalledProcessError:
             if args.repo_url:
                 repo_url = args.repo_url
+                print(f"🔗 Setting up remote repository: {repo_url}")
+                subprocess.run(["git", "remote", "add", "origin", repo_url], check=True)
             else:
                 print("⚠️ No remote repository configured. Please add a remote repository URL:")
                 print("   git remote add origin <your-repo-url>")
@@ -774,7 +772,21 @@ def publish_to_github_pages(report_path, image_name):
                 if "nothing to commit" not in str(e.stderr):
                     raise
                     
-            subprocess.run(["git", "-C", temp_dir, "push", "origin", "gh-pages"], check=True)
+            # Push to remote repository
+            print(f"📤 Pushing to remote repository: {repo_url}")
+            try:
+                subprocess.run(["git", "-C", temp_dir, "push", "origin", "gh-pages"], check=True)
+            except subprocess.CalledProcessError as e:
+                print(f"⚠️ Failed to push to remote repository: {str(e)}")
+                print("\nTroubleshooting steps:")
+                print("1. Verify the repository URL is correct:")
+                print(f"   git remote set-url origin {repo_url}")
+                print("2. Check if you have write access to the repository")
+                print("3. Ensure your GitHub authentication is set up correctly")
+                print("4. Try pushing manually:")
+                print(f"   cd {temp_dir}")
+                print("   git push origin gh-pages")
+                return None
             
             # Remove the temporary worktree
             subprocess.run(["git", "worktree", "remove", temp_dir], check=True)
