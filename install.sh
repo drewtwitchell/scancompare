@@ -56,8 +56,9 @@ install_homebrew() {
     tool_progress "🍺 Installing" "Homebrew"
     NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
       printf "⚠️ Failed to install Homebrew. Falling back to manual installation methods.\n"
-      tool_done
+      
     }
+    tool_done
   fi
 }
 
@@ -89,9 +90,8 @@ fi
 
 # Set up virtual environment
 if [[ ! -d "$VENV_DIR" ]]; then
-  tool_progress "⚙️ Creating" "Virtual environment..."
   python3 -m venv "$VENV_DIR" &> /dev/null
-  tool_done
+
 fi
 
 source "$VENV_DIR/bin/activate"
