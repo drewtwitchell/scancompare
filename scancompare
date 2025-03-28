@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.0
+# scancompare version 1.0.1
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -657,52 +657,59 @@ def publish_to_github_pages(report_path, image_name):
         else:
             print("⚠️ Invalid repository URL format")
             return None
-        
-        # Switch to main branch
-        try:
-            subprocess.run(["git", "checkout", "main"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except subprocess.CalledProcessError:
-            subprocess.run(["git", "checkout", "-b", "main"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        # Clean up any existing worktrees
-        try:
-            worktrees = subprocess.check_output(["git", "worktree", "list"], stderr=subprocess.DEVNULL).decode()
-            for line in worktrees.splitlines():
-                if 'gh-pages' in line:
-                    path = line.split()[0]
-                    subprocess.run(["git", "worktree", "remove", "-f", path], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except subprocess.CalledProcessError:
-            pass  # Ignore errors during cleanup
 
-        # Create gh-pages branch if it doesn't exist
+        # Get list of available branches
         try:
-            subprocess.run(["git", "show-ref", "--verify", "refs/heads/gh-pages"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            branches = subprocess.check_output(["git", "branch", "-r"], stderr=subprocess.DEVNULL).decode().strip().split('\n')
+            # Clean up branch names and remove 'origin/' prefix
+            branches = [b.strip().replace('origin/', '') for b in branches if b.strip()]
+            if not branches:
+                branches = ['main', 'gh-pages']  # Default options if no remote branches found
         except subprocess.CalledProcessError:
-            subprocess.run(["git", "checkout", "--orphan", "gh-pages"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            branches = ['main', 'gh-pages']  # Fallback to default options
+
+        # Present branch options to user
+        print("\n📋 Available branches for GitHub Pages deployment:")
+        for i, branch in enumerate(branches, 1):
+            print(f"   {i}. {branch}")
+        print("   0. Create a new branch")
+        
+        while True:
+            try:
+                choice = input("\n🔄 Choose branch number for deployment (or enter new branch name): ").strip()
+                if choice == "0":
+                    new_branch = input("Enter new branch name: ").strip()
+                    if new_branch:
+                        target_branch = new_branch
+                        break
+                elif choice.isdigit() and 1 <= int(choice) <= len(branches):
+                    target_branch = branches[int(choice) - 1]
+                    break
+                elif choice:  # If they entered a custom branch name
+                    target_branch = choice
+                    break
+                else:
+                    print("⚠️ Invalid choice. Please try again.")
+            except (ValueError, IndexError):
+                print("⚠️ Invalid choice. Please try again.")
+
+        # Switch to or create the target branch
+        try:
+            subprocess.run(["git", "checkout", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError:
+            print(f"🔄 Creating new branch: {target_branch}")
+            subprocess.run(["git", "checkout", "-b", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Create reports directory if it doesn't exist
+        os.makedirs(report_dir, exist_ok=True)
+            
+        # Copy the report to the new directory
+        shutil.copy2(report_path, os.path.join(report_dir, "index.html"))
+            
+        # Update index.html if it doesn't exist
+        if not os.path.exists("index.html"):
             with open("index.html", "w") as f:
-                f.write("<!DOCTYPE html><html><head><title>Vulnerability Scan Reports</title></head><body><h1>Vulnerability Scan Reports</h1></body></html>")
-            subprocess.run(["git", "add", "-f", "index.html"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(["git", "commit", "-m", "Initial gh-pages commit"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(["git", "checkout", "main"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-        # Create a temporary directory for gh-pages content
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Checkout gh-pages branch into temp directory
-            subprocess.run(["git", "worktree", "add", temp_dir, "gh-pages"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            
-            # Create reports directory if it doesn't exist
-            os.makedirs(os.path.join(temp_dir, "reports"), exist_ok=True)
-            
-            # Copy the report to the new directory
-            report_dest = os.path.join(temp_dir, report_dir)
-            os.makedirs(report_dest, exist_ok=True)
-            shutil.copy2(report_path, os.path.join(report_dest, "index.html"))
-            
-            # Update index.html with list of reports if it doesn't exist
-            index_path = os.path.join(temp_dir, "index.html")
-            if not os.path.exists(index_path):
-                with open(index_path, "w") as f:
-                    f.write("""<!DOCTYPE html>
+                f.write("""<!DOCTYPE html>
 <html>
 <head>
     <title>Vulnerability Scan Reports</title>
@@ -768,33 +775,30 @@ def publish_to_github_pages(report_path, image_name):
 </body>
 </html>""")
 
-            # Force add all files regardless of gitignore
-            subprocess.run(["git", "-C", temp_dir, "add", "-f", "."], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            try:
-                subprocess.run(["git", "-C", temp_dir, "commit", "-m", f"Add scan report for {image_name}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except subprocess.CalledProcessError as e:
-                if "nothing to commit" not in str(e.stderr):
-                    raise
+        # Add and commit all files
+        subprocess.run(["git", "add", "-f", "."], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            subprocess.run(["git", "commit", "-m", f"Add scan report for {image_name}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError as e:
+            if "nothing to commit" not in str(e.stderr):
+                raise
                     
-            # Push to remote repository
-            print(f"📤 Publishing report to GitHub Pages...")
-            try:
-                subprocess.run(["git", "-C", temp_dir, "push", "origin", "gh-pages"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except subprocess.CalledProcessError as e:
-                print(f"⚠️ Failed to push to remote repository: {str(e)}")
-                print("\nTroubleshooting steps:")
-                print("1. Verify the repository URL is correct:")
-                print(f"   git remote set-url origin {repo_url}")
-                print("2. Check if you have write access to the repository")
-                print("3. Ensure your GitHub authentication is set up correctly")
-                return None
-            
-            # Remove the temporary worktree
-            subprocess.run(["git", "worktree", "remove", temp_dir], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Push to remote repository
+        print(f"📤 Publishing report to GitHub Pages on branch '{target_branch}'...")
+        try:
+            subprocess.run(["git", "push", "origin", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError as e:
+            print(f"⚠️ Failed to push to remote repository: {str(e)}")
+            print("\nTroubleshooting steps:")
+            print("1. Verify the repository URL is correct:")
+            print(f"   git remote set-url origin {repo_url}")
+            print("2. Check if you have write access to the repository")
+            print("3. Ensure your GitHub authentication is set up correctly")
+            return None
 
-            # Generate the GitHub Pages URL using the correct repository owner and name
-            pages_url = f"https://{repo_owner}.github.io/{repo_name}/{report_dir}"
-            return pages_url
+        # Generate the GitHub Pages URL using the correct repository owner and name
+        pages_url = f"https://{repo_owner}.github.io/{repo_name}/{report_dir}"
+        return pages_url
 
     except Exception as e:
         print(f"⚠️ Failed to publish to GitHub Pages: {str(e)}")
@@ -1005,9 +1009,9 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
         print(f"\n✅ Local HTML report saved: {report_path}")
         
         # Only show local file option if GitHub Pages publishing fails
-        open_html = input("📁 Open local HTML report in browser? (y/n): ").strip().lower()
-        if open_html == "y":
-            webbrowser.open(f"file://{report_path.absolute()}")
+    open_html = input("📁 Open local HTML report in browser? (y/n): ").strip().lower()
+    if open_html == "y":
+        webbrowser.open(f"file://{report_path.absolute()}")
 
 def explain_exit(msg):
     print(f"⚠️ {msg}")
@@ -1240,8 +1244,8 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
         try:
             tool_progress("🔍", "Generating SARIF for Trivy")
             subprocess.run(["trivy", "image", "-f", "sarif", "-o", str(trivy_sarif_path), image], check=True,
-                           stdout=None if verbose else subprocess.DEVNULL,
-                           stderr=None if verbose else subprocess.DEVNULL)
+                        stdout=None if verbose else subprocess.DEVNULL,
+                        stderr=None if verbose else subprocess.DEVNULL)
             result = upload_sarif(trivy_sarif_path, "trivy")
             if result == "insufficient_scope":
                 permission_error = True
@@ -1346,15 +1350,16 @@ def main(args):
         # Build images for each Dockerfile found
         built_images = []
         for dockerfile_path in dockerfile_paths:
-            # Create a unique image tag based on the directory containing the Dockerfile
-            dockerfile_dir = os.path.dirname(dockerfile_path)
-            dir_name = os.path.basename(dockerfile_dir)
-            image_tag = f"{repo_name}-{dir_name}-{timestamp}"
-
-            # Docker image build
-            tool_progress("🐳", f"Building Docker image '{image_tag}' from {os.path.relpath(dockerfile_path, temp_dir)}")
-            docker_build_cmd = ["docker", "build", "-t", image_tag, dockerfile_dir]
             try:
+                # Create a unique image tag based on the directory containing the Dockerfile
+                dockerfile_dir = os.path.dirname(dockerfile_path)
+                dir_name = os.path.basename(dockerfile_dir)
+                image_tag = f"{repo_name}-{dir_name}-{timestamp}"
+
+                # Docker image build
+                tool_progress("🐳", f"Building Docker image '{image_tag}' from {os.path.relpath(dockerfile_path, temp_dir)}")
+                docker_build_cmd = ["docker", "build", "-t", image_tag, dockerfile_dir]
+                
                 if args.verbose:
                     subprocess.run(docker_build_cmd, check=True)
                 else:
@@ -1378,6 +1383,7 @@ def main(args):
                     print(f"   Error: {str(e)}")
                     print(f"   To debug, run: trivy image --format json -o {trivy_path} {image_tag}")
                     continue
+                
                 trivy_version = get_version("trivy")
                 print(f"   🔢 Trivy version: {trivy_version}")
                 summary_lines.append(f"🔢 Trivy version: {trivy_version}")
@@ -1424,7 +1430,7 @@ def main(args):
                 print(f"   Error: {e.stderr.decode() if e.stderr else 'Unknown error'}")
                 print(f"   To debug, run: docker build -t {image_tag} {dockerfile_dir}")
                 print("   Continuing with other Dockerfiles if available...\n")
-                continue  # Continue with next Dockerfile instead of exiting
+                continue
 
         if not built_images:
             explain_exit("No images were successfully built and scanned.")
@@ -1453,6 +1459,7 @@ def main(args):
             print(f"   Error: {str(e)}")
             print(f"   To debug, run: trivy image --format json -o {trivy_path} {image}")
             explain_exit("Trivy scan failed or image not found.")
+
         trivy_version = get_version("trivy")
         print(f"   🔢 Trivy version: {trivy_version}")
         summary_lines.append(f"🔢 Trivy version: {trivy_version}")
@@ -1462,7 +1469,7 @@ def main(args):
         tool_progress("🔹", "Scanning with Grype")
         if not run_scan("grype", image, grype_path, verbose=args.verbose):
             explain_exit("Grype scan failed or image not found.")
-        tool_done()
+            tool_done()
         grype_version = get_version("grype")
         print(f"   🔢 Grype version: {grype_version}")
         summary_lines.append(f"🔢 Grype version: {grype_version}")
@@ -1518,7 +1525,7 @@ def main(args):
             for image_tag in built_images:
                 print(f"🧼 Removing built image '{image_tag}'...")
                 subprocess.run(["docker", "rmi", "-f", image_tag], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            
+
             # Clean up cloned repository
             if temp_dir and os.path.isdir(temp_dir):
                 print(f"🧹 Removing cloned repository from '{temp_dir}'...")
