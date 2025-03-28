@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.0
+# scancompare version 1.0.1
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -716,26 +716,68 @@ def publish_to_github_pages(report_path, image_name):
                     target_branch = branches[int(choice) - 1]
                     print(f"Switching to branch: {target_branch}")
                     try:
-                        # Try to check out the branch
-                        subprocess.run(["git", "checkout", target_branch], 
-                                    check=True, 
-                                    stdout=subprocess.DEVNULL, 
-                                    stderr=subprocess.DEVNULL)
-                        break
-                    except subprocess.CalledProcessError:
-                        # If checkout fails, try to create it
+                        # Make sure we're in a clean state first
                         try:
-                            print(f"Branch {target_branch} doesn't exist locally, creating it...")
-                            subprocess.run(["git", "checkout", "-b", target_branch], 
+                            subprocess.run(["git", "reset", "--hard"], 
                                         check=True, 
                                         stdout=subprocess.DEVNULL, 
-                                        stderr=subprocess.DEVNULL)
+                                        stderr=subprocess.DEVNULL,
+                                        timeout=5)
+                        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                            print("Note: Could not reset current branch state")
+
+                        # First try to fetch the branch if it exists remotely
+                        try:
+                            subprocess.run(["git", "fetch", "origin", target_branch], 
+                                        check=True, 
+                                        stdout=subprocess.DEVNULL, 
+                                        stderr=subprocess.DEVNULL,
+                                        timeout=10)
+                            # If fetch succeeds, try to reset to origin's version
+                            try:
+                                subprocess.run(["git", "checkout", "-B", target_branch, f"origin/{target_branch}"],
+                                            check=True,
+                                            stdout=subprocess.DEVNULL,
+                                            stderr=subprocess.DEVNULL,
+                                            timeout=5)
+                                print(f"✅ Reset to remote branch: {target_branch}")
+                                break
+                            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                                print(f"Note: Could not reset to remote {target_branch}")
+                        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                            print(f"Note: Branch '{target_branch}' not found in remote or fetch failed")
+                            
+                        # Try to check out existing branch first
+                        try:
+                            subprocess.run(["git", "checkout", target_branch], 
+                                        check=True, 
+                                        stdout=subprocess.DEVNULL, 
+                                        stderr=subprocess.DEVNULL,
+                                        timeout=5)
+                            print(f"✅ Switched to existing branch: {target_branch}")
                             break
-                        except subprocess.CalledProcessError as e:
-                            print(f"⚠️ Failed to switch to or create branch '{target_branch}': {str(e)}")
-                            continue
-                else:
-                    print("⚠️ Invalid choice. Please enter a number from the list or 0 to create a new branch.")
+                        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                            # If checkout fails, try to create new branch
+                            try:
+                                print(f"Creating new branch '{target_branch}' from current HEAD...")
+                                subprocess.run(["git", "checkout", "-b", target_branch], 
+                                            check=True, 
+                                            stdout=subprocess.DEVNULL, 
+                                            stderr=subprocess.DEVNULL,
+                                            timeout=5)
+                                print(f"✅ Created and switched to new branch: {target_branch}")
+                                break
+                            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+                                print(f"❌ Failed to create or switch to branch '{target_branch}'")
+                                print(f"Error: {str(e)}")
+                                print("\nTroubleshooting steps:")
+                                print("1. Ensure you have write access to the repository")
+                                print("2. Try running 'git status' to check repository state")
+                                print(f"3. Try manually: git checkout -b {target_branch}")
+                                continue
+                    except Exception as e:
+                        print(f"❌ Unexpected error: {str(e)}")
+                        continue
             except (ValueError, IndexError) as e:
                 print(f"⚠️ Invalid input: {str(e)}")
 
