@@ -25,44 +25,46 @@ log() {
 tool_progress() {
 	TOOL_NAME="$2"
 	ACTION="$1"
-	echo -n "$ACTION $TOOL_NAME..."
+	# Use printf to add tabs and control formatting more precisely
+	printf "\t\t$ACTION $TOOL_NAME......"
 }
 
 tool_done() {
-	echo -e " \033[32m✔\033[0m"
+	printf " \033[32m✔\033[0m\n"
 }
 
-echo "🛠️  Starting scancompare installation..."
+# Starting the installation process
+printf "🛠️  Starting scancompare installation...\n"
 
 # Check if already installed and check for updates
 if [[ -f "$PYTHON_SCRIPT" && "$FORCE_REINSTALL" -eq 0 ]]; then
-	echo -e "\t🔍 scancompare is already installed. Checking for updates and verifying dependencies..."
+	printf "\t🔍 scancompare is already installed. Checking for updates and verifying dependencies...\n"
 	if scancompare --update > /dev/null 2>&1; then
 		CURRENT_VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
-		echo -e "\t✅ All tools verified and updated."
+		printf "\t✅ All tools verified and updated.\n"
 		exit 0
 	else
-		echo -e "\t⚠️  Failed to run 'scancompare --update'. Forcing reinstall..."
+		printf "\t⚠️  Failed to run 'scancompare --update'. Forcing reinstall...\n"
 	fi
 fi
 
-echo -e "\t📦 Installing required tools: python3, jinja2, trivy, grype..."
+printf "\t📦 Installing required tools: python3, jinja2, trivy, grype...\n"
 
 # Install necessary tools
 tool_progress "🔍 Attempting" "tool installation via Homebrew or fallback methods..."
-	install_homebrew() {
-		if [[ "$OSTYPE" == "darwin"* ]]; then
-			tool_progress "🍺 Installing" "Homebrew"
-			NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
-				echo "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
-				tool_done
-			}
-		fi
-	}
+install_homebrew() {
+	if [[ "$OSTYPE" == "darwin"* ]]; then
+		tool_progress "🍺 Installing" "Homebrew"
+		NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
+			printf "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
+			tool_done
+		}
+	fi
+}
 
 # Check if Python3 is installed, otherwise install using Homebrew or fallback
 if ! command -v python3 &> /dev/null; then
-	echo "❌ Python3 not found"
+	printf "❌ Python3 not found\n"
 	if [[ "$OSTYPE" == "darwin"* ]]; then
 		command -v brew &> /dev/null || install_homebrew
 		tool_progress "⚙️ Installing" "Python3 using Homebrew..."
@@ -81,7 +83,7 @@ if ! command -v python3 &> /dev/null; then
 		sudo yum install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with yum. Please install manually."
 		tool_done
 	else
-		echo "❌ Could not determine package manager. Please install Python3 manually."
+		printf "❌ Could not determine package manager. Please install Python3 manually.\n"
 		exit 1
 	fi
 fi
@@ -99,7 +101,7 @@ source "$VENV_DIR/bin/activate"
 if ! python -c "import jinja2" &> /dev/null; then
 	tool_progress "⚙️ Installing" "jinja2..."
 	pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location || {
-		echo "❌ Failed to install jinja2."; exit 1;
+		printf "❌ Failed to install jinja2.\n"; exit 1;
 	}
 	tool_done
 fi
@@ -108,7 +110,7 @@ fi
 if ! command -v trivy &> /dev/null; then
 	tool_progress "⚙️ Installing" "Trivy..."
 	curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
-		echo "❌ Failed to install Trivy."; exit 1;
+		printf "❌ Failed to install Trivy.\n"; exit 1;
 	}
 	tool_done
 fi
@@ -117,13 +119,13 @@ fi
 if ! command -v grype &> /dev/null; then
 	tool_progress "⚙️ Installing" "Grype..."
 	curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
-		echo "❌ Failed to install Grype."; exit 1;
+		printf "❌ Failed to install Grype.\n"; exit 1;
 	}
 	tool_done
 fi
 
 # Download the scancompare script
-echo -e "\t📦 Downloading and Installing scancompare script version..."
+printf "\t📦 Downloading and Installing scancompare script version...\n"
 curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" &> /dev/null
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
@@ -145,16 +147,16 @@ exec python "$PYTHON_SCRIPT" "\$@"
 EOF
 	chmod +x "$WRAPPER_SCRIPT"
 else
-	echo -e "\t🔹 Wrapper script already exists. Skipping."
+	printf "\t🔹 Wrapper script already exists. Skipping.\n"
 fi
 
 # Verify installation
 if ! command -v scancompare &> /dev/null; then
-	echo -e "\t⚠️ scancompare was installed but isn't available in this shell session."
-	echo -e "\t➡️  Try running: export PATH=\"\$HOME/.local/bin:\$PATH\""
-	echo -e "\t   or close and reopen your terminal."
+	printf "\t⚠️ scancompare was installed but isn't available in this shell session.\n"
+	printf "\t➡️  Try running: export PATH=\"\$HOME/.local/bin:\$PATH\"\n"
+	printf "\t   or close and reopen your terminal.\n"
 else
-	echo -e "\t✅ $INSTALL_BIN is in your PATH"
+	printf "\t✅ $INSTALL_BIN is in your PATH\n"
 fi
 
-echo -e "🎉 You can now run: $SCRIPT_NAME <image-name>"
+printf "🎉 You can now run: $SCRIPT_NAME <image-name>\n"
