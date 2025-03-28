@@ -1,0 +1,35 @@
+
+========================================
+Scan started: 2025-03-28T02:14:50.850667
+🔢 scancompare version: 1.0.1
+🛡️ Scanning image: postgres:15
+🔢 Trivy version: Version: 0.60.0
+🔢 Grype version: 0.90.0
+🧹 Cleaned up old scan artifacts.
+🛑 Cleanup skipped due to --keep-data. Keeping Docker images, cloned repo, and scan artifacts.
+
+========================================
+Scan started: 2025-03-28T02:17:46.006712
+🔢 scancompare version: 1.0.1
+🛡️ Scanning image: postgres:15
+🔢 Trivy version: Version: 0.60.0
+🔢 Grype version: 0.90.0
+🧹 Cleaned up old scan artifacts.
+🛑 Keeping all scan artifacts due to --keep-data flag.
+
+========================================
+Scan started: 2025-03-28T02:19:15.974409
+🔢 scancompare version: 1.0.1
+🛡️ Scanning image: postgres:15
+🔢 Trivy version: Version: 0.60.0
+🔢 Grype version: 0.90.0
+🛑 Keeping all scan artifacts due to --keep-data flag.
+🛑 Keeping all scan artifacts due to --keep-data flag.
+
+========================================
+Scan started: 2025-03-28T02:20:34.574790
+🔢 scancompare version: 1.0.1
+🛡️ Scanning image: postgres:15
+🔢 Trivy version: Version: 0.60.0
+🔢 Grype version: 0.90.0
+🛑 Keeping all scan artifacts due to --keep-data flag.

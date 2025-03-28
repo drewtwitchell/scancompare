@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vulnerability Scan Report: Trivy vs Grype</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #2196f3;
+            --critical-color: #d32f2f;
+            --high-color: #f57c00;
+            --medium-color: #fbc02d;
+            --low-color: #388e3c;
+            --unknown-color: #757575;
+            --background-color: #f5f5f5;
+            --card-background: #ffffff;
+            --text-color: #333333;
+            --border-color: #e0e0e0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background-color: var(--card-background);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            margin: 0;
+            color: var(--primary-color);
+        }
+
+        .metadata {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .metadata-item {
+            background-color: var(--background-color);
+            padding: 15px;
+            border-radius: 4px;
+        }
+
+        .metadata-item h3 {
+            margin: 0 0 10px 0;
+            color: var(--primary-color);
+        }
+
+        .metadata-item p {
+            margin: 0;
+        }
+
+        .summary {
+            background-color: var(--card-background);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .summary-card {
+            background-color: var(--background-color);
+            padding: 20px;
+            border-radius: 4px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .summary-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .summary-card h3 {
+            margin: 0 0 10px 0;
+            color: var(--primary-color);
+        }
+
+        .summary-card .count {
+            font-size: 2em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .severity-block {
+            background-color: var(--card-background);
+            color: var(--text-color);
+            cursor: pointer;
+            padding: 15px;
+            width: 100%;
+            border: none;
+            text-align: left;
+            outline: none;
+            font-size: 1.1em;
+            font-weight: bold;
+            margin-top: 10px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: background-color 0.3s;
+        }
+
+        .severity-block:hover {
+            background-color: var(--background-color);
+        }
+
+        .severity-block::after {
+            content: '+';
+            font-weight: bold;
+            float: right;
+            margin-left: 5px;
+        }
+
+        .severity-block.active::after {
+            content: '-';
+        }
+
+        .content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            background-color: var(--card-background);
+            padding: 0 15px;
+            border-radius: 0 0 4px 4px;
+        }
+
+        .content ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .content li {
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .content li:last-child {
+            border-bottom: none;
+        }
+
+        .content a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .content a:hover {
+            text-decoration: underline;
+        }
+
+        .raw-data {
+            background-color: var(--card-background);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+
+        .raw-data pre {
+            background-color: var(--background-color);
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+
+        .confidence-high {
+            color: var(--low-color);
+        }
+
+        .confidence-medium {
+            color: var(--medium-color);
+        }
+
+        .confidence-low {
+            color: var(--high-color);
+        }
+
+        .scan-date {
+            color: var(--unknown-color);
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+
+        .tool-links {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .tool-link {
+            display: inline-flex;
+            align-items: center;
+            padding: 10px 20px;
+            background-color: var(--card-background);
+            border-radius: 4px;
+            text-decoration: none;
+            color: var(--text-color);
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .tool-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .tool-link img {
+            width: 32px;
+            height: 32px;
+            margin-right: 12px;
+            object-fit: contain;
+        }
+
+        .action-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .action-button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .action-button:hover {
+            background-color: #0056b3;
+        }
+
+        .raw-data {
+            margin-top: 30px;
+            border-top: 2px solid #eee;
+            padding-top: 20px;
+        }
+
+        .raw-data pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            display: none;
+        }
+
+        .raw-data pre.show {
+            display: block;
+        }
+
+        .ghas-link {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #24292e;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .ghas-link:hover {
+            background-color: #2f363d;
+        }
+
+        @media print {
+            .severity-filters,
+            .action-buttons,
+            .tool-links,
+            .raw-data {
+                display: none;
+            }
+        }
+
+        .section {
+            scroll-margin-top: 20px;
+        }
+
+        .section-header {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 20px;
+            background-color: var(--card-background);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .section-header h2 {
+            margin: 0;
+        }
+
+        .filter-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .filter-instructions {
+            font-size: 0.9em;
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+        }
+
+        .section-filters {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .section-filter {
+            padding: 8px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            font-weight: 600;
+            transition: all 0.2s;
+            font-size: 0.95em;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .section-filter::before {
+            content: '✓';
+            font-weight: bold;
+        }
+
+        .section-filter.inactive {
+            opacity: 0.5;
+        }
+
+        .section-filter.inactive::before {
+            content: '×';
+        }
+
+        .section-filter:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .legend {
+            background-color: var(--card-background);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .legend-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .legend-section {
+            background-color: var(--background-color);
+            padding: 15px;
+            border-radius: 4px;
+        }
+
+        .legend-section h3 {
+            color: var(--primary-color);
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+
+        .severity-legend {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        .tool-differences {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .tool-info h4 {
+            margin: 0 0 10px 0;
+            color: var(--primary-color);
+        }
+
+        .tool-info ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .tool-info li {
+            margin-bottom: 5px;
+        }
+
+        .data-info {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .data-info li {
+            margin-bottom: 10px;
+        }
+
+        .data-info strong {
+            color: var(--primary-color);
+        }
+
+        @media print {
+            .legend {
+                break-inside: avoid;
+            }
+        }
+
+        .quick-filters {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .quick-filter {
+            padding: 10px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            border: 2px solid var(--primary-color);
+            background-color: white;
+            color: var(--primary-color);
+            font-weight: 600;
+            transition: all 0.2s;
+            font-size: 1em;
+        }
+
+        .quick-filter.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .quick-filter:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .section {
+            display: none;
+        }
+
+        .section.visible {
+            display: block;
+        }
+
+        .quick-filters-container {
+            background-color: var(--card-background);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .quick-filters-instructions {
+            margin-bottom: 15px;
+            color: var(--text-color);
+        }
+
+        .helpful-links {
+            background-color: var(--card-background);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin: 20px 0;
+        }
+
+        .helpful-links h2 {
+            color: var(--primary-color);
+            margin-top: 0;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .links-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .link-category {
+            background-color: var(--background-color);
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .link-category h3 {
+            color: var(--primary-color);
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+
+        .link-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .resource-link {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            background-color: white;
+            border-radius: 6px;
+            text-decoration: none;
+            color: var(--text-color);
+            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .resource-link:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+        }
+
+        .resource-link img {
+            width: 24px;
+            height: 24px;
+            margin-right: 10px;
+            object-fit: contain;
+        }
+
+        .link-description {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Vulnerability Scan Report: Trivy vs Grype</h1>
+            <div class="metadata">
+                <div class="metadata-item">
+                    <h3>Image</h3>
+                    <p>{{ image }}</p>
+                </div>
+                <div class="metadata-item">
+                    <h3>Scan Date</h3>
+                    <p>{{ scan_date }}</p>
+                </div>
+                <div class="metadata-item">
+                    <h3>Trivy Version</h3>
+                    <p>{{ trivy_version }}</p>
+                </div>
+                <div class="metadata-item">
+                    <h3>Grype Version</h3>
+                    <p>{{ grype_version }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="summary">
+            <h2>Summary</h2>
+            <div class="summary-grid">
+                <div class="summary-card" onclick="scrollToSection('shared')">
+                    <h3>Total Vulnerabilities</h3>
+                    <div class="count">{{ total_vulns }}</div>
+                </div>
+                <div class="summary-card" onclick="scrollToSection('shared')">
+                    <h3>Shared Vulnerabilities</h3>
+                    <div class="count">{{ shared_count }}</div>
+                </div>
+                <div class="summary-card" onclick="scrollToSection('trivy')">
+                    <h3>Trivy Unique</h3>
+                    <div class="count">{{ trivy_count }}</div>
+                </div>
+                <div class="summary-card" onclick="scrollToSection('grype')">
+                    <h3>Grype Unique</h3>
+                    <div class="count">{{ grype_count }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="legend">
+            <h2>Understanding the Results</h2>
+            <div class="legend-grid">
+                <div class="legend-section">
+                    <h3>Severity Levels</h3>
+                    <div class="severity-legend">
+                        <div class="legend-item">
+                            <span class="legend-color" style="background-color: var(--critical-color)"></span>
+                            <span>Critical - Immediate action required</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background-color: var(--high-color)"></span>
+                            <span>High - Urgent attention needed</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background-color: var(--medium-color)"></span>
+                            <span>Medium - Should be addressed</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background-color: var(--low-color)"></span>
+                            <span>Low - Monitor and plan</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background-color: var(--unknown-color)"></span>
+                            <span>Unknown - Requires investigation</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="legend-section">
+                    <h3>Tool Differences</h3>
+                    <div class="tool-differences">
+                        <div class="tool-info">
+                            <h4>Trivy</h4>
+                            <ul>
+                                <li>Comprehensive OS package scanning</li>
+                                <li>Language-specific package scanning</li>
+                                <li>Container-specific vulnerabilities</li>
+                                <li>Detailed CVSS scoring</li>
+                            </ul>
+                        </div>
+                        <div class="tool-info">
+                            <h4>Grype</h4>
+                            <ul>
+                                <li>Deep dependency analysis</li>
+                                <li>Application-level scanning</li>
+                                <li>Custom vulnerability matching</li>
+                                <li>Integration with Anchore ecosystem</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="legend-section">
+                    <h3>Understanding the Data</h3>
+                    <ul class="data-info">
+                        <li><strong>Shared Vulnerabilities:</strong> Found by both tools, highest confidence</li>
+                        <li><strong>Tool-Specific:</strong> Unique findings that may require manual verification</li>
+                        <li><strong>CVSS Scores:</strong> Standardized severity scoring (0-10)</li>
+                        <li><strong>Last Modified:</strong> When the vulnerability was last updated</li>
+                        <li><strong>References:</strong> Links to detailed vulnerability information</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="helpful-links">
+            <h2>Helpful Resources</h2>
+            <div class="links-grid">
+                <div class="link-category">
+                    <h3>Scanning Tools</h3>
+                    <div class="link-list">
+                        <a href="https://aquasecurity.github.io/trivy/" target="_blank" class="resource-link">
+                            <img src="https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/trivy.png" alt="Trivy Logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzAwOTdBNyIgZD0iTTEyIDJMMyA3djEwbDkgNWw5LTV2LTEwTDEyIDJ6TTEyIDR2MTZsLTctMy44VjguOEwxMiA0eiIvPjxwYXRoIGZpbGw9IiMwMDk3QTciIGQ9Ik0xNyAxNS4yVjguOGwtNSAyLjh2Ny4yeiIvPjwvc3ZnPg=='" style="width: 32px; height: 32px;" />
+                            <div>
+                                <div>Trivy Documentation</div>
+                                <div class="link-description">Learn about Trivy's features and usage</div>
+                            </div>
+                        </a>
+                        <a href="https://github.com/anchore/grype" target="_blank" class="resource-link">
+                            <img src="https://raw.githubusercontent.com/anchore/grype/main/docs/static/images/grype-logo-small.png" alt="Grype Logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzFBMjM3RSIgZD0iTTEyIDJMMyA3djEwbDkgNWw5LTV2LTEwTDEyIDJ6TTEyIDR2MTZsLTctMy44VjguOEwxMiA0eiIvPjxwYXRoIGZpbGw9IiMxQTIzN0UiIGQ9Ik0xNyAxNS4yVjguOGwtNSAyLjh2Ny4yeiIvPjwvc3ZnPg=='" style="width: 32px; height: 32px;" />
+                            <div>
+                                <div>Grype Documentation</div>
+                                <div class="link-description">Explore Grype's capabilities and setup</div>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="link-category">
+                    <h3>Vulnerability Scoring</h3>
+                    <div class="link-list">
+                        <a href="https://nvd.nist.gov/vuln-metrics/cvss" target="_blank" class="resource-link">
+                            <img src="https://raw.githubusercontent.com/nist/nvd/main/src/assets/images/nist-logo.svg" alt="NIST Logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzIxOTZmMyIgZD0iTTEyIDJMNCA3djEwbDggNWw4LTV2LTEwTDEyIDJ6TTEyIDR2MTZsLTYtMy43NVY4TDEyIDR6Ii8+PC9zdmc+'" />
+                            <div>
+                                <div>CVSS Scoring Guide</div>
+                                <div class="link-description">Understanding vulnerability severity scores</div>
+                            </div>
+                        </a>
+                        <a href="https://www.first.org/cvss/user-guide" target="_blank" class="resource-link">
+                            <img src="https://www.first.org/img/first-logo.png" alt="FIRST Logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2Y1N2MwMCIgZD0iTTEyIDJMNCA3djEwbDggNWw4LTV2LTEwTDEyIDJ6TTEyIDR2MTZsLTYtMy43NVY4TDEyIDR6Ii8+PC9zdmc+'" />
+                            <div>
+                                <div>CVSS User Guide</div>
+                                <div class="link-description">Detailed guide to CVSS scoring system</div>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="link-category">
+                    <h3>Vulnerability Databases</h3>
+                    <div class="link-list">
+                        <a href="https://nvd.nist.gov/" target="_blank" class="resource-link">
+                            <img src="https://www.nist.gov/sites/default/files/images/2017/06/16/nist_logo_centered_648x305.png" alt="NVD Logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZiYzAyZCIgZD0iTTEyIDJMNCA3djEwbDggNWw4LTV2LTEwTDEyIDJ6TTEyIDR2MTZsLTYtMy43NVY4TDEyIDR6Ii8+PC9zdmc+'" />
+                            <div>
+                                <div>National Vulnerability Database</div>
+                                <div class="link-description">Comprehensive vulnerability database</div>
+                            </div>
+                        </a>
+                        <a href="https://github.com/advisories" target="_blank" class="resource-link">
+                            <img src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" alt="GitHub Logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzI0MjkyZSIgZD0iTTEyIDJBMTAgMTAgMCAwIDAgMiAxMmMwIDQuNDIgMi44NyA4LjE3IDYuODQgOS41LjUuMDguNjYtLjIzLjY2LS41di0xLjY5Yy0yLjc3LjYtMy4zNi0xLjM0LTMuMzYtMS4zNC0uNDYtMS4xNi0xLjExLTEuNDctMS4xMS0xLjQ3LS45MS0uNjIuMDctLjYuMDctLjYgMSAuMDcgMS41MyAxLjAzIDEuNTMgMS4wMy44OSAxLjUyIDIuMzQgMS4wNyAyLjkxLjgzLjA5LS42NS4zNS0xLjA5LjYzLTEuMzQtMi4yMi0uMjUtNC41NS0xLjExLTQuNTUtNC45MiAwLTEuMTEuMzgtMiAxLjAzLTIuNzEtLjEtLjI1LS40NS0xLjI5LjEtMi42NCAwIDAgLjg0LS4yNyAyLjc1IDEuMDIuOC0uMjIgMS42NS0uMzMgMi41LS4zMy44NSAwIDEuNy4xMSAyLjUuMzMgMS45MS0xLjI5IDIuNzUtMS4wMiAyLjc1LTEuMDIuNTUgMS4zNS4yIDIuMzkuMSAyLjY0LjY1LjcxIDEuMDMgMS42IDEuMDMgMi43MSAwIDMuODItMi4zNCA0LjY2LTQuNTcgNC45MS4zNi4zMS42OS45Mi42OSAxLjg1VjIxYzAgLjI3LjE2LjU5LjY3LjUgMy45Ny0xLjM0IDYuODMtNS4wOCA2LjgzLTkuNUMxMiAyIDIgMiAyIDJ6Ii8+PC9zdmc+'" />
+                            <div>
+                                <div>GitHub Advisory Database</div>
+                                <div class="link-description">Security advisories for open source projects</div>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-buttons">
+            <button class="action-button" onclick="downloadJSON()">Download JSON</button>
+            <button class="action-button" onclick="downloadPDF()">Download PDF</button>
+        </div>
+
+        <div class="vulnerabilities">
+            <div class="quick-filters-container">
+                <p class="quick-filters-instructions">Quick view filters - click to show specific sections:</p>
+                <div class="quick-filters">
+                    <button class="quick-filter active" data-show="all">Show All</button>
+                    <button class="quick-filter" data-show="shared">Only Shared</button>
+                    <button class="quick-filter" data-show="trivy">Only Trivy</button>
+                    <button class="quick-filter" data-show="grype">Only Grype</button>
+                </div>
+            </div>
+
+            <div id="shared" class="section visible">
+                <div class="section-header">
+                    <h2>Shared Vulnerabilities</h2>
+                    <div class="filter-container">
+                        <p class="filter-instructions">Click severity levels to show/hide vulnerabilities:</p>
+                        <div class="section-filters">
+                            <button class="section-filter active" data-severity="Critical" style="background-color: var(--critical-color); color: white;">Critical</button>
+                            <button class="section-filter active" data-severity="High" style="background-color: var(--high-color); color: white;">High</button>
+                            <button class="section-filter active" data-severity="Medium" style="background-color: var(--medium-color); color: white;">Medium</button>
+                            <button class="section-filter active" data-severity="Low" style="background-color: var(--low-color); color: white;">Low</button>
+                            <button class="section-filter active" data-severity="Unknown" style="background-color: var(--unknown-color); color: white;">Unknown</button>
+                        </div>
+                    </div>
+                </div>
+                {{ shared_section }}
+            </div>
+
+            <div id="trivy" class="section">
+                <div class="section-header">
+                    <h2>Trivy Unique Vulnerabilities</h2>
+                    <div class="filter-container">
+                        <p class="filter-instructions">Click severity levels to show/hide vulnerabilities:</p>
+                        <div class="section-filters">
+                            <button class="section-filter active" data-severity="Critical" style="background-color: var(--critical-color); color: white;">Critical</button>
+                            <button class="section-filter active" data-severity="High" style="background-color: var(--high-color); color: white;">High</button>
+                            <button class="section-filter active" data-severity="Medium" style="background-color: var(--medium-color); color: white;">Medium</button>
+                            <button class="section-filter active" data-severity="Low" style="background-color: var(--low-color); color: white;">Low</button>
+                            <button class="section-filter active" data-severity="Unknown" style="background-color: var(--unknown-color); color: white;">Unknown</button>
+                        </div>
+                    </div>
+                </div>
+                {{ trivy_section }}
+            </div>
+
+            <div id="grype" class="section">
+                <div class="section-header">
+                    <h2>Grype Unique Vulnerabilities</h2>
+                    <div class="filter-container">
+                        <p class="filter-instructions">Click severity levels to show/hide vulnerabilities:</p>
+                        <div class="section-filters">
+                            <button class="section-filter active" data-severity="Critical" style="background-color: var(--critical-color); color: white;">Critical</button>
+                            <button class="section-filter active" data-severity="High" style="background-color: var(--high-color); color: white;">High</button>
+                            <button class="section-filter active" data-severity="Medium" style="background-color: var(--medium-color); color: white;">Medium</button>
+                            <button class="section-filter active" data-severity="Low" style="background-color: var(--low-color); color: white;">Low</button>
+                            <button class="section-filter active" data-severity="Unknown" style="background-color: var(--unknown-color); color: white;">Unknown</button>
+                        </div>
+                    </div>
+                </div>
+                {{ grype_section }}
+            </div>
+        </div>
+
+        {% if ghas_link %}
+        <div style="text-align: center;">
+            <a href="{{ ghas_link }}" target="_blank" class="ghas-link">
+                View Results in GitHub Advanced Security
+            </a>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // Quick filters functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const quickFilters = document.querySelectorAll('.quick-filter');
+            const sections = document.querySelectorAll('.section');
+
+            quickFilters.forEach(filter => {
+                filter.addEventListener('click', function() {
+                    // Update active state of filters
+                    quickFilters.forEach(f => f.classList.remove('active'));
+                    this.classList.add('active');
+
+                    // Show/hide sections based on filter
+                    const showType = this.dataset.show;
+                    sections.forEach(section => {
+                        if (showType === 'all') {
+                            section.classList.add('visible');
+                        } else {
+                            section.classList.toggle('visible', section.id === showType);
+                        }
+                    });
+                });
+            });
+        });
+
+        // Scroll to section
+        function scrollToSection(sectionId) {
+            document.getElementById(sectionId).scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Collapsible sections
+        var coll = document.getElementsByClassName("severity-block");
+        for (var i = 0; i < coll.length; i++) {
+            coll[i].addEventListener("click", function() {
+                this.classList.toggle("active");
+                var content = this.nextElementSibling;
+                if (content.style.maxHeight) {
+                    content.style.maxHeight = null;
+                } else {
+                    content.style.maxHeight = content.scrollHeight + "px";
+                }
+            });
+        }
+
+        // Download JSON
+        function downloadJSON() {
+            const data = document.getElementById('raw-json').textContent;
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'scan_results.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Download PDF
+        function downloadPDF() {
+            const element = document.querySelector('.container');
+            const opt = {
+                margin: 1,
+                filename: 'scan_report.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2 },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+            };
+            html2pdf().set(opt).from(element).save();
+        }
+    </script>
+</body>
+</html>
