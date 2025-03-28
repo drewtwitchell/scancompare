@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.1
+# scancompare version 1.0.0
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.1"
+VERSION = "1.0.0"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -612,6 +612,134 @@ def display_summary(trivy_cves, grype_cves):
 
     return shared_cves, only_trivy_cves, only_grype_cves
 
+def publish_to_github_pages(report_path, image_name):
+    """Publish the HTML report to GitHub Pages."""
+    try:
+        # Create a unique report directory name based on image and timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        safe_image_name = re.sub(r'[^\w\-]', '_', image_name)
+        report_dir = f"reports/{safe_image_name}_{timestamp}"
+        
+        # Check if we're in a git repository
+        try:
+            subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], check=True, capture_output=True)
+        except subprocess.CalledProcessError:
+            print("⚠️ Not in a git repository. Please run this command from within a git repository.")
+            return None
+
+        # Get the current repository URL
+        repo_url = subprocess.check_output(["git", "config", "--get", "remote.origin.url"]).decode().strip()
+        repo_name = repo_url.split('/')[-1].replace('.git', '')
+        
+        # Create gh-pages branch if it doesn't exist
+        try:
+            subprocess.run(["git", "show-ref", "--verify", "refs/heads/gh-pages"], check=True, capture_output=True)
+        except subprocess.CalledProcessError:
+            print("🔄 Creating gh-pages branch...")
+            subprocess.run(["git", "checkout", "--orphan", "gh-pages"], check=True)
+            subprocess.run(["git", "rm", "-rf", "."], check=True)
+            subprocess.run(["git", "commit", "--allow-empty", "-m", "Initial gh-pages commit"], check=True)
+            subprocess.run(["git", "checkout", "-"], check=True)
+
+        # Create a temporary directory for gh-pages content
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Checkout gh-pages branch into temp directory
+            subprocess.run(["git", "worktree", "add", temp_dir, "gh-pages"], check=True)
+            
+            # Create reports directory if it doesn't exist
+            os.makedirs(os.path.join(temp_dir, "reports"), exist_ok=True)
+            
+            # Copy the report to the new directory
+            report_dest = os.path.join(temp_dir, report_dir)
+            os.makedirs(report_dest, exist_ok=True)
+            shutil.copy2(report_path, os.path.join(report_dest, "index.html"))
+            
+            # Update index.html with list of reports if it doesn't exist
+            index_path = os.path.join(temp_dir, "index.html")
+            if not os.path.exists(index_path):
+                with open(index_path, "w") as f:
+                    f.write("""<!DOCTYPE html>
+<html>
+<head>
+    <title>Vulnerability Scan Reports</title>
+    <style>
+        body { font-family: -apple-system, system-ui, sans-serif; line-height: 1.5; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .report-list { list-style: none; padding: 0; }
+        .report-item { margin: 10px 0; padding: 15px; border: 1px solid #eee; border-radius: 5px; }
+        .report-link { color: #0366d6; text-decoration: none; }
+        .report-link:hover { text-decoration: underline; }
+        .timestamp { color: #666; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <h1>Vulnerability Scan Reports</h1>
+    <div id="reports"></div>
+    <script>
+        async function listReports() {
+            const reportsList = document.getElementById('reports');
+            const ul = document.createElement('ul');
+            ul.className = 'report-list';
+            
+            // Get list of report directories
+            const reports = [];
+            const response = await fetch('reports/');
+            const text = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(text, 'text/html');
+            const links = doc.getElementsByTagName('a');
+            
+            for (const link of links) {
+                const href = link.getAttribute('href');
+                if (href.startsWith('20') || href.includes('_202')) {
+                    reports.push({
+                        path: href,
+                        date: new Date(href.split('_')[1].split('/')[0])
+                    });
+                }
+            }
+            
+            // Sort reports by date (newest first)
+            reports.sort((a, b) => b.date - a.date);
+            
+            // Create list items
+            reports.forEach(report => {
+                const li = document.createElement('li');
+                li.className = 'report-item';
+                const imageName = report.path.split('_')[0];
+                const timestamp = new Date(report.date).toLocaleString();
+                li.innerHTML = `
+                    <a href="reports/${report.path}" class="report-link">
+                        ${imageName.replace(/_/g, ':')}
+                    </a>
+                    <div class="timestamp">Generated: ${timestamp}</div>
+                `;
+                ul.appendChild(li);
+            });
+            
+            reportsList.appendChild(ul);
+        }
+        
+        listReports();
+    </script>
+</body>
+</html>""")
+
+            # Commit and push changes
+            subprocess.run(["git", "-C", temp_dir, "add", "."], check=True)
+            subprocess.run(["git", "-C", temp_dir, "commit", "-m", f"Add scan report for {image_name}"], check=True)
+            subprocess.run(["git", "-C", temp_dir, "push", "origin", "gh-pages"], check=True)
+            
+            # Remove the temporary worktree
+            subprocess.run(["git", "worktree", "remove", temp_dir], check=True)
+
+            # Generate the GitHub Pages URL
+            pages_url = f"https://{repo_url.split('/')[-2]}.github.io/{repo_name}/{report_dir}"
+            return pages_url
+
+    except Exception as e:
+        print(f"⚠️ Failed to publish to GitHub Pages: {str(e)}")
+        return None
+
 def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only_grype, trivy_version, grype_version):
     """Generate a detailed HTML report of vulnerability findings."""
     def format_cves(cve_map):
@@ -792,13 +920,27 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     )
 
     report_path.write_text(rendered)
-    tool_progress("📄", "Generating local HTML report")
+    tool_progress("📄", "Generating report")
     tool_done()
-    print(f"✅ Local HTML report saved: {report_path}")
-
-    open_html = input("📁 Open local HTML report in browser? (y/n): ").strip().lower()
-    if open_html == "y":
-        webbrowser.open(f"file://{report_path.absolute()}")
+    
+    # Try to publish to GitHub Pages
+    pages_url = publish_to_github_pages(report_path, image)
+    
+    if pages_url:
+        print(f"\n✅ Report published to GitHub Pages:")
+        print(f"   \033[4;36m🔗 {pages_url}\033[0m")
+        
+        # Ask if user wants to open in browser
+        open_html = input("📁 Open report in browser? (y/n): ").strip().lower()
+        if open_html == "y":
+            webbrowser.open(pages_url)
+    else:
+        print(f"\n✅ Local HTML report saved: {report_path}")
+        
+        # Fallback to local file if GitHub Pages publishing fails
+        open_html = input("📁 Open local HTML report in browser? (y/n): ").strip().lower()
+        if open_html == "y":
+            webbrowser.open(f"file://{report_path.absolute()}")
 
 def explain_exit(msg):
     print(f"⚠️ {msg}")
