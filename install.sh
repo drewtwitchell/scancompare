@@ -133,15 +133,12 @@ if ! command -v python3 &> /dev/null; then
   elif command -v apt &> /dev/null; then
     tool_progress "installation" "⚙️ Installing Python3 with apt..."
     sudo apt update &> /dev/null && sudo apt install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with apt. Please install manually."
-    tool_done
   elif command -v dnf &> /dev/null; then
     tool_progress "installation" "⚙️ Installing Python3 with dnf..."
     sudo dnf install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with dnf. Please install manually."
-    tool_done
   elif command -v yum &> /dev/null; then
     tool_progress "installation" "⚙️ Installing Python3 with yum..."
     sudo yum install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with yum. Please install manually."
-    tool_done
   else
     echo "❌ Could not determine package manager. Please install Python3 manually."
     exit 1
@@ -149,9 +146,7 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 if [[ ! -d "$VENV_DIR" ]]; then
-  tool_progress "virtual environment" "Creating"
   python3 -m venv "$VENV_DIR" &> /dev/null
-  tool_done
 fi
 
 source "$VENV_DIR/bin/activate"
