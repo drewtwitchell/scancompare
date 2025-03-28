@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 0.0.9 
+# scancompare version 0.0.8 
 
 import os
 import sys
@@ -23,7 +23,7 @@ from jinja2 import Environment, FileSystemLoader
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "0.0.9"
+VERSION = "0.0.8"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -274,12 +274,13 @@ def group_by_severity(cve_map):
     return grouped
 
 def print_cves_by_severity(title, cve_map):
-    print(f"🔸 {title}")
+    print(f"\n🔸 {title}")  # Add newline before each section
     grouped = group_by_severity(cve_map)
     for severity in sorted(grouped.keys(), key=lambda s: ["Critical", "High", "Medium", "Low", "Unknown"].index(s.capitalize()) if s.capitalize() in ["Critical", "High", "Medium", "Low", "Unknown"] else 99):
         print(f"  {severity} ({len(grouped[severity])}):")
         for cve in sorted(grouped[severity]):
             print(f"    - {cve}")
+        print()  # Add newline after each severity group
 
 def display_summary(trivy_cves, grype_cves):
     shared = set(trivy_cves) & set(grype_cves)
@@ -291,7 +292,7 @@ def display_summary(trivy_cves, grype_cves):
     print(" Tool  | Total | Only in Tool | Shared")
     print("-------|-------|--------------|--------")
     print(f"Grype  | {len(grype_cves):<5} | {len(only_grype):<12} | {len(shared)}")
-    print(f"Trivy  | {len(trivy_cves):<5} | {len(only_trivy):<12} | {len(shared)}")
+    print(f"Trivy  | {len(trivy_cves):<5} | {len(only_trivy):<12} | {len(shared)}\n")
 
     return shared, only_trivy, only_grype
 
@@ -403,6 +404,8 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     )
 
     report_path.write_text(rendered)
+    tool_progress("📄", "Generating local HTML report")
+    tool_done()
     print(f"✅ Local HTML report saved: {report_path}")
 
     open_html = input("📁 Open local HTML report in browser? (y/n): ").strip().lower()
