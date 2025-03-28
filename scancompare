@@ -640,17 +640,22 @@ def publish_to_github_pages(report_path, image_name):
     if not args.repo_url:
         return None
 
-    repo_parts = args.repo_url.rstrip(".git").split('/')
+    repo_parts = args.repo_url.rstrip(".git").split("/")
     user, repo = repo_parts[-2], repo_parts[-1]
-
     use_docs_folder = Path("docs").exists()
-    target_branch = "gh-pages"
-    current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
+
+    # Always prefer gh-pages if it exists or we're pushing to it
+    result = subprocess.run(["git", "branch", "-a"], stdout=subprocess.PIPE, check=True)
+    branches = result.stdout.decode()
+    use_gh_pages = "remotes/origin/gh-pages" in branches or "gh-pages" in branches
 
     if use_docs_folder:
         target_dir = Path("docs")
+        target_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
     else:
         target_dir = Path("gh-pages")
+        target_branch = "gh-pages"
+
     target_dir.mkdir(exist_ok=True)
 
     timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
@@ -658,6 +663,7 @@ def publish_to_github_pages(report_path, image_name):
     target_path = target_dir / report_filename
     shutil.copy2(report_path, target_path)
 
+    # index.html to redirect to latest
     index_html = target_dir / "index.html"
     index_html.write_text(f"""<html>
 <head><meta http-equiv=\"refresh\" content=\"0; URL={report_filename}\"></head>
@@ -666,60 +672,72 @@ def publish_to_github_pages(report_path, image_name):
 </body>
 </html>""")
 
-    if not Path(".git").exists():
-        if args.verbose:
-            tool_progress("🔄", "Initializing git repository...")
-        subprocess.run(["git", "init"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["git", "remote", "add", "origin", args.repo_url], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if args.verbose:
-            tool_done()
+    # Backup before cleanup
+    if not use_docs_folder:
+        backups_dir = Path("backups")
+        backups_dir.mkdir(exist_ok=True)
+        backup_name = f"backup_{timestamp}.zip"
+        backup_path = backups_dir / backup_name
+        with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for file in target_dir.glob("*.html"):
+                zipf.write(file, arcname=file.name)
+            for file in target_dir.glob("*.json"):
+                zipf.write(file, arcname=file.name)
+        # Retain only 3 most recent backups
+        backups = sorted(backups_dir.glob("backup_*.zip"), key=os.path.getmtime, reverse=True)
+        for old in backups[3:]:
+            old.unlink()
 
+    # Git setup
+    if not Path(".git").exists():
+        subprocess.run(["git", "init"], check=True)
+        subprocess.run(["git", "remote", "add", "origin", args.repo_url], check=True)
+
+    current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
+    switched = False
+    if target_branch != current_branch:
+        tool_progress("🔀", f"Switching to {target_branch} branch...")
+        subprocess.run(["git", "checkout", "-B", target_branch], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        tool_done()
+        switched = True
+
+    # Pull latest from remote with autostash
     tool_progress("🔄", "Pulling latest gh-pages...")
     try:
-        subprocess.run(["git", "fetch", "origin", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["git", "checkout", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["git", "pull", "--autostash"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["git", "pull", "--autostash", "origin", target_branch], check=True,
+                       stdout=subprocess.DEVNULL if not args.verbose else None,
+                       stderr=subprocess.DEVNULL if not args.verbose else None)
+        tool_done()
     except subprocess.CalledProcessError:
-        if args.verbose:
-            print("⚠️ Warning: failed to pull latest changes. Continuing anyway.")
-    tool_done()
+        tool_done()
+        print("⚠️ Warning: failed to pull latest changes. Continuing anyway.")
 
-    try:
-        backup_dir = Path("backups")
-        backup_dir.mkdir(exist_ok=True)
-        backup_file = backup_dir / f"gh-pages-backup-{timestamp}.zip"
+    # Clean up any deleted files left behind
+    if switched:
+        subprocess.run(["git", "restore", "."], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["git", "clean", "-fd"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        with zipfile.ZipFile(backup_file, 'w') as zipf:
-            for ext in ['.html', '.json']:
-                for file in target_dir.glob(f'*{ext}'):
-                    zipf.write(file, arcname=file.name)
-
-        backups = sorted(backup_dir.glob("gh-pages-backup-*.zip"), key=os.path.getmtime, reverse=True)
-        for old_backup in backups[3:]:
-            old_backup.unlink()
-    except Exception as e:
-        if args.verbose:
-            print(f"⚠️ Failed to backup or clean gh-pages: {e}")
-
-    if not args.keep_data:
-        for item in target_dir.glob("*"):
-            if item.is_file():
-                item.unlink()
-
+    # Stage, commit, push
     tool_progress("📦", f"Adding {target_dir} contents to git...")
     try:
-        subprocess.run(["git", "restore", "--staged", "."], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["git", "restore", "."], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["git", "add", str(target_dir)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["git", "commit", "-m", f"📊 Add scan report for {image_name}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["git", "push", "-u", "origin", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except subprocess.CalledProcessError as e:
-        if args.verbose:
-            print(f"⚠️ Error during git add/commit/push: {e}")
+        subprocess.run(["git", "add", "-f", str(target_dir)], check=True,
+                       stdout=subprocess.DEVNULL if not args.verbose else None,
+                       stderr=subprocess.DEVNULL if not args.verbose else None)
+        subprocess.run(["git", "commit", "-m", f"📊 Add scan report for {image_name}"], check=True,
+                       stdout=subprocess.DEVNULL if not args.verbose else None,
+                       stderr=subprocess.DEVNULL if not args.verbose else None)
+    except subprocess.CalledProcessError:
+        pass  # Nothing to commit
+    subprocess.run(["git", "push", "-u", "origin", target_branch], check=True,
+                   stdout=subprocess.DEVNULL if not args.verbose else None,
+                   stderr=subprocess.DEVNULL if not args.verbose else None)
     tool_done()
 
-    subprocess.run(["git", "checkout", current_branch], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Switch back
+    if switched:
+        subprocess.run(["git", "checkout", current_branch], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    # Final public URL
     base_url = f"https://{user}.github.io/{repo}"
     return f"{base_url}/{report_filename}"
 
