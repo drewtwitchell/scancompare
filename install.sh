@@ -71,7 +71,11 @@ install_python_and_tools() {
   fi
 
   if [[ ! -d "$VENV_DIR" ]]; then
-    python3 -m venv "$VENV_DIR" -q &> /dev/null
+    tool_progress "⚙️ Creating" "Virtual environment..."
+    python3 -m venv "$VENV_DIR" &> /dev/null || {
+      echo "❌ Failed to create virtual environment"; exit 1;
+    }
+    tool_done
   fi
 
   source "$VENV_DIR/bin/activate"
