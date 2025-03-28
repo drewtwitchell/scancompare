@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.1
+# scancompare version 1.0.0
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.1"
+VERSION = "1.0.0"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -657,10 +657,12 @@ def publish_to_github_pages(report_path, image_name):
         
         # Create and switch to main branch if not already on it
         try:
-            subprocess.run(["git", "checkout", "-b", "main"], check=True)
-        except subprocess.CalledProcessError:
-            # If main branch already exists, just switch to it
+            # Try to switch to main branch
             subprocess.run(["git", "checkout", "main"], check=True)
+        except subprocess.CalledProcessError:
+            # If main branch doesn't exist, create it
+            print("🔄 Creating main branch...")
+            subprocess.run(["git", "checkout", "-b", "main"], check=True)
         
         # Create gh-pages branch if it doesn't exist
         try:
