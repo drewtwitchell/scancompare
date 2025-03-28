@@ -657,13 +657,13 @@ def publish_to_github_pages(report_path, image):
         repo_path = repo_path[:-4]
     user, repo = repo_path.split("/")[-2:]
 
-    # Check if the repo is a fork
+    # Correctly derive the upstream repository URL
+    upstream_user = "bgeveritt"  # The original repo owner
     fork_url = f"https://github.com/{user}/{repo}"
-    upstream_url = f"https://github.com/{repo}"
+    upstream_url = f"https://github.com/{upstream_user}/{repo}"
 
     if fork_url != args.repo_url:
-        print(f"⚠️ This appears to be a fork of the repository: {fork_url}")
-        print(f"    The upstream repository is: {upstream_url}")
+        print(f"⚠️ This appears to be a fork of the  upstream repository: {upstream_url}")
         user_choice = input(f"Do you want to publish to the upstream repository URL {upstream_url}? (y/n): ").strip().lower()
 
         if user_choice == "y":
