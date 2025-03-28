@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.0
+# scancompare version 1.0.1
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -725,6 +725,9 @@ def publish_to_github_pages(report_path, image_name):
                                 continue
                     except (ValueError, IndexError) as e:
                         print(f"⚠️ Invalid input: {str(e)}")
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Failed to get branch list: {str(e)}")
+                return None
 
         # Create reports directory if it doesn't exist
         os.makedirs(report_dir, exist_ok=True)
