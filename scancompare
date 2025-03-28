@@ -27,8 +27,8 @@ from typing import Dict, List, Set, Tuple, Optional
 try:
     import requests
 except ImportError:
-    # Use `python3` if available
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "requests"])
+    # Use `python3` if available, redirecting output to DEVNULL to suppress it
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "requests"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     import requests
 from urllib.parse import urlparse
 
