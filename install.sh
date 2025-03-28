@@ -85,13 +85,14 @@ if ! command -v python3 &> /dev/null; then
   fi
 fi
 
-# Set up virtual environment
+# Always set up virtual environment for Python packages
 if [[ ! -d "$VENV_DIR" ]]; then
   tool_progress "⚙️ Creating" "Virtual environment..."
   python3 -m venv "$VENV_DIR" &> /dev/null
   tool_done
 fi
 
+# Activate the virtual environment and keep it active for the entire script
 source "$VENV_DIR/bin/activate"
 
 # Install jinja2 if not installed
@@ -102,8 +103,6 @@ if ! python -c "import jinja2" &> /dev/null; then
   }
   tool_done
 fi
-
-deactivate
 
 # Install trivy
 if ! command -v trivy &> /dev/null; then
@@ -124,12 +123,12 @@ if ! command -v grype &> /dev/null; then
 fi
 
 # Download the scancompare script
-tool_progress "Downloading" "$SCRIPT_NAME script"
+tool_progress "📦 Downloading and Installing" "$SCRIPT_NAME script version..."
 curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" &> /dev/null
 tool_done
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
-tool_progress "Installing version:" "$VERSION"
+tool_progress "⚙️ Installing version:" "$VERSION"
 tool_done
 
 # Ensure the script is executable
