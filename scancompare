@@ -643,6 +643,7 @@ def publish_to_github_pages(report_path, image):
         return None
 
     try:
+        # Pull the latest gh-pages branch changes
         tool_progress("🔄", "Pulling latest gh-pages")
         subprocess.run(["git", "pull", "--autostash", "origin", "gh-pages"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         tool_done()
@@ -676,7 +677,7 @@ def publish_to_github_pages(report_path, image):
     target_path = target_dir / report_filename
     shutil.copy2(report_path, target_path)
 
-    # Create index.html redirecting to latest report
+    # Create index.html redirecting to the latest report
     index_html = target_dir / "index.html"
     index_html.write_text(f"""<html>
 <head><meta http-equiv='refresh' content='0; URL={report_filename}'></head>
@@ -709,8 +710,10 @@ def publish_to_github_pages(report_path, image):
         subprocess.run(["git", "init"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["git", "remote", "add", "origin", args.repo_url], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    # Get the current branch
     current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
 
+    # Switch to target branch if necessary
     if target_branch != current_branch:
         subprocess.run(["git", "checkout", "-B", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -724,10 +727,11 @@ def publish_to_github_pages(report_path, image):
     subprocess.run(["git", "push", "-u", "origin", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     tool_done()
 
+    # Return to the original branch if switched
     if target_branch != current_branch:
         subprocess.run(["git", "checkout", current_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # Return public report URL
+    # Return the public report URL
     base_url = f"https://{user}.github.io/{repo}"
     return f"{base_url}/{report_filename}"
 
