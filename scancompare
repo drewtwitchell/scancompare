@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 0.0.9
+# scancompare version 1.0.0
 
 import os
 import sys
@@ -23,7 +23,7 @@ from jinja2 import Environment, FileSystemLoader
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "0.0.9"
+VERSION = "1.0.0"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -710,21 +710,23 @@ def main(args):
     grype_path = scan_dir / "original_grype.json"
 
     # Trivy scan as a sub-process of "Starting vulnerability scans"
-    print("🔹 Scanning with Trivy...")
+    tool_progress("🔹", "Scanning with Trivy")
+    if not run_scan("trivy", image, trivy_path, verbose=args.verbose):
+        explain_exit("Trivy scan failed or image not found.")
+    tool_done()
     trivy_version = get_version("trivy")
     print(f"   🔢 Trivy version: {trivy_version}")
     summary_lines.append(f"🔢 Trivy version: {trivy_version}")
-    if not run_scan("trivy", image, trivy_path, verbose=args.verbose):
-        explain_exit("Trivy scan failed or image not found.")
     print(f"   ✅ Trivy scan saved to {trivy_path}")
 
     # Grype scan as a sub-process of "Starting vulnerability scans"
-    print("🔹 Scanning with Grype...")
+    tool_progress("🔹", "Scanning with Grype")
+    if not run_scan("grype", image, grype_path, verbose=args.verbose):
+        explain_exit("Grype scan failed or image not found.")
+    tool_done()
     grype_version = get_version("grype")
     print(f"   🔢 Grype version: {grype_version}")
     summary_lines.append(f"🔢 Grype version: {grype_version}")
-    if not run_scan("grype", image, grype_path, verbose=args.verbose):
-        explain_exit("Grype scan failed or image not found.")
     print(f"   ✅ Grype scan saved to {grype_path}")
 
     trivy_data = extract_cves_with_severity(trivy_path)
