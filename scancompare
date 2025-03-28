@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.0
+# scancompare version 1.0.1
 
 import os
 import sys
@@ -23,7 +23,7 @@ from jinja2 import Environment, FileSystemLoader
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -230,21 +230,65 @@ def run_scan(tool, image, output_path, verbose=False):
 
     try:
         if verbose:
-            subprocess.run(scan_command, check=True)
+            result = subprocess.run(scan_command, check=True, capture_output=True, text=True)
+            print(f"\n{tool} scan output:")
+            print(result.stdout)
+            if result.stderr:
+                print(f"\n{tool} scan errors:")
+                print(result.stderr)
         else:
-            subprocess.run(scan_command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            result = subprocess.run(scan_command, check=True, capture_output=True, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Check if the output file was created and has content
+        if not output_path.exists():
+            print(f"\n⚠️ {tool} scan failed: output file not created")
+            print(f"   Command: {' '.join(scan_command)}")
+            return False
+            
+        # Read and check the output file content
+        try:
+            with open(output_path, 'r') as f:
+                content = f.read()
+                if not content.strip():
+                    print(f"\n⚠️ {tool} scan completed but output file is empty")
+                    print(f"   Command: {' '.join(scan_command)}")
+                    return False
+                data = json.loads(content)
+                if tool == "trivy" and not data.get("Results"):
+                    print(f"\n⚠️ Trivy scan completed but found no results")
+                    print(f"   Command: {' '.join(scan_command)}")
+                    return False
+                elif tool == "grype" and not data:
+                    print(f"\n⚠️ Grype scan completed but found no results")
+                    print(f"   Command: {' '.join(scan_command)}")
+                    return False
+        except json.JSONDecodeError:
+            print(f"\n⚠️ {tool} scan output is not valid JSON")
+            print(f"   Command: {' '.join(scan_command)}")
+            return False
+            
         return True
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
+        print(f"\n⚠️ {tool} scan failed with error:")
+        print(f"   {e.stderr if e.stderr else str(e)}")
+        print(f"\n   To debug, run: {' '.join(scan_command)}")
         return False
 
 def extract_cves_with_severity(file_path):
     try:
         with open(file_path) as f:
             data = json.load(f)
+            print(f"\n🔍 Checking {file_path.name} contents:")
+            print(f"   File size: {os.path.getsize(file_path)} bytes")
+            if isinstance(data, dict):
+                print(f"   Keys: {list(data.keys())}")
+            elif isinstance(data, list):
+                print(f"   Number of items: {len(data)}")
 
         severity_map = {}
         if "Results" in data:  # Trivy format
             for result in data.get("Results", []):
+                print(f"   Found Trivy result type: {result.get('Type')}")
                 for vuln in result.get("Vulnerabilities", []):
                     cve = vuln.get("VulnerabilityID")
                     severity = vuln.get("Severity", "UNKNOWN").capitalize()
@@ -266,6 +310,7 @@ def extract_cves_with_severity(file_path):
                         "cvss": vuln.get("cvss", {}).get("nvd", {}).get("v3", {}).get("score", "N/A")
                     }
 
+        print(f"   Found {len(severity_map)} vulnerabilities")
         return severity_map
     except Exception as e:
         print(f"⚠️ Failed to parse {file_path}: {e}")
@@ -282,6 +327,11 @@ def group_by_severity(cve_map):
     return grouped
 
 def print_cves_by_severity(title, cve_map):
+    if not cve_map:
+        print(f"\n🔸 {title}")
+        print("   No vulnerabilities found.")
+        return
+
     print(f"\n🔸 {title}")  # Add newline before each section
     grouped = group_by_severity(cve_map)
     for severity in sorted(grouped.keys(), key=lambda s: ["Critical", "High", "Medium", "Low", "Unknown"].index(s.capitalize()) if s.capitalize() in ["Critical", "High", "Medium", "Low", "Unknown"] else 99):
@@ -298,6 +348,22 @@ def display_summary(trivy_cves, grype_cves):
     shared = set(trivy_cves) & set(grype_cves)
     only_trivy = set(trivy_cves) - set(grype_cves)
     only_grype = set(grype_cves) - set(trivy_cves)
+
+    # Check if both scans produced zero results
+    if not trivy_cves and not grype_cves:
+        print("\n⚠️ No vulnerabilities found by either scanner.")
+        print("   This could mean:")
+        print("   - The image is clean (no known vulnerabilities)")
+        print("   - The image is not accessible")
+        print("   - The image is empty or invalid")
+        print("   - The scanners encountered errors")
+        print("\n   To verify the image:")
+        print("   1. Check if the image exists: docker image inspect <image>")
+        print("   2. Try pulling the image: docker pull <image>")
+        print("   3. Run scans manually:")
+        print("      trivy image <image>")
+        print("      grype <image>")
+        sys.exit(1)
 
     print("\n📊 Summary Report")
     print("----------------")
