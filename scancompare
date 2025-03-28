@@ -43,9 +43,6 @@ def check_latest_version(only_check=False):
     if already_updated and not only_check:
         return
 
-    if not already_updated:
-        tool_progress("updates", "🔎 Checking for updates...")
-
     try:
         api_url = "https://api.github.com/repos/drewtwitchell/scancompare/contents/scancompare"
         req = Request(api_url, headers={"User-Agent": "scancompare-updater"})
@@ -68,13 +65,11 @@ def check_latest_version(only_check=False):
                 print(f"📦 scancompare version {current}")
                 sys.exit(0)
             else:
-                tool_progress("updates", f"📦 Already using latest version ({current})")
-                tool_done()  # Mark the action as done
+                print(f"📦 scancompare version {current}")
                 return
 
-        tool_progress("updates", f"🔄 New version detected. Updating scancompare script...")
+        print(f"🔄 Updating scancompare from {current} to {latest}...")
         update_script(new_code)  # This will handle the update, with its own progress steps
-        tool_done()
 
         print(f"✅ scancompare updated to version {latest}")
         print("♻️ Restarting with updated version...")
