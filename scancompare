@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 0.0.8
+# scancompare version 0.0.9
 
 import os
 import sys
@@ -23,7 +23,7 @@ from jinja2 import Environment, FileSystemLoader
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "0.0.8"
+VERSION = "0.0.9"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -487,7 +487,7 @@ def ensure_gh_authenticated():
         print(f"❌ Failed to validate GitHub auth: {e}")
         sys.exit(1)
 
-def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, verbose=False):
+def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, temp_dir, verbose=False):
     from pathlib import Path
     import json, base64, tempfile, subprocess, gzip
     from datetime import datetime, timezone
@@ -738,7 +738,7 @@ def main(args):
 
     if repo:
         print(f"🛠️ Trivy and Grype scans complete. Preparing upload to GitHub Advanced Security (GHAS)...")
-        upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, verbose=args.verbose)
+        upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, temp_dir, verbose=args.verbose)
 
         # Generate HTML report
         generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
