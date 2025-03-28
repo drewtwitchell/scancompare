@@ -37,6 +37,8 @@ echo "🛠️  Starting scancompare installation..."
 # Check if already installed and check for updates
 if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
   echo "🔍 scancompare is already installed. Checking for updates and verifying dependencies..."
+
+  # Try to check for updates via `scancompare --update`
   if scancompare --update; then
     CURRENT_VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
     echo "✅ All tools verified and updated."
@@ -45,6 +47,9 @@ if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
     echo "⚠️  Failed to run 'scancompare --update'. Forcing reinstall..."
   fi
 fi
+
+# If it's not installed or failed to update, proceed with reinstalling
+echo "📦 Proceeding with reinstallation of scancompare and dependencies..."
 
 # Install necessary tools
 tool_progress "🔍 Attempting" "tool installation via Homebrew or fallback methods..."
@@ -85,14 +90,13 @@ if ! command -v python3 &> /dev/null; then
   fi
 fi
 
-# Always set up virtual environment for Python packages
+# Set up virtual environment
 if [[ ! -d "$VENV_DIR" ]]; then
   tool_progress "⚙️ Creating" "Virtual environment..."
   python3 -m venv "$VENV_DIR" &> /dev/null
   tool_done
 fi
 
-# Activate the virtual environment and keep it active for the entire script
 source "$VENV_DIR/bin/activate"
 
 # Install jinja2 if not installed
@@ -104,7 +108,7 @@ if ! python -c "import jinja2" &> /dev/null; then
   tool_done
 fi
 
-# Install trivy
+# Install trivy if not installed
 if ! command -v trivy &> /dev/null; then
   tool_progress "⚙️ Installing" "Trivy..."
   curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
@@ -113,7 +117,7 @@ if ! command -v trivy &> /dev/null; then
   tool_done
 fi
 
-# Install grype
+# Install grype if not installed
 if ! command -v grype &> /dev/null; then
   tool_progress "⚙️ Installing" "Grype..."
   curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
@@ -123,7 +127,7 @@ if ! command -v grype &> /dev/null; then
 fi
 
 # Download the scancompare script
-tool_progress "📦 Downloading and Installing" "$SCRIPT_NAME script version..."
+tool_progress "📦 Downloading and Installing" "scancompare script version..."
 curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" &> /dev/null
 tool_done
 
