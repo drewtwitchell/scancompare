@@ -698,7 +698,7 @@ def publish_to_github_pages(report_path, image_name):
     # Pull latest to avoid diverged history
     tool_progress("🔄", f"Pulling latest {target_branch}...")
     try:
-        subprocess.run(["git", "pull", "--rebase", "origin", target_branch], check=True)
+        subprocess.run(["git", "pull", "--rebase", "--autostash", "origin", target_branch], check=True)
     except subprocess.CalledProcessError:
         print("⚠️ Warning: failed to pull latest changes. Continuing anyway.")
     tool_done()
@@ -717,31 +717,32 @@ def publish_to_github_pages(report_path, image_name):
     # Backup and clean up if needed
     if cleanup_after and target_dir.exists() and not args.keep_data:
         try:
-            # Create backups folder
             backup_dir = Path("backups")
             backup_dir.mkdir(exist_ok=True)
 
-            # Build backup zip name
             backup_name = backup_dir / f"{target_dir.name}-backup-{timestamp}.zip"
             with zipfile.ZipFile(backup_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                # Add contents of target_dir
                 for path in target_dir.rglob('*'):
-                    zipf.write(path, path.relative_to(Path.cwd()))
-                # Also add scan_reports/*.json and *.html
+                    try:
+                        arcname = path.relative_to(Path.cwd())
+                    except ValueError:
+                        arcname = path.name
+                    zipf.write(path, arcname)
+
                 scan_reports = Path("scan_reports")
                 if scan_reports.exists():
-                    for extra in scan_reports.glob("*.json"):
-                        zipf.write(extra, extra.relative_to(Path.cwd()))
-                    for extra in scan_reports.glob("*.html"):
-                        zipf.write(extra, extra.relative_to(Path.cwd()))
+                    for extra in scan_reports.glob("*.json") | scan_reports.glob("*.html"):
+                        try:
+                            arcname = extra.relative_to(Path.cwd())
+                        except ValueError:
+                            arcname = extra.name
+                        zipf.write(extra, arcname)
 
             print(f"🗃️  Backup created: {backup_name.name}")
-
-            # Delete gh-pages/ folder
             shutil.rmtree(target_dir)
             print(f"🧹 Cleaned up temporary folder: {target_dir}")
 
-            # Enforce backup retention (keep last 3)
+            # Keep only last 3 backups
             backups = sorted(backup_dir.glob(f"{target_dir.name}-backup-*.zip"), key=os.path.getmtime, reverse=True)
             for old_backup in backups[3:]:
                 old_backup.unlink()
@@ -1288,11 +1289,9 @@ def main():
         return
 
     if args.update:
-        # This will update and restart the script if needed
         check_latest_version()
         return
     else:
-        # For normal runs, just check and show current version info
         check_latest_version(only_check=True)
 
     if not args.image and not args.repo_url:
@@ -1306,21 +1305,16 @@ def main():
         print("  --uninstall        Uninstall scancompare CLI")
         sys.exit(1)
 
-    # Validate image exists before starting any scan process
     if args.image and not validate_image_exists(args.image):
         explain_exit(f"Docker image '{args.image}' could not be found locally or remotely.")
 
     scan_dir = Path("scan_reports")
     scan_dir.mkdir(exist_ok=True)
     summary_log = scan_dir / "scan_summary.log"
-    summary_lines = [
-        "\n" + "="*40,
-        f"Scan started: {datetime.now().isoformat()}"
-    ]
+    summary_lines = ["\n" + "="*40, f"Scan started: {datetime.now().isoformat()}"]
 
     temp_dir = None
     image_tag = None
-    shown_ghas_hint = False
     scancompare_version = get_current_version()
     summary_lines.append(f"🔢 scancompare version: {scancompare_version}")
 
@@ -1329,7 +1323,6 @@ def main():
             temp_dir = tempfile.mkdtemp()
             print(f"📁 Created temporary directory: {temp_dir}")
 
-            # Clone the repository with progress
             tool_progress("📥", f"Cloning {args.repo_url}")
             git_clone_cmd = ["git", "clone", args.repo_url, temp_dir]
             if args.verbose:
@@ -1338,7 +1331,6 @@ def main():
                 subprocess.run(git_clone_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             tool_done()
 
-            # Find all Dockerfiles in the repository
             dockerfile_paths = []
             for root, _, files in os.walk(temp_dir):
                 for file in files:
@@ -1354,7 +1346,6 @@ def main():
             repo_name = args.repo_url.split('/')[-1].replace('.git', '')
             timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
 
-            # Build and scan images
             built_images = []
             for dockerfile_path in dockerfile_paths:
                 try:
@@ -1362,7 +1353,6 @@ def main():
                     dir_name = os.path.basename(dockerfile_dir)
                     image_tag = f"{repo_name}-{dir_name}-{timestamp}"
 
-                    # Build Docker image
                     tool_progress("🐳", f"Building Docker image '{image_tag}'")
                     docker_build_cmd = ["docker", "build", "-t", image_tag, dockerfile_dir]
                     if args.verbose:
@@ -1375,25 +1365,21 @@ def main():
                     print(f"🛡️ Scanning image: {image_tag}")
                     summary_lines.append(f"🛡️ Scanning built image: {image_tag}")
 
-                    # Run scans
                     trivy_path = scan_dir / f"original_trivy_{dir_name}.json"
                     grype_path = scan_dir / f"original_grype_{dir_name}.json"
 
-                    # Trivy scan
                     tool_progress("🔹", "Running Trivy scan")
                     if not run_scan("trivy", image_tag, trivy_path, verbose=args.verbose):
                         print(f"⚠️ Trivy scan failed for {image_tag}")
                         continue
                     tool_done()
 
-                    # Grype scan
                     tool_progress("🔹", "Running Grype scan")
                     if not run_scan("grype", image_tag, grype_path, verbose=args.verbose):
                         print(f"⚠️ Grype scan failed for {image_tag}")
                         continue
                     tool_done()
 
-                    # Process results
                     trivy_data = extract_cves_with_severity(trivy_path, verbose=args.verbose)
                     grype_data = extract_cves_with_severity(grype_path, verbose=args.verbose)
 
@@ -1401,11 +1387,16 @@ def main():
 
                     print_cves_by_severity(f"Unique to Grype ({image_tag})", {c: grype_data[c] for c in only_grype})
                     print_cves_by_severity(f"Unique to Trivy ({image_tag})", {c: trivy_data[c] for c in only_trivy})
-                    print_cves_by_severity(f"Shared CVEs ({image_tag})", {c: trivy_data.get(c, grype_data.get(c, "Unknown")) for c in shared})
+                    print_cves_by_severity(f"Shared CVEs ({image_tag})", {c: trivy_data.get(c, grype_data.get(c, 'Unknown')) for c in shared})
 
-                    # Generate report
                     generate_html_report(image_tag, trivy_data, grype_data, shared, only_trivy, only_grype,
-                                      get_version("trivy"), get_version("grype"))
+                                         get_version("trivy"), get_version("grype"))
+
+                    # SARIF upload logic
+                    if args.repo_url:
+                        repo = get_repo_from_url(args.repo_url)
+                        ensure_gh_authenticated()
+                        upload_to_ghas(image_tag, trivy_path, grype_path, shared, only_trivy, only_grype, repo, temp_dir, verbose=args.verbose)
 
                 except subprocess.CalledProcessError as e:
                     print(f"⚠️ Error processing {dockerfile_path}: {e}")
@@ -1418,7 +1409,6 @@ def main():
                 sys.exit(1)
 
         else:
-            # Single image scan
             image = args.image
             print(f"🛡️ Scanning image: {image}")
             summary_lines.append(f"🛡️ Scanning image: {image}")
@@ -1426,19 +1416,16 @@ def main():
             trivy_path = scan_dir / "original_trivy.json"
             grype_path = scan_dir / "original_grype.json"
 
-            # Trivy scan
             tool_progress("🔹", "Running Trivy scan")
             if not run_scan("trivy", image, trivy_path, verbose=args.verbose):
                 explain_exit("Trivy scan failed or image not found.")
             tool_done()
 
-            # Grype scan
             tool_progress("🔹", "Running Grype scan")
             if not run_scan("grype", image, grype_path, verbose=args.verbose):
                 explain_exit("Grype scan failed or image not found.")
             tool_done()
 
-            # Process results
             trivy_data = extract_cves_with_severity(trivy_path, verbose=args.verbose)
             grype_data = extract_cves_with_severity(grype_path, verbose=args.verbose)
 
@@ -1448,24 +1435,25 @@ def main():
             print_cves_by_severity("Unique to Trivy", {c: trivy_data[c] for c in only_trivy})
             print_cves_by_severity("Shared CVEs", {c: trivy_data.get(c, grype_data.get(c, "Unknown")) for c in shared})
 
-            # Generate report
             generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype,
-                               get_version("trivy"), get_version("grype"))
+                                 get_version("trivy"), get_version("grype"))
+
+            # SARIF upload for single image if --repo-url is supplied
+            if args.repo_url:
+                repo = get_repo_from_url(args.repo_url)
+                ensure_gh_authenticated()
+                upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, ".", verbose=args.verbose)
 
     finally:
-        # Cleanup if not keeping data
         if temp_dir and not args.keep_data:
             try:
                 shutil.rmtree(temp_dir)
             except Exception as e:
                 print(f"⚠️ Failed to clean up temporary directory: {e}")
 
-    # Write summary log
-    summary_lines.extend([
-        f"Scan completed: {datetime.now().isoformat()}",
-        "="*40 + "\n"
-    ])
+    summary_lines.extend([f"Scan completed: {datetime.now().isoformat()}", "="*40 + "\n"])
     summary_log.write_text("\n".join(summary_lines))
 
 if __name__ == "__main__":
     main()
+
