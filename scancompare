@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 0.0.8 
+# scancompare version 0.0.9 
 
 import os
 import sys
@@ -23,7 +23,7 @@ from jinja2 import Environment, FileSystemLoader
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "0.0.8"
+VERSION = "0.0.9"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -44,9 +44,7 @@ def check_latest_version(only_check=False):
         return
 
     if not already_updated:
-        tool_progress("🔎 Checking for updates...")
-        print("🔎 Checking for updates...")  # This could be removed or replaced with tool_progress's output
-        tool_done()
+        tool_progress("updates","🔎 Checking for updates...")
 
     try:
         api_url = "https://api.github.com/repos/drewtwitchell/scancompare/contents/scancompare"
@@ -70,12 +68,10 @@ def check_latest_version(only_check=False):
                 print(f"📦 scancompare version {current}")
                 sys.exit(0)
             else:
-                tool_progress(f"📦 Already using latest version ({current})")
                 print(f"📦 Already using latest version ({current})")
-                tool_done()
                 return
 
-        tool_progress(f"🔄 New version detected. Updating scancompare script...")
+        tool_progress("updates",f"🔄 New version detected. Updating scancompare script...")
         update_script(new_code)  # This will handle the update, with its own progress steps
         tool_done()
 
@@ -114,7 +110,7 @@ def update_script(new_code):
         os.replace(temp_path, script_path)
 
         # Always fetch latest scan_template.html
-        tool_progress("scan_template.html", "Updating")
+        tool_progress("updates"," Getting latest scan_template.html")
         template_url = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html"
         try:
             with urllib.request.urlopen(template_url) as response:
@@ -128,7 +124,7 @@ def update_script(new_code):
         try:
             import jinja2  # noqa: F401
         except ImportError:
-            tool_progress("jinja2", "Installing")
+            tool_progress("jinja2", "Installing jinja2")
             subprocess.run([sys.executable, "-m", "pip", "install", "--user", "jinja2"], check=True)
             tool_done()  # Complete jinja2 installation
 
@@ -143,7 +139,7 @@ def get_script_path():
         return sys.argv[0]
     
 def uninstall_scancompare():
-    tool_progress("🧹 Uninstalling scancompare...")
+    tool_progress("uninstall","🧹 Uninstalling scancompare...")
 
     paths_removed = False
 
@@ -301,13 +297,13 @@ def display_summary(trivy_cves, grype_cves):
     only_grype = set(grype_cves) - set(trivy_cves)
 
     # Indicating the start of the summary report generation
-    tool_progress(f"    📊 Generating CLI Summary Report...")
+    tool_progress("summary",f"📊 Generating CLI Summary Report...")
 
     # The actual summary output
-    print("\n    Tool       | Total | Only in Tool | Shared")
-    print("    -----------|-------|---------------|--------")
-    print(f"    Grype      | {len(grype_cves)}   | {len(only_grype)}             | {len(shared)}")
-    print(f"    Trivy      | {len(trivy_cves)}   | {len(only_trivy)}            | {len(shared)}")
+    print("\n Tool  | Total | Only in Tool | Shared")
+    print("-----------|-------|---------------|--------")
+    print(f"Grype  | {len(grype_cves)}   | {len(only_grype)}             | {len(shared)}")
+    print(f"Trivy  | {len(trivy_cves)}   | {len(only_trivy)}            | {len(shared)}")
 
     # Marking the completion of the summary report
     tool_done()  # Mark the summary generation as done
@@ -391,7 +387,7 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     template_path = template_dir / "scan_template.html"
 
     if not template_path.exists():
-        tool_progress("📄 scan_template.html missing — restoring latest version...")
+        tool_progress("updates_html","📄 scan_template.html missing — restoring latest version...")
         try:
             urllib.request.urlretrieve(
                 "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html",
@@ -573,7 +569,6 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
             ], check=True,
                stdout=None if verbose else subprocess.DEVNULL,
                stderr=None if verbose else subprocess.DEVNULL)
-            tool_done()  # After the SARIF upload, mark it as done.
             return True
         except subprocess.CalledProcessError as e:
             print(f"❌ GH CLI failed for {tool_name}: {e}")
@@ -665,7 +660,7 @@ def main(args):
         temp_dir = tempfile.mkdtemp()
 
         # Clone the repository with progress
-        tool_progress(f"📥 Cloning {args.repo_url} into temporary directory...")
+        tool_progress("cloning",f"📥 Cloning {args.repo_url} into temporary directory...")
         git_clone_cmd = ["git", "clone", args.repo_url, temp_dir]
         if args.verbose:
             subprocess.run(git_clone_cmd, check=True)
@@ -693,7 +688,7 @@ def main(args):
         image_tag = f"{repo_name}-{timestamp}"
 
         # Docker image build as a sub-process of cloning the repo (Indented)
-        tool_progress(f"    🐳 Building Docker image '{image_tag}' from {dockerfile_path}...")
+        tool_progress("docker",f"    🐳 Building Docker image '{image_tag}' from {dockerfile_path}...")
         docker_build_cmd = ["docker", "build", "-t", image_tag, os.path.dirname(dockerfile_path)]
         try:
             if args.verbose:
@@ -701,7 +696,7 @@ def main(args):
             else:
                 subprocess.run(docker_build_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             tool_done()  # Mark Docker build as done
-            print(f"🛡️ Starting vulnerability scans against image: {image_tag}")
+            tool_progress("scans",f"🛡️ Starting vulnerability scans against image: {image_tag}")
             summary_lines.append(f"🛡️ Scanning built image: {image_tag}")
         except subprocess.CalledProcessError:
             explain_exit(f"Docker build failed. Please check the Dockerfile and try building manually with 'docker build -t {image_tag} .' to debug.")
@@ -711,7 +706,7 @@ def main(args):
     else:
         image = args.image
         repo = None
-        print(f"\n🛡️ Starting vulnerability scans against image: {image}")
+        tool_progress("scans","🛡️ Starting vulnerability scans against image: {image}")
         summary_lines.append(f"🛡️ Scanning image: {image}")
 
     if not validate_image_exists(image):
@@ -721,7 +716,7 @@ def main(args):
     grype_path = scan_dir / "original_grype.json"
 
     # Trivy scan as a sub-process of "Starting vulnerability scans"
-    tool_progress(f"    🔹 Scanning with Trivy...")
+    tool_progress("scans",f"    🔹 Scanning with Trivy...")
     trivy_version = get_version("trivy")
     print(f"       🔢 Trivy version: {trivy_version}")
     summary_lines.append(f"🔢 Trivy version: {trivy_version}")
@@ -731,7 +726,7 @@ def main(args):
     tool_done()  # Mark Trivy scan as done
 
     # Grype scan as a sub-process of "Starting vulnerability scans"
-    tool_progress(f"    🔹 Scanning with Grype...")
+    tool_progress("scans",f"    🔹 Scanning with Grype...")
     grype_version = get_version("grype")
     print(f"       🔢 Grype version: {grype_version}")
     summary_lines.append(f"🔢 Grype version: {grype_version}")
@@ -754,12 +749,12 @@ def main(args):
         upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, verbose=args.verbose)
 
         # Generate HTML report with progress
-        tool_progress(f"📄 Generating HTML report...")
+        tool_progress("generate",f"📄 Generating HTML report...")
         generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
         tool_done()  # Mark HTML report generation as done
 
         # Cleanup: Show progress with tool_progress
-        tool_progress(f"🧹 Cleaning up old scan artifacts...")  # Replacing print with tool_progress
+        tool_progress("clean",f"🧹 Cleaning up old scan artifacts...")  # Replacing print with tool_progress
         summary_lines.append("🧹 Cleaned up old scan artifacts.")
         for path in scan_dir.glob("*.*"):
             if path.name not in {trivy_path.name, grype_path.name} and not path.name.endswith(".html"):
@@ -771,16 +766,16 @@ def main(args):
             summary_lines.append("🛑 Cleanup skipped due to --keep-data. Keeping Docker image, cloned repo, and scan artifacts.")
         else:
             # Now, cleaning up Docker image and repo as part of cleanup sub-process
-            tool_progress(f"    🧼 Removing temporary Docker image '{image_tag}'...")
+            tool_progress("clean",f"    🧼 Removing temporary Docker image '{image_tag}'...")
             subprocess.run(["docker", "rmi", "-f", image_tag], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             tool_done()  # Mark Docker image removal as done
 
             if temp_dir and os.path.isdir(temp_dir):
-                tool_progress(f"    🧹 Removing temporary cloned repository from '{temp_dir}' (cloned from {args.repo_url})...")
+                tool_progress("clean",f"    🧹 Removing temporary cloned repository from '{temp_dir}' (cloned from {args.repo_url})...")
                 shutil.rmtree(temp_dir)
                 tool_done()  # Mark repository removal as done
     else:
-        tool_progress(f"📄 Generating local HTML report...")  # Show progress for HTML report generation
+        tool_progress("generate",f"📄 Generating local HTML report...")  # Show progress for HTML report generation
         generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
         tool_done()  # Mark HTML report generation as done
 
