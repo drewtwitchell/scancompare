@@ -638,6 +638,11 @@ def main(args):
         sys.exit(1)
 
     check_latest_version()
+    
+    # Validate image exists before starting any scan process
+    if args.image and not validate_image_exists(args.image):
+        explain_exit(f"Docker image '{args.image}' could not be found locally or remotely.")
+
     scan_dir = Path("scan_reports")
     scan_dir.mkdir(exist_ok=True)
     summary_log = scan_dir / "scan_summary.log"
@@ -704,9 +709,6 @@ def main(args):
         repo = None
         print(f"🛡️ Starting vulnerability scans against image: {image}")
         summary_lines.append(f"🛡️ Scanning image: {image}")
-
-    if not validate_image_exists(image):
-        explain_exit(f"Docker image '{image}' could not be found locally or remotely.")
 
     trivy_path = scan_dir / "original_trivy.json"
     grype_path = scan_dir / "original_grype.json"
