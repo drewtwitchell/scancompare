@@ -60,7 +60,7 @@ if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
   fi
 fi
 
-tool_progress ("installation", "🔍 Attempting tool installation via Homebrew or fallback methods...")
+tool_progress ("installation" "🔍 Attempting tool installation via Homebrew or fallback methods...")
 echo ""  # Line break for clarity
 
 install_homebrew() {
