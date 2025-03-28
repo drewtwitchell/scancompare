@@ -18,7 +18,7 @@ import re
 import time
 import random
 import uuid
-from io import BytesIO  
+from io import BytesIO
 from jinja2 import Environment, FileSystemLoader
 import difflib
 from typing import Dict, List, Set, Tuple, Optional
@@ -62,13 +62,13 @@ def check_latest_version(only_check=False):
     try:
         print("🔄 Checking for updates...")
         urlretrieve(SCRIPT_URL, get_script_path())
-        
+
         with open(get_script_path(), 'r') as f:
             new_code = f.read()
             latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
             if not latest_match:
                 raise ValueError("Could not determine latest version from script.")
-            
+
             latest = latest_match.group(1)
             current = get_current_version()
 
@@ -139,7 +139,7 @@ def get_script_path():
         return os.path.realpath(__file__)
     except NameError:
         return sys.argv[0]
-    
+
 def uninstall_scancompare():
     print("🧹 Uninstalling scancompare...")
 
@@ -213,7 +213,7 @@ def uninstall_scancompare():
         print("\nℹ️  You may need to restart your terminal for changes to take effect.")
     else:
         print("\nℹ️  scancompare was not found or already uninstalled.")
-    
+
     sys.exit(0)
 
 def get_version(tool):
@@ -253,13 +253,13 @@ def run_scan(tool, image, output_path, verbose=False):
         else:
             # For normal mode, capture output but don't show it
             result = subprocess.run(scan_command, check=True, capture_output=True, text=True)
-        
+
         # Check if the output file was created and has content
         if not output_path.exists():
             print(f"\n⚠️ {tool} scan failed: output file not created")
             print(f"   Command: {' '.join(scan_command)}")
             return False
-            
+
         # Read and check the output file content
         try:
             with open(output_path, 'r') as f:
@@ -281,7 +281,7 @@ def run_scan(tool, image, output_path, verbose=False):
             print(f"\n⚠️ {tool} scan output is not valid JSON")
             print(f"   Command: {' '.join(scan_command)}")
             return False
-            
+
         return True
     except subprocess.CalledProcessError as e:
         print(f"\n⚠️ {tool} scan failed with error:")
@@ -296,10 +296,10 @@ def normalize_cve_id(cve_id: str) -> str:
     """Normalize CVE ID to a standard format."""
     if not cve_id:
         return ""
-        
+
     # Remove any whitespace and convert to uppercase
     cve_id = cve_id.strip().upper()
-    
+
     # Handle common variations
     if not cve_id.startswith('CVE-'):
         if cve_id.startswith('TEMP-'):
@@ -307,7 +307,7 @@ def normalize_cve_id(cve_id: str) -> str:
         if cve_id.startswith('GHSA-'):
             return cve_id  # Keep GitHub Security Advisories as is
         cve_id = f"CVE-{cve_id}"
-    
+
     # Ensure proper format: CVE-YYYY-NNNN
     parts = cve_id.split('-')
     if len(parts) == 3:
@@ -318,23 +318,23 @@ def normalize_cve_id(cve_id: str) -> str:
         # Pad number with leading zeros to 4 digits
         number = number.zfill(4)
         return f"CVE-{year}-{number}"
-    
+
     return cve_id
 
 def calculate_description_similarity(desc1: str, desc2: str) -> float:
     """Calculate similarity between two CVE descriptions using difflib."""
     if not desc1 or not desc2:
         return 0.0
-    
+
     # Convert to lowercase and remove common words
     desc1 = desc1.lower()
     desc2 = desc2.lower()
-    
+
     # Remove common words and punctuation
     common_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'}
     desc1 = ' '.join(word for word in desc1.split() if word not in common_words)
     desc2 = ' '.join(word for word in desc2.split() if word not in common_words)
-    
+
     # Calculate similarity using difflib
     matcher = difflib.SequenceMatcher(None, desc1, desc2)
     return matcher.ratio()
@@ -343,28 +343,28 @@ def find_similar_cves(cve_id: str, description: str, cve_map: Dict[str, Dict]) -
     """Find similar CVEs based on ID and description."""
     similar_cves = []
     normalized_id = normalize_cve_id(cve_id)
-    
+
     if not normalized_id:
         return similar_cves
-    
+
     for other_id, other_data in cve_map.items():
         other_normalized = normalize_cve_id(other_id)
-        
+
         # Skip if normalization failed
         if not other_normalized:
             continue
-        
+
         # Check if IDs are similar
         if normalized_id == other_normalized:
             similar_cves.append((other_id, 1.0))
             continue
-            
+
         # If IDs are different but descriptions are similar
         if description and other_data.get('description'):
             similarity = calculate_description_similarity(description, other_data['description'])
             if similarity > 0.8:  # High similarity threshold
                 similar_cves.append((other_id, similarity))
-    
+
     # Sort by similarity score in descending order
     similar_cves.sort(key=lambda x: x[1], reverse=True)
     return similar_cves
@@ -418,7 +418,7 @@ def extract_cves_with_severity(file_path, verbose=False):
                     cvss_score = "N/A"
                     if vuln.get("cvss") and len(vuln["cvss"]) > 0:
                         cvss_score = vuln["cvss"][0].get("score", "N/A")
-                    
+
                     severity_map[normalized_cve] = {
                         "severity": severity,
                         "type": match.get("artifact", {}).get("name", "unknown"),
@@ -465,7 +465,7 @@ def print_cves_by_severity(title, cve_map):
                 cvss = cve_info.get('cvss', 'N/A')
                 if cvss != 'N/A':
                     cvss = f"{float(cvss):.1f}"
-                
+
                 # Format last modified date if available
                 last_modified = cve_info.get('last_modified')
                 if last_modified:
@@ -474,7 +474,7 @@ def print_cves_by_severity(title, cve_map):
                         last_modified = date.strftime('%Y-%m-%d')
                     except ValueError:
                         pass
-                
+
                 # Build the output line
                 line = f"    - {cve}"
                 if cvss != 'N/A':
@@ -491,10 +491,10 @@ def display_summary(trivy_cves, grype_cves):
     # Convert to sets of CVE IDs for comparison
     trivy_cve_ids = set(trivy_cves.keys())
     grype_cve_ids = set(grype_cves.keys())
-    
+
     # Find exact matches
     shared = trivy_cve_ids & grype_cve_ids
-    
+
     # Find similar CVEs using fuzzy matching
     similar_cves = []
     for cve_id in trivy_cve_ids:
@@ -503,13 +503,13 @@ def display_summary(trivy_cves, grype_cves):
             similar = find_similar_cves(cve_id, trivy_data.get('description', ''), grype_cves)
             if similar:
                 similar_cves.extend(similar)
-    
+
     # Add similar CVEs to shared set
     for similar_id, confidence in similar_cves:
         if similar_id not in shared:
             shared.add(similar_id)
             print(f"\n🔍 Found similar CVE: {similar_id} (confidence: {confidence:.2f})")
-    
+
     only_trivy = trivy_cve_ids - shared
     only_grype = grype_cve_ids - shared
 
@@ -550,7 +550,7 @@ def display_summary(trivy_cves, grype_cves):
         else:
             print("   - Trivy found no vulnerabilities")
             print(f"   - Grype found {len(grype_cve_ids)} vulnerabilities")
-        
+
         print("\n🔍 Possible Reasons:")
         print("   - Different vulnerability databases")
         print("   - Different scanning depths")
@@ -575,7 +575,7 @@ def display_summary(trivy_cves, grype_cves):
     for cve in shared:
         trivy_data = trivy_cves.get(cve, {})
         grype_data = grype_cves.get(cve, {})
-        
+
         # Calculate confidence score based on metadata matching
         confidence = 1.0
         if trivy_data.get('description') and grype_data.get('description'):
@@ -583,7 +583,7 @@ def display_summary(trivy_cves, grype_cves):
                 trivy_data['description'],
                 grype_data['description']
             )
-        
+
         # Prefer Trivy's severity if available, otherwise use Grype's
         severity = trivy_data.get("severity", grype_data.get("severity", "Unknown"))
         # Prefer Trivy's CVSS score if available, otherwise use Grype's
@@ -594,14 +594,14 @@ def display_summary(trivy_cves, grype_cves):
             types.add(trivy_data["type"])
         if grype_data.get("type"):
             types.add(grype_data["type"])
-            
+
         # Combine references and remove duplicates
         references = set()
         if trivy_data.get("references"):
             references.update(trivy_data["references"])
         if grype_data.get("references"):
             references.update(grype_data["references"])
-            
+
         # Use the most recent last_modified date
         last_modified = max(
             filter(None, [
@@ -610,7 +610,7 @@ def display_summary(trivy_cves, grype_cves):
             ]),
             default=None
         )
-            
+
         shared_cves[cve] = {
             "severity": severity,
             "type": ", ".join(types) if types else "unknown",
@@ -741,14 +741,14 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
                 grype_id = cve_meta.get("grype_id", cve)
                 last_modified = cve_meta.get("last_modified")
                 references = cve_meta.get("references", [])
-                
+
                 # Format CVSS score
                 if cvss_score != "N/A":
                     try:
                         cvss_score = f"{float(cvss_score):.1f}"
                     except ValueError:
                         pass
-                
+
                 # Format last modified date
                 if last_modified:
                     try:
@@ -756,17 +756,17 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
                         last_modified = date.strftime('%Y-%m-%d')
                     except ValueError:
                         pass
-                
+
                 # Add confidence indicator and similar CVE info
                 confidence_html = ""
                 if confidence < 1.0:
                     confidence_color = "#f57c00" if confidence < 0.8 else "#388e3c"
                     confidence_html = f"<span style='color: {confidence_color}'>(Confidence: {confidence:.2f})</span>"
-                
+
                 similar_cve_html = ""
                 if trivy_id != grype_id:
                     similar_cve_html = f"<br><small>Similar CVE IDs: Trivy={trivy_id}, Grype={grype_id}</small>"
-                
+
                 # Add references
                 references_html = ""
                 if references:
@@ -774,7 +774,7 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
                     for ref in references:
                         references_html += f"<a href='{ref}' target='_blank'>{ref}</a><br>"
                     references_html += "</small>"
-                
+
                 # Build the CVE entry
                 cve_entry = f'<li><a href="{cve_link}" target="_blank">{cve}</a>'
                 if cvss_score != "N/A":
@@ -782,7 +782,7 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
                 if last_modified:
                     cve_entry += f" [Last Modified: {last_modified}]"
                 cve_entry += f" {confidence_html}{similar_cve_html}{references_html}</li>"
-                
+
                 sections += cve_entry
             sections += "</ul></div>"
         return sections or "<p>No CVEs found.</p>"
@@ -890,16 +890,16 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     <p>Shared vulnerabilities: {{ shared_count }}</p>
     <p>Trivy unique: {{ trivy_count }}</p>
     <p>Grype unique: {{ grype_count }}</p>
-    
+
     <h2>Shared Vulnerabilities</h2>
     {{ shared_section }}
-    
+
     <h2>Trivy Unique Vulnerabilities</h2>
     {{ trivy_section }}
-    
+
     <h2>Grype Unique Vulnerabilities</h2>
     {{ grype_section }}
-    
+
     <script>
         var coll = document.getElementsByClassName("collapsible");
         for (var i = 0; i < coll.length; i++) {
@@ -948,21 +948,21 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     report_path.write_text(rendered)
     tool_progress("📄", "Generating report")
     tool_done()
-    
+
     # Try to publish to GitHub Pages
     pages_url = publish_to_github_pages(report_path, image)
-    
+
     if pages_url:
         print(f"\n✅ Report published to GitHub Pages:")
         print(f"   \033[4;36m🔗 {pages_url}\033[0m")
-        
+
         # Ask if user wants to open in browser
         open_html = input("📁 Open report in browser? (y/n): ").strip().lower()
         if open_html == "y":
             webbrowser.open(pages_url)
     else:
         print(f"\n✅ Local HTML report saved: {report_path}")
-        
+
         # Only show local file option if GitHub Pages publishing fails
     open_html = input("📁 Open local HTML report in browser? (y/n): ").strip().lower()
     if open_html == "y":
@@ -1141,7 +1141,7 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
                 "--method", "POST",
                 "--input", tmp_path
             ], capture_output=True, text=True)
-            
+
             if result.returncode != 0:
                 error_msg = result.stderr.strip()
                 if "insufficient_scope" in error_msg.lower() or "not authorized" in error_msg.lower():
@@ -1254,7 +1254,7 @@ def main():
                 latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
                 if not latest_match:
                     raise ValueError("Could not determine latest version from script.")
-                
+
                 latest = latest_match.group(1)
                 current = get_current_version()
 
@@ -1386,7 +1386,7 @@ def main():
                     print_cves_by_severity(f"Shared CVEs ({image_tag})", {c: trivy_data.get(c, grype_data.get(c, "Unknown")) for c in shared})
 
                     # Generate report
-                    generate_html_report(image_tag, trivy_data, grype_data, shared, only_trivy, only_grype, 
+                    generate_html_report(image_tag, trivy_data, grype_data, shared, only_trivy, only_grype,
                                       get_version("trivy"), get_version("grype"))
 
                 except subprocess.CalledProcessError as e:
