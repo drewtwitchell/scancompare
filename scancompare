@@ -640,32 +640,8 @@ def publish_to_github_pages(report_path, image):
     from urllib.parse import urlparse
 
     if not args.repo_url:
-        print("⚠️ No repository URL supplied. Please provide the URL using --repo-url.")
-        sys.exit(1)
+        return None
 
-    # Parse the repo URL to get user and repo info
-    parsed = urlparse(args.repo_url)
-    repo_path = parsed.path.strip("/")
-    if repo_path.endswith(".git"):
-        repo_path = repo_path[:-4]
-    user, repo = repo_path.split("/")[-2:]
-
-    # Determine if the repository is a fork
-    upstream_url = f"https://github.com/{repo}"
-    fork_url = f"https://github.com/{user}/{repo}"
-    is_fork = user != repo  # Check if user is not the same as the repo owner, indicating it's a fork
-
-    if is_fork:
-        print(f"⚠️ This appears to be a fork of the repository: {user}/{repo}")
-        print(f"    The upstream repository is: {upstream_url}")
-        change_url = input("Do you want to update the URL to the **upstream** repository? (y/n): ").strip().lower()
-        
-        if change_url == 'y':
-            print(f"🔄 Changing to upstream repository URL: {upstream_url}")
-            args.repo_url = upstream_url
-        else:
-            print(f"🔄 Using the forked repository URL: {args.repo_url}")
-    
     try:
         tool_progress("🔄", "Pulling latest gh-pages")
         subprocess.run(["git", "pull", "--autostash", "origin", "gh-pages"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -673,6 +649,31 @@ def publish_to_github_pages(report_path, image):
     except Exception:
         print("⚠️ Warning: failed to pull latest changes. Continuing anyway.")
         tool_done()
+
+    # Parse GitHub info safely
+    parsed = urlparse(args.repo_url)
+    repo_path = parsed.path.strip("/")
+    if repo_path.endswith(".git"):
+        repo_path = repo_path[:-4]
+    user, repo = repo_path.split("/")[-2:]
+
+    # Check if the repo is a fork
+    fork_url = f"https://github.com/{user}/{repo}"
+    upstream_url = f"https://github.com/{repo}"
+
+    if fork_url != args.repo_url:
+        print(f"⚠️ This appears to be a fork of the repository: {fork_url}")
+        print(f"    The upstream repository is: {upstream_url}")
+        user_choice = input(f"Do you want to publish to the upstream repository URL {upstream_url}? (y/n): ").strip().lower()
+
+        if user_choice == "y":
+            # Update the repo_url to the upstream URL
+            print(f"🔄 Changing to upstream repository URL: {upstream_url}")
+            args.repo_url = upstream_url
+        else:
+            print(f"🔄 Keeping the forked repository URL: {fork_url}")
+    else:
+        print(f"⚠️ You are using your forked repository URL: {fork_url}")
 
     # Check if docs/ folder exists
     use_docs_folder = Path("docs").exists()
