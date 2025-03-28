@@ -32,7 +32,7 @@ tool_done() {
   echo -e " \033[32m✔\033[0m"
 }
 
-log "🛠️  Starting $SCRIPT_NAME installation..."
+echo "🛠️  Starting $SCRIPT_NAME installation..."
 echo "📦 Installing required tools: python3, jinja2, trivy, grype"
 
 if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
@@ -60,7 +60,7 @@ if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
   fi
 fi
 
-tool_progress "installation" "🔍 Attempting tool installation via Homebrew or fallback methods..."
+tool_progress "🔍 Attempting tool installation " "via Homebrew or fallback methods..."
 echo ""  # Line break for clarity
 
 install_homebrew() {
