@@ -705,7 +705,7 @@ def get_upstream_url(repo_url):
     # If it's not a fork, return the original repo URL
     return f"https://github.com/{user}/{repo}"
 
-def publish_to_github_pages(report_path, image):
+def publish_to_github_pages(report_path, image, shared, only_trivy, only_grype):
     """Publish the HTML report to GitHub Pages, choosing 'docs/' or 'gh-pages' based on the repo."""
     import os
     from pathlib import Path
@@ -713,7 +713,6 @@ def publish_to_github_pages(report_path, image):
     import subprocess
     from datetime import datetime
     import zipfile
-    import webbrowser
 
     if not args.repo_url:
         return None
@@ -730,14 +729,9 @@ def publish_to_github_pages(report_path, image):
             # Update the repo_url to the upstream URL
             print(f"🔄 Changing to upstream repository URL: {upstream_url}")
             args.repo_url = upstream_url
-
-            # Change the git remote to upstream URL
             subprocess.run(["git", "remote", "set-url", "origin", upstream_url], check=True)
-
         else:
             print(f"🔄 Keeping the forked repository URL: {args.repo_url}")
-
-            # Ensure the git remote is set to the forked repo URL
             subprocess.run(["git", "remote", "set-url", "origin", args.repo_url], check=True)
 
     else:
@@ -770,12 +764,16 @@ def publish_to_github_pages(report_path, image):
     target_path = target_dir / report_filename
     shutil.copy2(report_path, target_path)
 
+    # Add SARIF upload link
+    ghas_link = f"https://github.com/{user}/{repo}/security/code-scanning"
+    
     # Create index.html redirecting to latest report
     index_html = target_dir / "index.html"
     index_html.write_text(f"""<html>
 <head><meta http-equiv='refresh' content='0; URL={report_filename}'></head>
 <body>
 <p>Redirecting to <a href='{report_filename}'>{report_filename}</a></p>
+<p>For security findings, view <a href="{ghas_link}">GHAS code scanning results</a></p>
 </body>
 </html>""")
 
@@ -821,35 +819,7 @@ def publish_to_github_pages(report_path, image):
     if target_branch != current_branch:
         subprocess.run(["git", "checkout", current_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # Get GHAS link for SARIF upload
-    ghas_link = None
-    if args.repo_url:
-        repo = get_repo_from_url(args.repo_url)
-        ghas_link = f"https://github.com/{repo}/security/code-scanning"
-
-    # Add SARIF upload link to HTML report
-    env = Environment(loader=FileSystemLoader(Path(__file__).parent))
-    template = env.get_template("scan_template.html")
-
-    # Prepare context to pass to the template
-    context = {
-        'image': image,
-        'trivy_version': get_version("trivy"),
-        'grype_version': get_version("grype"),
-        'total_vulns': len(shared) + len(only_trivy) + len(only_grype),
-        'shared_count': len(shared),
-        'trivy_count': len(only_trivy),
-        'grype_count': len(only_grype),
-        'ghas_link': ghas_link,  # Add the SARIF link to the report
-    }
-
-    # Render the template with the context data
-    rendered_report = template.render(context)
-
-    # Save rendered HTML file to GitHub Pages
-    target_path.write_text(rendered_report)
-
-    # Return the final URL for the report on GitHub Pages
+    # Return public report URL
     base_url = f"https://{user}.github.io/{repo}"
     return f"{base_url}/{report_filename}"
 
