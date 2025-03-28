@@ -46,41 +46,35 @@ def check_latest_version(only_check=False):
         return
 
     try:
-        # Download the latest version directly from GitHub
         print("🔄 Checking for updates...")
         urlretrieve(SCRIPT_URL, get_script_path())
         
-        # Read the new version
         with open(get_script_path(), 'r') as f:
             new_code = f.read()
-        latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
-        if not latest_match:
-            raise ValueError("Could not determine latest version from script.")
+            latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
+            if not latest_match:
+                raise ValueError("Could not determine latest version from script.")
+            
+            latest = latest_match.group(1)
+            current = get_current_version()
 
-        latest = latest_match.group(1)
-        current = get_current_version()
+            if latest == current:
+                if only_check:
+                    print(f"📦 scancompare version {current}")
+                    sys.exit(0)
+                else:
+                    print(f"📦 scancompare version {current}")
+                    return
 
-        if latest == current:
-            if only_check:
-                print(f"📦 scancompare version {current}")
-                sys.exit(0)
-            else:
-                print(f"📦 scancompare version {current}")
-                return  # Return here to exit the function when no update is needed
-
-        print(f"🔄 Updating scancompare from {current} to {latest}...")
-
-        # Update the script with the new code
-        update_script(new_code)
-
-        print("♻️ Restarting with updated version...")
-        # Use the full path to the script when restarting
-        script_path = get_script_path()
-        os.execve(
-            sys.executable,
-            [sys.executable, script_path] + sys.argv[1:],
-            {**os.environ, "SCANCOMPARE_UPDATED": "1"}
-        )
+            print(f"🔄 Updating scancompare from {current} to {latest}...")
+            update_script(new_code)
+            print("♻️ Restarting with updated version...")
+            script_path = get_script_path()
+            os.execve(
+                sys.executable,
+                [sys.executable, script_path] + sys.argv[1:],
+                {**os.environ, "SCANCOMPARE_UPDATED": "1"}
+            )
 
     except Exception as e:
         print(f"⚠️ Auto-update check failed: {e}")
@@ -1062,8 +1056,8 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     </script>
 </body>
 </html>""")
-        tool_done()
-        print(f"✅ Created basic template at {template_path}")
+            tool_done()
+            print(f"✅ Created basic template at {template_path}")
 
     env = Environment(loader=FileSystemLoader(template_dir))
     template = env.get_template("scan_template.html")
@@ -1201,21 +1195,6 @@ def ensure_gh_authenticated():
         print(f"❌ Failed to validate GitHub auth: {e}")
         sys.exit(1)
 
-    except subprocess.CalledProcessError:
-        print("\n🔐 GitHub authentication required.")
-        print("   This will open your browser to complete the process.")
-        subprocess.run([
-            "gh", "auth", "login",
-            "-h", "github.com",
-            "-s", "security_events,admin:repo_hook",
-            "--web"
-        ], check=True)
-        return
-
-    except Exception as e:
-        print(f"❌ Failed to validate GitHub auth: {e}")
-        sys.exit(1)
-
 def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, temp_dir, verbose=False):
     from pathlib import Path
     import json, base64, tempfile, subprocess, gzip
@@ -1257,7 +1236,7 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
                 return None
 
         # Check if we're in a git repository
-        if not (Path(temp_dir) / ".git" / "config").exists():
+        if not Path(temp_dir) / ".git" / "config":
             print(f"⚠️ Not in a git repository. Skipping {tool_name} SARIF upload.")
             return False
 
@@ -1302,7 +1281,7 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
                 "--method", "POST",
                 "--input", tmp_path
             ], capture_output=True, text=True)
-
+            
             if result.returncode != 0:
                 error_msg = result.stderr.strip()
                 if "insufficient_scope" in error_msg.lower() or "not authorized" in error_msg.lower():
@@ -1360,8 +1339,8 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
         try:
             tool_progress("🔍", "Generating SARIF for Trivy")
             subprocess.run(["trivy", "image", "-f", "sarif", "-o", str(trivy_sarif_path), image], check=True,
-                           stdout=None if verbose else subprocess.DEVNULL,
-                           stderr=None if verbose else subprocess.DEVNULL)
+                          stdout=None if verbose else subprocess.DEVNULL,
+                          stderr=None if verbose else subprocess.DEVNULL)
             result = upload_sarif(trivy_sarif_path, "trivy")
             if result == "insufficient_scope":
                 permission_error = True
@@ -1393,23 +1372,18 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
         print("\n⚠️ No SARIF files were uploaded to GHAS.")
 
 def main(args):
-    # Handle uninstall first
     if args.uninstall:
         uninstall_scancompare()
-    
-    # Handle version display
+        return
+
     if args.version:
         print(f"📦 scancompare version {get_current_version()}")
-        sys.exit(0)
-    
-    # Handle update check and apply update
+        return
+
     if args.update:
         print("🔄 Checking for updates...")
         try:
-            # Download the latest version directly from GitHub
             urlretrieve(SCRIPT_URL, get_script_path())
-            
-            # Read the new version
             with open(get_script_path(), 'r') as f:
                 new_code = f.read()
                 latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
@@ -1422,15 +1396,11 @@ def main(args):
                 if latest == current:
                     print(f"📦 scancompare version {current}")
                     print("✅ You are running the latest version.")
-                    sys.exit(0)
+                    return
 
                 print(f"🔄 Updating scancompare from {current} to {latest}...")
-                
-                # Update the script with the new code
                 update_script(new_code)
-                
                 print("♻️ Restarting with updated version...")
-                # Use the full path to the script when restarting
                 script_path = get_script_path()
                 os.execve(
                     sys.executable,
@@ -1440,8 +1410,11 @@ def main(args):
         except Exception as e:
             print(f"⚠️ Update failed: {e}")
             sys.exit(1)
+        return
 
-    # If no flags are set, proceed with normal scan logic
+    # Check for updates before proceeding with other operations
+    check_latest_version()
+
     if not args.image and not args.repo_url:
         print("Usage: scancompare <image> [--repo-url <repo>, --keep-data, --verbose, --version, --update, --uninstall]")
         print("\nFlags:")
