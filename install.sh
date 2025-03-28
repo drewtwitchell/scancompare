@@ -71,7 +71,7 @@ install_python_and_tools() {
   fi
 
   if [[ ! -d "$VENV_DIR" ]]; then
-    python3 -m venv "$VENV_DIR" &> /dev/null
+    python3 -m venv "$VENV_DIR" -q &> /dev/null
   fi
 
   source "$VENV_DIR/bin/activate"
