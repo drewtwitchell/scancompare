@@ -152,7 +152,7 @@ def uninstall_scancompare():
     # Removing script and wrapper paths
     for path in [script_path, wrapper_path]:
         if path.exists():
-            tool_progress(f"    🗑️ Removing {path}...")
+            tool_progress("    🗑️ Removing", f"{path}...")
             path.unlink()
             print(f"    🗑️ Removed {path}")
             paths_removed = True
@@ -365,7 +365,7 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
         if unknown:
             result += (
                 "<h3>❓ Unclassified CVEs</h3>"
-                "<p><em>These CVEs couldn’t be categorized as OS or language packages. This often includes:</em></p>"
+                "<p><em>These CVEs couldn't be categorized as OS or language packages. This often includes:</em></p>"
                 "<ul><li>Uncommon sources or tools</li><li>Temporary CVE IDs (like TEMP-1234)</li><li>Missing or malformed metadata</li></ul>"
                 + format_cves(unknown)
             )
