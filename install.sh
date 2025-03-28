@@ -50,7 +50,7 @@ if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
       fi
     done
     if [[ "$FORCE_REINSTALL" -eq 0 ]]; then
-      echo "✅ All tools verified. Installation not needed."
+      echo "✅ All tools verified and updated."
       exit 0
     else
       echo "♻️ Dependencies missing. Continuing with forced reinstall."
@@ -60,12 +60,12 @@ if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
   fi
 fi
 
-tool_progress "🔍 Attempting tool installation " "via Homebrew or fallback methods..."
+tool_progress "🔍 Attempting tool installation" "via Homebrew or fallback methods..."
 echo ""  # Line break for clarity
 
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    tool_progress "🔍 Attempting tool installation " "🍺 Homebrew"
+    tool_progress "🍺 Installing Homebrew" "Homebrew not found, attempting installation..."
     NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
       echo "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
       tool_done
@@ -73,58 +73,7 @@ install_homebrew() {
   fi
 }
 
-tool_done
-
-ADDED_LINE='export PATH="$HOME/.local/bin:$PATH"'
-
-PATH="$(echo "$PATH" | awk -v RS=: -v ORS=: '!a[$1]++' | sed 's/:$//')"
-export PATH
-
-if [[ ":$PATH:" != *:":$INSTALL_BIN":* ]]; then
-  log "🔧 Adding $INSTALL_BIN to current shell session"
-  export PATH="$INSTALL_BIN:$PATH"
-fi
-
-append_if_missing() {
-  local file="$1"
-  if [[ -f "$file" && ! $(grep -Fx "$ADDED_LINE" "$file") ]]; then
-    log "🔧 Adding $INSTALL_BIN to PATH in $file"
-    echo "$ADDED_LINE" >> "$file"
-  fi
-}
-
-conditionally_source_env() {
-  local profile="$1"
-  local source_line="source \"$ENV_GUARD_FILE\""
-  if [[ -f "$ENV_GUARD_FILE" && -f "$profile" && ! $(grep -Fx "$source_line" "$profile") ]]; then
-    log "🔧 Sourcing $ENV_GUARD_FILE from $profile"
-    echo "$source_line" >> "$profile"
-  fi
-}
-
-append_if_missing "$HOME/.profile"
-append_if_missing "$HOME/.bashrc"
-append_if_missing "$HOME/.bash_profile"
-append_if_missing "$HOME/.zshrc"
-append_if_missing "$HOME/.zprofile"
-
-conditionally_source_env "$HOME/.profile"
-conditionally_source_env "$HOME/.bashrc"
-conditionally_source_env "$HOME/.bash_profile"
-conditionally_source_env "$HOME/.zshrc"
-conditionally_source_env "$HOME/.zprofile"
-
-if grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null; then
-  if [[ ! -f "$HOME/.bashrc" ]]; then
-    log "🔧 Creating $HOME/.bashrc for WSL"
-    echo "# WSL profile" > "$HOME/.bashrc"
-    echo "$ADDED_LINE" >> "$HOME/.bashrc"
-  fi
-fi
-
-mkdir -p "$INSTALL_BIN"
-mkdir -p "$INSTALL_LIB"
-
+# Handle missing tools and installation
 if ! command -v python3 &> /dev/null; then
   echo "❌ Python3 not found"
   if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -133,83 +82,67 @@ if ! command -v python3 &> /dev/null; then
     brew install python &> /dev/null || echo "⚠️ Failed to install Python3 with Homebrew. Please install manually."
     tool_done
   elif command -v apt &> /dev/null; then
-    tool_progress "⚙️ Installing" "⚙️ Installing Python3 with apt..."
+    tool_progress "⚙️ Installing" "Python3 with apt..."
     sudo apt update &> /dev/null && sudo apt install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with apt. Please install manually."
     tool_done
-  elif command -v dnf &> /dev/null; then
-    tool_progress "⚙️ Installing" "Python3 with dnf..."
-    sudo dnf install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with dnf. Please install manually."
-    tool_done
-  elif command -v yum &> /dev/null; then
-    tool_progress "⚙️ Installing" "Python3 with yum..."
-    sudo yum install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with yum. Please install manually."
-    tool_done
-  else
-    echo "❌ Could not determine package manager. Please install Python3 manually."
-    exit 1
-    tool_done
   fi
 fi
 
+# Create virtual environment
 if [[ ! -d "$VENV_DIR" ]]; then
+  tool_progress "⚙️ Creating" "Virtual environment..."
   python3 -m venv "$VENV_DIR" &> /dev/null
+  tool_done
 fi
 
+# Activate virtual environment
 source "$VENV_DIR/bin/activate"
 
+# Install jinja2
 if ! python -c "import jinja2" &> /dev/null; then
-  if [[ "$VERBOSE" -eq 1 ]]; then
-    pip install jinja2 --disable-pip-version-check --no-warn-script-location || {
-      echo "❌ Failed to install jinja2. Try manually using pip inside the virtual environment."; exit 1;
-    }
-  else
-    pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location || {
-      echo "❌ Failed to install jinja2. Try manually using pip inside the virtual environment."; exit 1;
-    }
-  fi
+  tool_progress "⚙️ Installing" "jinja2..."
+  pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location || {
+    echo "❌ Failed to install jinja2. Try manually using pip inside the virtual environment."; exit 1;
+  }
+  tool_done
 fi
 
 deactivate
 
+# Install trivy
 if ! command -v trivy &> /dev/null; then
-  tool_progress "Installing" "Trivy"
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    command -v brew &> /dev/null || install_homebrew
-    brew install trivy &> /dev/null || echo "⚠️ Failed to install Trivy with Homebrew. Please install manually."
-  else
-    curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
-      echo "❌ Failed to install Trivy via curl."; exit 1;
-    }
-  fi
+  tool_progress "⚙️ Installing" "Trivy..."
+  curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
+    echo "❌ Failed to install Trivy via curl."; exit 1;
+  }
   tool_done
 fi
 
+# Install grype
 if ! command -v grype &> /dev/null; then
-  tool_progress "Installing" "Grype"
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    command -v brew &> /dev/null || install_homebrew
-    brew install grype &> /dev/null || echo "⚠️ Failed to install Grype with Homebrew. Please install manually."
-  else
-    curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
-      echo "❌ Failed to install Grype via curl."; exit 1;
-    }
-  fi
+  tool_progress "⚙️ Installing" "Grype..."
+  curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
+    echo "❌ Failed to install Grype via curl."; exit 1;
+  }
   tool_done
 fi
 
-tool_progress "Downloading" "$SCRIPT_NAME script" 
+# Download and install scancompare script
+tool_progress "Downloading" "$SCRIPT_NAME script"
 curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" &> /dev/null
 tool_done
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
-tool_progress "Installing version: " "$VERSION" 
+tool_progress "Installing version:" "$VERSION"
 tool_done
 
+# Ensure the script is executable
 if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
   sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null || sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
 fi
 chmod +x "$PYTHON_SCRIPT"
 
+# Create wrapper script if necessary
 if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c \"$PYTHON_SCRIPT\" \"$WRAPPER_SCRIPT\")" -eq 0 ]]; then
   cat <<EOF > "$WRAPPER_SCRIPT"
 #!/bin/bash
@@ -221,13 +154,14 @@ else
   echo "🔹 Wrapper script already exists. Skipping."
 fi
 
+# Verify the installation
 if ! command -v scancompare &> /dev/null; then
-  echo ""
-  echo "⚠️  scancompare was installed but isn't available in this shell session."
+  echo "⚠️ scancompare was installed but isn't available in this shell session."
   echo "➡️  Try running: export PATH=\"\$HOME/.local/bin:\$PATH\""
   echo "   or close and reopen your terminal."
 else
   echo "✅ $INSTALL_BIN is in your PATH"
 fi
 
+# Final message
 echo "🎉 You can now run: $SCRIPT_NAME <image-name>"
