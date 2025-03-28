@@ -23,12 +23,9 @@ log() {
 }
 
 tool_progress() {
-  ACTION="$1"
   TOOL_NAME="$2"
-  INDENT="$3"  # Indentation level
-
-  # Print the action and tool name with the correct indentation and no extra newlines
-  echo -n "$(printf '%*s' "$INDENT" "")$ACTION $TOOL_NAME..."
+  ACTION="$1"
+  echo -n "$ACTION $TOOL_NAME..."
 }
 
 tool_done() {
@@ -37,7 +34,7 @@ tool_done() {
 
 echo "🛠️  Starting scancompare installation..."
 
-# Check if already installed and check for updates, only for reinstallation scenarios
+# Check if already installed and check for updates
 if [[ -f "$PYTHON_SCRIPT" && "$FORCE_REINSTALL" -eq 0 ]]; then
   echo "🔍 scancompare is already installed. Checking for updates and verifying dependencies..."
   if scancompare --update > /dev/null 2>&1; then  # Suppressing output of `scancompare --update` to avoid redundancy
@@ -50,36 +47,35 @@ if [[ -f "$PYTHON_SCRIPT" && "$FORCE_REINSTALL" -eq 0 ]]; then
 fi
 
 # Install necessary tools
-tool_progress "🔍 Attempting" "tool installation via Homebrew or fallback methods..." 0
-
-install_homebrew() {
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    tool_progress "🍺 Installing" "Homebrew" 4
-    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
-      echo "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
-      tool_done
+tool_progress "🔍 Attempting" "tool installation via Homebrew or fallback methods..."
+    install_homebrew() {
+      if [[ "$OSTYPE" == "darwin"* ]]; then
+        tool_progress "🍺 Installing" "Homebrew"
+        NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
+          echo "⚠️ Failed to install Homebrew. Falling back to manual installation methods."
+          tool_done
+        }
+      fi
     }
-  fi
-}
 
 # Check if Python3 is installed, otherwise install using Homebrew or fallback
 if ! command -v python3 &> /dev/null; then
   echo "❌ Python3 not found"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     command -v brew &> /dev/null || install_homebrew
-    tool_progress "⚙️ Installing" "Python3 using Homebrew..." 4
+    tool_progress "⚙️ Installing" "Python3 using Homebrew..."
     brew install python &> /dev/null || echo "⚠️ Failed to install Python3 with Homebrew. Please install manually."
     tool_done
   elif command -v apt &> /dev/null; then
-    tool_progress "⚙️ Installing" "Python3 with apt..." 4
+    tool_progress "⚙️ Installing" "Python3 with apt..."
     sudo apt update &> /dev/null && sudo apt install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with apt. Please install manually."
     tool_done
   elif command -v dnf &> /dev/null; then
-    tool_progress "⚙️ Installing" "Python3 with dnf..." 4
+    tool_progress "⚙️ Installing" "Python3 with dnf..."
     sudo dnf install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with dnf. Please install manually."
     tool_done
   elif command -v yum &> /dev/null; then
-    tool_progress "⚙️ Installing" "Python3 with yum..." 4
+    tool_progress "⚙️ Installing" "Python3 with yum..."
     sudo yum install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with yum. Please install manually."
     tool_done
   else
@@ -90,7 +86,7 @@ fi
 
 # Set up virtual environment
 if [[ ! -d "$VENV_DIR" ]]; then
-  tool_progress "⚙️ Creating" "Virtual environment..." 4
+  tool_progress "⚙️ Creating" "Virtual environment..."
   python3 -m venv "$VENV_DIR" &> /dev/null
   tool_done
 fi
@@ -99,7 +95,7 @@ source "$VENV_DIR/bin/activate"
 
 # Install jinja2 if not installed
 if ! python -c "import jinja2" &> /dev/null; then
-  tool_progress "⚙️ Installing" "jinja2..." 8
+  tool_progress "⚙️ Installing" "jinja2..."
   pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location || {
     echo "❌ Failed to install jinja2."; exit 1;
   }
@@ -108,7 +104,7 @@ fi
 
 # Install trivy if not installed
 if ! command -v trivy &> /dev/null; then
-  tool_progress "⚙️ Installing" "Trivy..." 8
+  tool_progress "⚙️ Installing" "Trivy..."
   curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
     echo "❌ Failed to install Trivy."; exit 1;
   }
@@ -117,7 +113,7 @@ fi
 
 # Install grype if not installed
 if ! command -v grype &> /dev/null; then
-  tool_progress "⚙️ Installing" "Grype..." 8
+  tool_progress "⚙️ Installing" "Grype..."
   curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
     echo "❌ Failed to install Grype."; exit 1;
   }
@@ -125,12 +121,12 @@ if ! command -v grype &> /dev/null; then
 fi
 
 # Download the scancompare script
-tool_progress "📦 Downloading and Installing" "scancompare script version..." 0
+tool_progress "📦 Downloading and Installing" "scancompare script version..."
 curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" &> /dev/null
 tool_done
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
-tool_progress "⚙️ Installing version:" "$VERSION" 4
+tool_progress "⚙️ Installing version:" "$VERSION"
 tool_done
 
 # Ensure the script is executable
@@ -160,4 +156,4 @@ else
   echo "✅ $INSTALL_BIN is in your PATH"
 fi
 
-echo "🎉 You can now run: scancompare <image-name>"
+echo "🎉 You can now run: $SCRIPT_NAME <image-name>"
