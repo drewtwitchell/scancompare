@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.0
+# scancompare version 1.0.1
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -53,34 +53,34 @@ def check_latest_version(only_check=False):
         # Read the new version
         with open(get_script_path(), 'r') as f:
             new_code = f.read()
-            latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
-            if not latest_match:
-                raise ValueError("Could not determine latest version from script.")
-            
-            latest = latest_match.group(1)
-            current = get_current_version()
+        latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
+        if not latest_match:
+            raise ValueError("Could not determine latest version from script.")
 
-            if latest == current:
-                if only_check:
-                    print(f"📦 scancompare version {current}")
-                    sys.exit(0)
-                else:
-                    print(f"📦 scancompare version {current}")
-                    return
+        latest = latest_match.group(1)
+        current = get_current_version()
 
-            print(f"🔄 Updating scancompare from {current} to {latest}...")
-            
-            # Update the script with the new code
-            update_script(new_code)
-            
-            print("♻️ Restarting with updated version...")
-            # Use the full path to the script when restarting
-            script_path = get_script_path()
-            os.execve(
-                sys.executable,
-                [sys.executable, script_path] + sys.argv[1:],
-                {**os.environ, "SCANCOMPARE_UPDATED": "1"}
-            )
+        if latest == current:
+            if only_check:
+                print(f"📦 scancompare version {current}")
+                sys.exit(0)
+            else:
+                print(f"📦 scancompare version {current}")
+                return  # Return here to exit the function when no update is needed
+
+        print(f"🔄 Updating scancompare from {current} to {latest}...")
+
+        # Update the script with the new code
+        update_script(new_code)
+
+        print("♻️ Restarting with updated version...")
+        # Use the full path to the script when restarting
+        script_path = get_script_path()
+        os.execve(
+            sys.executable,
+            [sys.executable, script_path] + sys.argv[1:],
+            {**os.environ, "SCANCOMPARE_UPDATED": "1"}
+        )
 
     except Exception as e:
         print(f"⚠️ Auto-update check failed: {e}")
@@ -854,7 +854,7 @@ def publish_to_github_pages(report_path, image_name):
             print("2. Check if you have write access to the repository")
             print("3. Verify your GitHub authentication is set up correctly")
         return None
-        
+
 def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only_grype, trivy_version, grype_version):
     """Generate a detailed HTML report of vulnerability findings."""
     def format_cves(cve_map):
@@ -1062,8 +1062,8 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     </script>
 </body>
 </html>""")
-            tool_done()
-            print(f"✅ Created basic template at {template_path}")
+        tool_done()
+        print(f"✅ Created basic template at {template_path}")
 
     env = Environment(loader=FileSystemLoader(template_dir))
     template = env.get_template("scan_template.html")
@@ -1201,6 +1201,21 @@ def ensure_gh_authenticated():
         print(f"❌ Failed to validate GitHub auth: {e}")
         sys.exit(1)
 
+    except subprocess.CalledProcessError:
+        print("\n🔐 GitHub authentication required.")
+        print("   This will open your browser to complete the process.")
+        subprocess.run([
+            "gh", "auth", "login",
+            "-h", "github.com",
+            "-s", "security_events,admin:repo_hook",
+            "--web"
+        ], check=True)
+        return
+
+    except Exception as e:
+        print(f"❌ Failed to validate GitHub auth: {e}")
+        sys.exit(1)
+
 def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, temp_dir, verbose=False):
     from pathlib import Path
     import json, base64, tempfile, subprocess, gzip
@@ -1242,7 +1257,7 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
                 return None
 
         # Check if we're in a git repository
-        if not Path(temp_dir) / ".git" / "config":
+        if not (Path(temp_dir) / ".git" / "config").exists():
             print(f"⚠️ Not in a git repository. Skipping {tool_name} SARIF upload.")
             return False
 
@@ -1287,7 +1302,7 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
                 "--method", "POST",
                 "--input", tmp_path
             ], capture_output=True, text=True)
-            
+
             if result.returncode != 0:
                 error_msg = result.stderr.strip()
                 if "insufficient_scope" in error_msg.lower() or "not authorized" in error_msg.lower():
@@ -1345,8 +1360,8 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
         try:
             tool_progress("🔍", "Generating SARIF for Trivy")
             subprocess.run(["trivy", "image", "-f", "sarif", "-o", str(trivy_sarif_path), image], check=True,
-                        stdout=None if verbose else subprocess.DEVNULL,
-                        stderr=None if verbose else subprocess.DEVNULL)
+                           stdout=None if verbose else subprocess.DEVNULL,
+                           stderr=None if verbose else subprocess.DEVNULL)
             result = upload_sarif(trivy_sarif_path, "trivy")
             if result == "insufficient_scope":
                 permission_error = True
@@ -1425,7 +1440,7 @@ def main(args):
 
     # Check for updates before proceeding with other operations
     check_latest_version()
-    
+
     if not args.image and not args.repo_url:
         print("Usage: scancompare <image> [--repo-url <repo>, --keep-data, --verbose, --version, --update, --uninstall]")
         print("\nFlags:")
@@ -1605,7 +1620,7 @@ def main(args):
         tool_progress("🔹", "Scanning with Grype")
         if not run_scan("grype", image, grype_path, verbose=args.verbose):
             explain_exit("Grype scan failed or image not found.")
-            tool_done()
+        tool_done()
         grype_version = get_version("grype")
         print(f"   🔢 Grype version: {grype_version}")
         summary_lines.append(f"🔢 Grype version: {grype_version}")

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vulnerability Scan Report: Trivy vs Grype</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <style>
+  <style>
         :root {
             --primary-color: #2196f3;
             --critical-color: #d32f2f;
@@ -19,7 +19,7 @@
             --border-color: #e0e0e0;
         }
 
-        body {
+    body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             line-height: 1.6;
             margin: 0;
@@ -43,7 +43,7 @@
         }
 
         .header h1 {
-            margin: 0;
+      margin: 0;
             color: var(--primary-color);
         }
 
@@ -74,8 +74,8 @@
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
+      margin-bottom: 20px;
+    }
 
         .summary-grid {
             display: grid;
@@ -88,7 +88,7 @@
             background-color: var(--background-color);
             padding: 20px;
             border-radius: 4px;
-            text-align: center;
+      text-align: center;
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
         }
@@ -167,12 +167,12 @@
 
         .content a {
             color: var(--primary-color);
-            text-decoration: none;
-        }
+      text-decoration: none;
+    }
 
         .content a:hover {
-            text-decoration: underline;
-        }
+      text-decoration: underline;
+    }
 
         .raw-data {
             background-color: var(--card-background);
@@ -334,8 +334,8 @@
         }
 
         .section-filters {
-            display: flex;
-            gap: 10px;
+      display: flex;
+      gap: 10px;
             flex-wrap: wrap;
         }
 
@@ -375,8 +375,8 @@
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
+      margin-bottom: 20px;
+    }
 
         .legend-grid {
             display: grid;
@@ -404,10 +404,10 @@
         }
 
         .legend-item {
-            display: flex;
+      display: flex;
             align-items: center;
-            gap: 10px;
-        }
+      gap: 10px;
+    }
 
         .legend-color {
             width: 20px;
@@ -466,7 +466,7 @@
         .quick-filter {
             padding: 10px 24px;
             border-radius: 25px;
-            cursor: pointer;
+      cursor: pointer;
             border: 2px solid var(--primary-color);
             background-color: white;
             color: var(--primary-color);
@@ -490,8 +490,8 @@
         }
 
         .section.visible {
-            display: block;
-        }
+      display: block;
+    }
 
         .quick-filters-container {
             background-color: var(--card-background);
@@ -576,10 +576,10 @@
             color: #666;
             margin-top: 4px;
         }
-    </style>
+  </style>
 </head>
 <body>
-    <div class="container">
+  <div class="container">
         <div class="header">
             <h1>Vulnerability Scan Report: Trivy vs Grype</h1>
             <div class="metadata">
@@ -687,8 +687,8 @@
                         <li><strong>References:</strong> Links to detailed vulnerability information</li>
                     </ul>
                 </div>
-            </div>
-        </div>
+      </div>
+    </div>
 
         <div class="helpful-links">
             <h2>Helpful Resources</h2>
@@ -745,7 +745,7 @@
                         </a>
                         <a href="https://github.com/advisories" target="_blank" class="resource-link">
                             <img src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" alt="GitHub Logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzI0MjkyZSIgZD0iTTEyIDJBMTAgMTAgMCAwIDAgMiAxMmMwIDQuNDIgMi44NyA4LjE3IDYuODQgOS41LjUuMDguNjYtLjIzLjY2LS41di0xLjY5Yy0yLjc3LjYtMy4zNi0xLjM0LTMuMzYtMS4zNC0uNDYtMS4xNi0xLjExLTEuNDctMS4xMS0xLjQ3LS45MS0uNjIuMDctLjYuMDctLjYgMSAuMDcgMS41MyAxLjAzIDEuNTMgMS4wMy44OSAxLjUyIDIuMzQgMS4wNyAyLjkxLjgzLjA5LS42NS4zNS0xLjA5LjYzLTEuMzQtMi4yMi0uMjUtNC41NS0xLjExLTQuNTUtNC45MiAwLTEuMTEuMzgtMiAxLjAzLTIuNzEtLjEtLjI1LS40NS0xLjI5LjEtMi42NCAwIDAgLjg0LS4yNyAyLjc1IDEuMDIuOC0uMjIgMS42NS0uMzMgMi41LS4zMy44NSAwIDEuNy4xMSAyLjUuMzMgMS45MS0xLjI5IDIuNzUtMS4wMiAyLjc1LTEuMDIuNTUgMS4zNS4yIDIuMzkuMSAyLjY0LjY1LjcxIDEuMDMgMS42IDEuMDMgMi43MSAwIDMuODItMi4zNCA0LjY2LTQuNTcgNC45MS4zNi4zMS42OS45Mi42OSAxLjg1VjIxYzAgLjI3LjE2LjU5LjY3LjUgMy45Ny0xLjM0IDYuODMtNS4wOCA2LjgzLTkuNUMxMiAyIDIgMiAyIDJ6Ii8+PC9zdmc+'" />
-                            <div>
+    <div>
                                 <div>GitHub Advisory Database</div>
                                 <div class="link-description">Security advisories for open source projects</div>
                             </div>
@@ -832,7 +832,7 @@
         {% endif %}
     </div>
 
-    <script>
+  <script>
         // Quick filters functionality
         document.addEventListener('DOMContentLoaded', function() {
             const quickFilters = document.querySelectorAll('.quick-filter');
@@ -901,7 +901,7 @@
                 jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
             };
             html2pdf().set(opt).from(element).save();
-        }
-    </script>
+    }
+  </script>
 </body>
 </html>
