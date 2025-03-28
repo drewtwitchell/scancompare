@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 0.0.9 
+# scancompare version 0.0.7 
 
 import os
 import sys
@@ -23,7 +23,7 @@ from jinja2 import Environment, FileSystemLoader
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "0.0.9"
+VERSION = "0.0.7"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -44,7 +44,7 @@ def check_latest_version(only_check=False):
         return
 
     if not already_updated:
-        tool_progress("updates","🔎 Checking for updates...")
+        tool_progress("updates", "🔎 Checking for updates...")
 
     try:
         api_url = "https://api.github.com/repos/drewtwitchell/scancompare/contents/scancompare"
@@ -68,10 +68,11 @@ def check_latest_version(only_check=False):
                 print(f"📦 scancompare version {current}")
                 sys.exit(0)
             else:
-                print(f"📦 Already using latest version ({current})")
+                tool_progress("updates", f"📦 Already using latest version ({current})")
+                tool_done()  # Mark the action as done
                 return
 
-        tool_progress("updates",f"🔄 New version detected. Updating scancompare script...")
+        tool_progress("updates", f"🔄 New version detected. Updating scancompare script...")
         update_script(new_code)  # This will handle the update, with its own progress steps
         tool_done()
 
@@ -89,6 +90,7 @@ def check_latest_version(only_check=False):
         if only_check:
             print(f"📦 scancompare version {get_current_version()}")
             sys.exit(0)
+
 
 def update_script(new_code):
     try:
