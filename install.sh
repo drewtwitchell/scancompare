@@ -122,7 +122,7 @@ if ! command -v grype &> /dev/null; then
   }
   tool_done
 fi
-
+tool_done
 # Download the scancompare script
 printf "📦 Downloading and Installing scancompare script version...\n"
 curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" &> /dev/null
