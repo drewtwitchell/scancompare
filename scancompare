@@ -1393,13 +1393,16 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
         print("\n⚠️ No SARIF files were uploaded to GHAS.")
 
 def main(args):
+    # Handle uninstall first
     if args.uninstall:
         uninstall_scancompare()
-
+    
+    # Handle version display
     if args.version:
         print(f"📦 scancompare version {get_current_version()}")
         sys.exit(0)
-
+    
+    # Handle update check and apply update
     if args.update:
         print("🔄 Checking for updates...")
         try:
@@ -1438,9 +1441,7 @@ def main(args):
             print(f"⚠️ Update failed: {e}")
             sys.exit(1)
 
-    # Check for updates before proceeding with other operations
-    check_latest_version()
-
+    # If no flags are set, proceed with normal scan logic
     if not args.image and not args.repo_url:
         print("Usage: scancompare <image> [--repo-url <repo>, --keep-data, --verbose, --version, --update, --uninstall]")
         print("\nFlags:")
