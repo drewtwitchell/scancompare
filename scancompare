@@ -629,98 +629,114 @@ def display_summary(trivy_cves, grype_cves):
 
     return shared_cves, only_trivy_cves, only_grype_cves
 
-def tool_warn(message, quiet=False):
-    if not quiet:
-        print(f"⚠️ {message}")
-
 def publish_to_github_pages(report_path, image):
-    """Publish the HTML report to GitHub Pages with proper branch handling, backups, and silent mode."""
+    """Publish the HTML report to GitHub Pages, choosing 'docs/' or 'gh-pages' based on the repo."""
     import os
     import shutil
     import subprocess
     import zipfile
-    from pathlib import Path
     from datetime import datetime
 
     if not args.repo_url:
         return None
 
-    repo_parts = args.repo_url.rstrip(".git").split("/")
-    user, repo = repo_parts[-2], repo_parts[-1]
+    from urllib.parse import urlparse
 
-    # Check if docs/ folder exists
+    # Parse GitHub info
+    repo_url = args.repo_url.rstrip(".git")
+    repo_parts = urlparse(repo_url)
+    path_parts = repo_parts.path.strip("/").split("/")
+    user, repo = path_parts[-2], path_parts[-1]
+
     use_docs_folder = Path("docs").exists()
+    target_dir = Path("docs") if use_docs_folder else Path("gh-pages")
+    target_branch = subprocess.check_output(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"], text=True).strip()
 
-    # Decide target folder and branch
-    if use_docs_folder:
-        target_dir = Path("docs")
-        target_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
-    else:
-        target_dir = Path("gh-pages")
+    if not use_docs_folder:
         target_branch = "gh-pages"
 
     target_dir.mkdir(exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
     report_filename = f"scan_report_{image}_{timestamp}.html"
     target_path = target_dir / report_filename
     shutil.copy2(report_path, target_path)
 
-    # Create index.html pointing to the latest report
     index_html = target_dir / "index.html"
-    index_html.write_text(f"<html><head><meta http-equiv='refresh' content='0; URL={report_filename}'></head><body><p>Redirecting to <a href='{report_filename}'>{report_filename}</a></p></body></html>")
+    index_html.write_text(f"""<html>
+<head><meta http-equiv="refresh" content="0; URL={report_filename}"></head>
+<body>
+<p>Redirecting to <a href="{report_filename}">{report_filename}</a></p>
+</body>
+</html>""")
 
     if not Path(".git").exists():
+        tool_progress("🔄", "Initializing git repository...")
         subprocess.run(["git", "init"], check=True)
         subprocess.run(["git", "remote", "add", "origin", args.repo_url], check=True)
+        tool_done()
 
-    current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
+    current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], text=True).strip()
 
-    if current_branch != target_branch:
-        subprocess.run(["git", "fetch", "origin", target_branch], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["git", "checkout", "-B", target_branch], check=True)
-
-    # Try pulling with --autostash
     try:
-        tool_progress("🔄", "Pulling latest gh-pages")
-        subprocess.run(["git", "pull", "--autostash", "origin", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if target_branch != current_branch:
+            tool_progress("🔀", f"Switching to {target_branch} branch...")
+            subprocess.run(["git", "checkout", "-B", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            tool_done()
+
+        tool_progress("🔄", "Pulling latest gh-pages...")
+        subprocess.run(["git", "pull", "--autostash"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         tool_done()
     except Exception:
-        tool_warn("Warning: failed to pull latest changes. Continuing anyway.", quiet=not args.verbose)
-        tool_done()
+        if args.verbose:
+            print("⚠️ Warning: failed to pull latest changes. Continuing anyway.")
+        else:
+            pass
 
-    # Backup previous reports
     try:
-        backup_dir = Path("backups")
-        backup_dir.mkdir(exist_ok=True)
+        if not args.keep_data and target_dir.exists():
+            backup_dir = Path("backups")
+            backup_dir.mkdir(exist_ok=True)
+            backup_zip = backup_dir / f"{target_dir.name}_backup_{timestamp}.zip"
 
-        backup_name = f"ghpages_backup_{timestamp}.zip"
-        backup_path = backup_dir / backup_name
+            with zipfile.ZipFile(backup_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+                for file_path in target_dir.rglob("*"):
+                    if file_path.is_file():
+                        zf.write(file_path, file_path.relative_to(target_dir))
 
-        with zipfile.ZipFile(backup_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-            for file in target_dir.glob("*"):
-                zipf.write(file, arcname=file.name)
+            existing_backups = sorted(backup_dir.glob("*.zip"), key=os.path.getmtime, reverse=True)
+            for old in existing_backups[3:]:
+                old.unlink()
 
-        old_backups = sorted(backup_dir.glob("ghpages_backup_*.zip"), reverse=True)
-        for old in old_backups[3:]:
-            old.unlink()
+            shutil.rmtree(target_dir)
+            target_dir.mkdir(exist_ok=True)
+            index_html = target_dir / "index.html"
+            index_html.write_text(f"""<html>
+<head><meta http-equiv="refresh" content="0; URL={report_filename}"></head>
+<body>
+<p>Redirecting to <a href="{report_filename}">{report_filename}</a></p>
+</body>
+</html>""")
+
     except Exception as e:
-        tool_warn(f"Failed to backup or clean gh-pages: {e}", quiet=not args.verbose)
+        if args.verbose:
+            print(f"⚠️ Failed to backup or clean {target_dir}: {e}")
 
-    # Add and push changes
-    tool_progress("📦", f"Adding {target_dir} contents to git...")
-    subprocess.run(["git", "add", "-f", str(target_dir)], check=True)
     try:
-        subprocess.run(["git", "commit", "-m", f"📊 Add scan report for {image}"], check=True)
+        tool_progress("📦", f"Adding {target_dir} contents to git...")
+        subprocess.run(["git", "add", "-f", str(target_dir)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["git", "commit", "-m", f"📊 Add scan report for {image}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["git", "push", "-u", "origin", target_branch, "--force"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        tool_done()
     except subprocess.CalledProcessError:
-        pass
-    subprocess.run(["git", "push", "-u", "origin", target_branch], check=True)
-    tool_done()
+        if args.verbose:
+            print(f"⚠️ Git commit or push failed. You may need to resolve manually.")
+        return None
 
-    if current_branch != target_branch:
-        subprocess.run(["git", "checkout", current_branch], check=True)
+    if target_branch != current_branch:
+        subprocess.run(["git", "checkout", current_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    base_url = f"https://{user}.github.io/{repo}"
-    return f"{base_url}/{report_filename}"
+    return f"https://{user}.github.io/{repo}/{report_filename}"
 
 def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only_grype, trivy_version, grype_version):
     """Generate a detailed HTML report of vulnerability findings."""
