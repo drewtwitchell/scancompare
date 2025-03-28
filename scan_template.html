@@ -602,17 +602,6 @@
             </div>
         </div>
 
-        <div class="tool-links">
-            <a href="https://aquasecurity.github.io/trivy/" target="_blank" class="tool-link">
-                <img src="https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/trivy.png" alt="Trivy Logo">
-                Learn more about Trivy
-            </a>
-            <a href="https://github.com/anchore/grype" target="_blank" class="tool-link">
-                <img src="https://raw.githubusercontent.com/anchore/grype/main/docs/static/images/grype-logo-small.png" alt="Grype Logo">
-                Learn more about Grype
-            </a>
-        </div>
-
         <div class="summary">
             <h2>Summary</h2>
             <div class="summary-grid">
@@ -728,14 +717,14 @@
                     <h3>Vulnerability Scoring</h3>
                     <div class="link-list">
                         <a href="https://nvd.nist.gov/vuln-metrics/cvss" target="_blank" class="resource-link">
-                            <img src="https://raw.githubusercontent.com/aquasecurity/trivy/main/docs/imgs/severity-critical.png" alt="CVSS Icon">
+                            <img src="https://raw.githubusercontent.com/nist/nvd/main/src/assets/images/nist-logo.svg" alt="NIST Logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzIxOTZmMyIgZD0iTTEyIDJMNCA3djEwbDggNWw4LTV2LTEwTDEyIDJ6TTEyIDR2MTZsLTYtMy43NVY4TDEyIDR6Ii8+PC9zdmc+'" />
                             <div>
                                 <div>CVSS Scoring Guide</div>
                                 <div class="link-description">Understanding vulnerability severity scores</div>
                             </div>
                         </a>
                         <a href="https://www.first.org/cvss/user-guide" target="_blank" class="resource-link">
-                            <img src="https://raw.githubusercontent.com/aquasecurity/trivy/main/docs/imgs/severity-high.png" alt="CVSS Guide Icon">
+                            <img src="https://www.first.org/img/first-logo.png" alt="FIRST Logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2Y1N2MwMCIgZD0iTTEyIDJMNCA3djEwbDggNWw4LTV2LTEwTDEyIDJ6TTEyIDR2MTZsLTYtMy43NVY4TDEyIDR6Ii8+PC9zdmc+'" />
                             <div>
                                 <div>CVSS User Guide</div>
                                 <div class="link-description">Detailed guide to CVSS scoring system</div>
@@ -748,14 +737,14 @@
                     <h3>Vulnerability Databases</h3>
                     <div class="link-list">
                         <a href="https://nvd.nist.gov/" target="_blank" class="resource-link">
-                            <img src="https://raw.githubusercontent.com/aquasecurity/trivy/main/docs/imgs/severity-medium.png" alt="NVD Icon">
+                            <img src="https://www.nist.gov/sites/default/files/images/2017/06/16/nist_logo_centered_648x305.png" alt="NVD Logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZiYzAyZCIgZD0iTTEyIDJMNCA3djEwbDggNWw4LTV2LTEwTDEyIDJ6TTEyIDR2MTZsLTYtMy43NVY4TDEyIDR6Ii8+PC9zdmc+'" />
                             <div>
                                 <div>National Vulnerability Database</div>
                                 <div class="link-description">Comprehensive vulnerability database</div>
                             </div>
                         </a>
                         <a href="https://github.com/advisories" target="_blank" class="resource-link">
-                            <img src="https://raw.githubusercontent.com/aquasecurity/trivy/main/docs/imgs/severity-low.png" alt="GitHub Icon">
+                            <img src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" alt="GitHub Logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzI0MjkyZSIgZD0iTTEyIDJBMTAgMTAgMCAwIDAgMiAxMmMwIDQuNDIgMi44NyA4LjE3IDYuODQgOS41LjUuMDguNjYtLjIzLjY2LS41di0xLjY5Yy0yLjc3LjYtMy4zNi0xLjM0LTMuMzYtMS4zNC0uNDYtMS4xNi0xLjExLTEuNDctMS4xMS0xLjQ3LS45MS0uNjIuMDctLjYuMDctLjYgMSAuMDcgMS41MyAxLjAzIDEuNTMgMS4wMy44OSAxLjUyIDIuMzQgMS4wNyAyLjkxLjgzLjA5LS42NS4zNS0xLjA5LjYzLTEuMzQtMi4yMi0uMjUtNC41NS0xLjExLTQuNTUtNC45MiAwLTEuMTEuMzgtMiAxLjAzLTIuNzEtLjEtLjI1LS40NS0xLjI5LjEtMi42NCAwIDAgLjg0LS4yNyAyLjc1IDEuMDIuOC0uMjIgMS42NS0uMzMgMi41LS4zMy44NSAwIDEuNy4xMSAyLjUuMzMgMS45MS0xLjI5IDIuNzUtMS4wMiAyLjc1LTEuMDIuNTUgMS4zNS4yIDIuMzkuMSAyLjY0LjY1LjcxIDEuMDMgMS42IDEuMDMgMi43MSAwIDMuODItMi4zNCA0LjY2LTQuNTcgNC45MS4zNi4zMS42OS45Mi42OSAxLjg1VjIxYzAgLjI3LjE2LjU5LjY3LjUgMy45Ny0xLjM0IDYuODMtNS4wOCA2LjgzLTkuNUMxMiAyIDIgMiAyIDJ6Ii8+PC9zdmc+'" />
                             <div>
                                 <div>GitHub Advisory Database</div>
                                 <div class="link-description">Security advisories for open source projects</div>
