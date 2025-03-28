@@ -705,10 +705,17 @@ def main(args):
                 # Scan this image with Trivy
                 trivy_path = scan_dir / f"original_trivy_{dir_name}.json"
                 tool_progress("🔹", f"Scanning {image_tag} with Trivy")
-                if not run_scan("trivy", image_tag, trivy_path, verbose=args.verbose):
-                    print(f"⚠️ Trivy scan failed for {image_tag}")
+                try:
+                    if not run_scan("trivy", image_tag, trivy_path, verbose=args.verbose):
+                        print(f"\n⚠️ Trivy scan failed for {image_tag}")
+                        print(f"   To debug, run: trivy image --format json -o {trivy_path} {image_tag}")
+                        continue
+                    tool_done()
+                except Exception as e:
+                    print(f"\n⚠️ Trivy scan failed for {image_tag}")
+                    print(f"   Error: {str(e)}")
+                    print(f"   To debug, run: trivy image --format json -o {trivy_path} {image_tag}")
                     continue
-                tool_done()
                 trivy_version = get_version("trivy")
                 print(f"   🔢 Trivy version: {trivy_version}")
                 summary_lines.append(f"🔢 Trivy version: {trivy_version}")
@@ -739,10 +746,13 @@ def main(args):
                 # Generate HTML report for this image
                 generate_html_report(image_tag, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
 
-            except subprocess.CalledProcessError:
+            except subprocess.CalledProcessError as e:
                 tool_done()  # Mark Docker build as done with error
-                print(f"\n⚠️ Docker build failed for {os.path.relpath(dockerfile_path, temp_dir)}. Please check the Dockerfile and try building manually with 'docker build -t {image_tag} .' to debug.")
-                explain_exit("Docker build failed.")
+                print(f"\n⚠️ Docker build failed for {os.path.relpath(dockerfile_path, temp_dir)}")
+                print(f"   Error: {e.stderr.decode() if e.stderr else 'Unknown error'}")
+                print(f"   To debug, run: docker build -t {image_tag} {dockerfile_dir}")
+                print("   Continuing with other Dockerfiles if available...\n")
+                continue  # Continue with next Dockerfile instead of exiting
 
         if not built_images:
             explain_exit("No images were successfully built and scanned.")
@@ -762,9 +772,17 @@ def main(args):
 
         # Trivy scan
         tool_progress("🔹", "Scanning with Trivy")
-        if not run_scan("trivy", image, trivy_path, verbose=args.verbose):
+        try:
+            if not run_scan("trivy", image, trivy_path, verbose=args.verbose):
+                print(f"\n⚠️ Trivy scan failed for {image}")
+                print(f"   To debug, run: trivy image --format json -o {trivy_path} {image}")
+                explain_exit("Trivy scan failed or image not found.")
+            tool_done()
+        except Exception as e:
+            print(f"\n⚠️ Trivy scan failed for {image}")
+            print(f"   Error: {str(e)}")
+            print(f"   To debug, run: trivy image --format json -o {trivy_path} {image}")
             explain_exit("Trivy scan failed or image not found.")
-        tool_done()
         trivy_version = get_version("trivy")
         print(f"   🔢 Trivy version: {trivy_version}")
         summary_lines.append(f"🔢 Trivy version: {trivy_version}")
