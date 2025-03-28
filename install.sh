@@ -33,7 +33,6 @@ tool_done() {
 }
 
 install_python_and_tools() {
-  tool_progress "🔍 Attempting" "tool installation..."
 
   install_homebrew() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
