@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.1
+# scancompare version 1.0.0
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.1"
+VERSION = "1.0.0"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -623,7 +623,7 @@ def publish_to_github_pages(report_path, image_name):
         # Initialize git repository if not already initialized
         if not os.path.exists('.git'):
             print("📦 Initializing new git repository...")
-            subprocess.run(["git", "init"], check=True, capture_output=True)
+            subprocess.run(["git", "init"], check=True)
             
             # Configure git user
             print("📝 Setting up git configuration...")
@@ -657,26 +657,27 @@ def publish_to_github_pages(report_path, image_name):
         
         # Create and switch to main branch if not already on it
         try:
-            current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
-            if current_branch != "main":
-                subprocess.run(["git", "checkout", "-b", "main"], check=True)
-        except subprocess.CalledProcessError:
             subprocess.run(["git", "checkout", "-b", "main"], check=True)
+        except subprocess.CalledProcessError:
+            # If main branch already exists, just switch to it
+            subprocess.run(["git", "checkout", "main"], check=True)
         
         # Create gh-pages branch if it doesn't exist
         try:
             subprocess.run(["git", "show-ref", "--verify", "refs/heads/gh-pages"], check=True)
         except subprocess.CalledProcessError:
             print("🔄 Creating gh-pages branch...")
+            # Create an empty gh-pages branch
             subprocess.run(["git", "checkout", "--orphan", "gh-pages"], check=True)
-            subprocess.run(["git", "rm", "-rf", "."], check=True)
             
-            try:
-                subprocess.run(["git", "commit", "--allow-empty", "-m", "Initial gh-pages commit"], check=True)
-            except subprocess.CalledProcessError as e:
-                if "nothing to commit" not in str(e.stderr):
-                    raise
-                    
+            # Create a dummy file to commit
+            with open("index.html", "w") as f:
+                f.write("<!DOCTYPE html><html><head><title>Vulnerability Scan Reports</title></head><body><h1>Vulnerability Scan Reports</h1></body></html>")
+            
+            subprocess.run(["git", "add", "index.html"], check=True)
+            subprocess.run(["git", "commit", "-m", "Initial gh-pages commit"], check=True)
+            
+            # Switch back to main branch
             subprocess.run(["git", "checkout", "main"], check=True)
 
         # Create a temporary directory for gh-pages content
