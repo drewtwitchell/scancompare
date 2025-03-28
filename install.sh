@@ -34,11 +34,9 @@ tool_done() {
 
 echo "🛠️  Starting scancompare installation..."
 
-# Check if already installed and check for updates
-if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
+# Check if already installed and check for updates, only for reinstallation scenarios
+if [[ -f "$PYTHON_SCRIPT" && "$FORCE_REINSTALL" -eq 0 ]]; then
   echo "    🔍 scancompare is already installed. Checking for updates and verifying dependencies..."
-
-  # Try to check for updates via `scancompare --update`
   if scancompare --update > /dev/null 2>&1; then  # Suppressing output of `scancompare --update` to avoid redundancy
     CURRENT_VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
     echo "    ✅ All tools verified and updated."
@@ -48,15 +46,12 @@ if [[ "$FORCE_REINSTALL" -eq 0 && -f "$PYTHON_SCRIPT" ]]; then
   fi
 fi
 
-# If it's not installed or failed to update, proceed with reinstalling
-echo "    📦 Proceeding with reinstallation of scancompare and dependencies..."
-
 # Install necessary tools
-tool_progress "🔍 Attempting" "tool installation via Homebrew or fallback methods..."
+tool_progress "🔍 Attempting" "tool installation..."
 
 install_homebrew() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    tool_progress "🍺 Installing" "Homebrew"
+    tool_progress "🍺 Installing" "Homebrew..."
     NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
       echo "    ⚠️ Failed to install Homebrew. Falling back to manual installation methods."
       tool_done
