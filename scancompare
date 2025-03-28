@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.1
+# scancompare version 1.0.0
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.1"
+VERSION = "1.0.0"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -768,6 +768,12 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     env = Environment(loader=FileSystemLoader(template_dir))
     template = env.get_template("scan_template.html")
 
+    # Get GHAS link if available
+    ghas_link = None
+    if args.repo_url:
+        repo = get_repo_from_url(args.repo_url)
+        ghas_link = f"https://github.com/{repo}/security/code-scanning"
+
     rendered = template.render(
         image=image,
         trivy_version=trivy_version,
@@ -781,7 +787,8 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
         grype_section=format_and_group_by_type(grype_unique_detailed),
         trivy_raw=trivy_raw,
         grype_raw=grype_raw,
-        scan_date=timestamp
+        scan_date=timestamp,
+        ghas_link=ghas_link
     )
 
     report_path.write_text(rendered)

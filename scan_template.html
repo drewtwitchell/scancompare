@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vulnerability Scan Report - {{ image }}</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         :root {
             --primary-color: #2196f3;
@@ -198,6 +199,97 @@
             font-size: 0.9em;
             margin-top: 10px;
         }
+
+        .tool-links {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .tool-link {
+            display: inline-flex;
+            align-items: center;
+            padding: 10px 20px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            text-decoration: none;
+            color: #333;
+            transition: background-color 0.2s;
+        }
+
+        .tool-link:hover {
+            background-color: #e9ecef;
+        }
+
+        .tool-link img {
+            width: 20px;
+            height: 20px;
+            margin-right: 8px;
+        }
+
+        .action-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .action-button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .action-button:hover {
+            background-color: #0056b3;
+        }
+
+        .raw-data {
+            margin-top: 30px;
+            border-top: 2px solid #eee;
+            padding-top: 20px;
+        }
+
+        .raw-data pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            display: none;
+        }
+
+        .raw-data pre.show {
+            display: block;
+        }
+
+        .ghas-link {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #24292e;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .ghas-link:hover {
+            background-color: #2f363d;
+        }
+
+        @media print {
+            .severity-filters,
+            .action-buttons,
+            .tool-links,
+            .raw-data {
+                display: none;
+            }
+        }
     </style>
 </head>
 <body>
@@ -224,6 +316,17 @@
             </div>
         </div>
 
+        <div class="tool-links">
+            <a href="https://aquasecurity.github.io/trivy/" target="_blank" class="tool-link">
+                <img src="https://aquasecurity.github.io/trivy/assets/logo.png" alt="Trivy Logo">
+                Learn more about Trivy
+            </a>
+            <a href="https://github.com/anchore/grype" target="_blank" class="tool-link">
+                <img src="https://github.com/anchore/grype/raw/main/docs/img/grype-logo.png" alt="Grype Logo">
+                Learn more about Grype
+            </a>
+        </div>
+
         <div class="summary">
             <h2>Summary</h2>
             <div class="summary-grid">
@@ -246,6 +349,20 @@
             </div>
         </div>
 
+        <div class="severity-filters">
+            <button class="severity-filter active" data-severity="Critical" style="background-color: var(--critical-color); color: white;">Critical</button>
+            <button class="severity-filter active" data-severity="High" style="background-color: var(--high-color); color: white;">High</button>
+            <button class="severity-filter active" data-severity="Medium" style="background-color: var(--medium-color); color: white;">Medium</button>
+            <button class="severity-filter active" data-severity="Low" style="background-color: var(--low-color); color: white;">Low</button>
+            <button class="severity-filter active" data-severity="Unknown" style="background-color: var(--unknown-color); color: white;">Unknown</button>
+        </div>
+
+        <div class="action-buttons">
+            <button class="action-button" onclick="downloadJSON()">Download JSON</button>
+            <button class="action-button" onclick="downloadPDF()">Download PDF</button>
+            <button class="action-button" onclick="toggleRawData()">Show/Hide Raw Data</button>
+        </div>
+
         <div class="vulnerabilities">
             <h2>Shared Vulnerabilities</h2>
             {{ shared_section }}
@@ -260,10 +377,18 @@
         <div class="raw-data">
             <h2>Raw Scan Data</h2>
             <h3>Trivy Results</h3>
-            <pre>{{ trivy_raw }}</pre>
+            <pre id="raw-json">{{ trivy_raw }}</pre>
             <h3>Grype Results</h3>
             <pre>{{ grype_raw }}</pre>
         </div>
+
+        {% if ghas_link %}
+        <div style="text-align: center;">
+            <a href="{{ ghas_link }}" target="_blank" class="ghas-link">
+                View Results in GitHub Advanced Security
+            </a>
+        </div>
+        {% endif %}
     </div>
 
     <script>
@@ -278,6 +403,53 @@
                     content.style.maxHeight = content.scrollHeight + "px";
                 }
             });
+        }
+
+        // Severity filters
+        const filters = document.querySelectorAll('.severity-filter');
+        filters.forEach(filter => {
+            filter.addEventListener('click', function() {
+                this.classList.toggle('active');
+                this.classList.toggle('inactive');
+                const severity = this.dataset.severity;
+                const blocks = document.querySelectorAll(`.severity-block[data-severity="${severity}"]`);
+                blocks.forEach(block => {
+                    block.style.display = this.classList.contains('active') ? 'flex' : 'none';
+                });
+            });
+        });
+
+        // Download JSON
+        function downloadJSON() {
+            const data = document.getElementById('raw-json').textContent;
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'scan_results.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Download PDF
+        function downloadPDF() {
+            const element = document.querySelector('.container');
+            const opt = {
+                margin: 1,
+                filename: 'scan_report.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2 },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+            };
+            html2pdf().set(opt).from(element).save();
+        }
+
+        // Toggle raw data
+        function toggleRawData() {
+            const pre = document.getElementById('raw-json');
+            pre.classList.toggle('show');
         }
     </script>
 </body>
