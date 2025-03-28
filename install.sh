@@ -78,7 +78,7 @@ install_python_and_tools() {
   source "$VENV_DIR/bin/activate"
 
   if ! python -c "import jinja2" &> /dev/null; then
-    tool_progress "⚙️ Installing" "jinja2..."
+    tool_progress "⚙️ Installing"  "jinja2..."
     pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location || {
       printf "❌ Failed to install jinja2."; exit 1;
     }
