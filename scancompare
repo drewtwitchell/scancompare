@@ -22,6 +22,8 @@ from io import BytesIO
 from jinja2 import Environment, FileSystemLoader
 import difflib
 from typing import Dict, List, Set, Tuple, Optional
+import requests
+from urllib.parse import urlparse
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
@@ -629,12 +631,41 @@ def display_summary(trivy_cves, grype_cves):
 
     return shared_cves, only_trivy_cves, only_grype_cves
 
+def get_upstream_url(repo_url):
+    # Extract the user and repo from the repo URL
+    parsed = urlparse(repo_url)
+    repo_path = parsed.path.strip("/")
+    if repo_path.endswith(".git"):
+        repo_path = repo_path[:-4]
+    
+    # Get the user and repo
+    user, repo = repo_path.split("/")[-2:]
+    
+    # Use GitHub API to fetch repo details
+    api_url = f"https://api.github.com/repos/{user}/{repo}"
+    response = requests.get(api_url)
+    
+    if response.status_code != 200:
+        print("⚠️ Failed to fetch repository details from GitHub.")
+        return None
+    
+    repo_data = response.json()
+    
+    # Check if it's a fork and get the upstream (parent) repo
+    if repo_data.get("fork", False):
+        upstream_user = repo_data["parent"]["owner"]["login"]
+        upstream_repo = repo_data["parent"]["name"]
+        upstream_url = f"https://github.com/{upstream_user}/{upstream_repo}"
+        return upstream_url
+    
+    # If not a fork, return the original repo URL
+    return f"https://github.com/{user}/{repo}"
+
 def publish_to_github_pages(report_path, image):
     """Publish the HTML report to GitHub Pages, choosing 'docs/' or 'gh-pages' based on the repo."""
     import os
     from pathlib import Path
     import shutil
-    import subprocess
     from datetime import datetime
     import zipfile
     from urllib.parse import urlparse
@@ -642,38 +673,24 @@ def publish_to_github_pages(report_path, image):
     if not args.repo_url:
         return None
 
-    try:
-        tool_progress("🔄", "Pulling latest gh-pages")
-        subprocess.run(["git", "pull", "--autostash", "origin", "gh-pages"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        tool_done()
-    except Exception:
-        print("⚠️ Warning: failed to pull latest changes. Continuing anyway.")
-        tool_done()
+    # Get the upstream or fork URL
+    upstream_url = get_upstream_url(args.repo_url)
 
-    # Parse GitHub info safely
-    parsed = urlparse(args.repo_url)
-    repo_path = parsed.path.strip("/")
-    if repo_path.endswith(".git"):
-        repo_path = repo_path[:-4]
-    user, repo = repo_path.split("/")[-2:]
-
-    # Correctly derive the upstream repository URL
-    upstream_user = "bgeveritt"  # The original repo owner
-    fork_url = f"https://github.com/{user}/{repo}"
-    upstream_url = f"https://github.com/{upstream_user}/{repo}"
-
-    if fork_url != args.repo_url:
-        print(f"⚠️ This appears to be a fork of the  upstream repository: {upstream_url}")
+    if upstream_url:
+        print(f"⚠️ This appears to be a fork of the repository.")
+        print(f"    The upstream repository is: {upstream_url}")
+        
+        # Ask user if they want to publish to the upstream URL
         user_choice = input(f"Do you want to publish to the upstream repository URL {upstream_url}? (y/n): ").strip().lower()
 
         if user_choice == "y":
-            # Update the repo_url to the upstream URL
+            # Change to the upstream URL
             print(f"🔄 Changing to upstream repository URL: {upstream_url}")
             args.repo_url = upstream_url
         else:
-            print(f"🔄 Keeping the forked repository URL: {fork_url}")
+            print(f"🔄 Keeping the forked repository URL: {args.repo_url}")
     else:
-        print(f"⚠️ You are using your forked repository URL: {fork_url}")
+        print("⚠️ Could not determine the upstream repository.")
 
     # Check if docs/ folder exists
     use_docs_folder = Path("docs").exists()
