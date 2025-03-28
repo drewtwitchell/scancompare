@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.0
+# scancompare version 1.0.1
 
 import os
 import sys
@@ -23,7 +23,7 @@ from jinja2 import Environment, FileSystemLoader
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -667,38 +667,88 @@ def main(args):
 
         args.cloned_repo_path = temp_dir
 
-        dockerfile_path = None
+        # Find all Dockerfiles in the repository
+        dockerfile_paths = []
         for root, _, files in os.walk(temp_dir):
             for file in files:
                 if file.lower().startswith("dockerfile"):
-                    dockerfile_path = os.path.join(root, file)
-                    break
-            if dockerfile_path:
-                break
+                    dockerfile_paths.append(os.path.join(root, file))
 
-        if not dockerfile_path:
+        if not dockerfile_paths:
             print("❌ No Dockerfile found in the provided repository. Exiting.")
-            sys.exit(1)  # Exit if Dockerfile is not found
+            sys.exit(1)  # Exit if no Dockerfile is found
 
         repo_name = args.repo_url.split('/')[-1].replace('.git', '')
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-        image_tag = f"{repo_name}-{timestamp}"
 
-        # Docker image build
-        tool_progress("🐳", f"Building Docker image '{image_tag}'")
-        docker_build_cmd = ["docker", "build", "-t", image_tag, os.path.dirname(dockerfile_path)]
-        try:
-            if args.verbose:
-                subprocess.run(docker_build_cmd, check=True)
-            else:
-                subprocess.run(docker_build_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            tool_done()  # Mark Docker build as done
-            print(f"🛡️ Starting vulnerability scans against image: {image_tag}")
-            summary_lines.append(f"🛡️ Scanning built image: {image_tag}")
-        except subprocess.CalledProcessError:
-            explain_exit(f"Docker build failed. Please check the Dockerfile and try building manually with 'docker build -t {image_tag} .' to debug.")
+        # Build images for each Dockerfile found
+        built_images = []
+        for dockerfile_path in dockerfile_paths:
+            # Create a unique image tag based on the directory containing the Dockerfile
+            dockerfile_dir = os.path.dirname(dockerfile_path)
+            dir_name = os.path.basename(dockerfile_dir)
+            image_tag = f"{repo_name}-{dir_name}-{timestamp}"
 
-        image = image_tag
+            # Docker image build
+            tool_progress("🐳", f"Building Docker image '{image_tag}' from {os.path.relpath(dockerfile_path, temp_dir)}")
+            docker_build_cmd = ["docker", "build", "-t", image_tag, dockerfile_dir]
+            try:
+                if args.verbose:
+                    subprocess.run(docker_build_cmd, check=True)
+                else:
+                    subprocess.run(docker_build_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                tool_done()  # Mark Docker build as done
+                built_images.append(image_tag)
+                print(f"🛡️ Starting vulnerability scans against image: {image_tag}")
+                summary_lines.append(f"🛡️ Scanning built image: {image_tag}")
+
+                # Scan this image with Trivy
+                trivy_path = scan_dir / f"original_trivy_{dir_name}.json"
+                tool_progress("🔹", f"Scanning {image_tag} with Trivy")
+                if not run_scan("trivy", image_tag, trivy_path, verbose=args.verbose):
+                    print(f"⚠️ Trivy scan failed for {image_tag}")
+                    continue
+                tool_done()
+                trivy_version = get_version("trivy")
+                print(f"   🔢 Trivy version: {trivy_version}")
+                summary_lines.append(f"🔢 Trivy version: {trivy_version}")
+                print(f"   ✅ Trivy scan saved to {trivy_path}")
+
+                # Scan this image with Grype
+                grype_path = scan_dir / f"original_grype_{dir_name}.json"
+                tool_progress("🔹", f"Scanning {image_tag} with Grype")
+                if not run_scan("grype", image_tag, grype_path, verbose=args.verbose):
+                    print(f"⚠️ Grype scan failed for {image_tag}")
+                    continue
+                tool_done()
+                grype_version = get_version("grype")
+                print(f"   🔢 Grype version: {grype_version}")
+                summary_lines.append(f"🔢 Grype version: {grype_version}")
+                print(f"   ✅ Grype scan saved to {grype_path}")
+
+                # Process scan results for this image
+                trivy_data = extract_cves_with_severity(trivy_path)
+                grype_data = extract_cves_with_severity(grype_path)
+
+                shared, only_trivy, only_grype = display_summary(trivy_data, grype_data)
+
+                print_cves_by_severity(f"Unique to Grype ({image_tag})", {c: grype_data[c] for c in only_grype})
+                print_cves_by_severity(f"Unique to Trivy ({image_tag})", {c: trivy_data[c] for c in only_trivy})
+                print_cves_by_severity(f"Shared CVEs ({image_tag})", {c: trivy_data.get(c, grype_data.get(c, "Unknown")) for c in shared})
+
+                # Generate HTML report for this image
+                generate_html_report(image_tag, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
+
+            except subprocess.CalledProcessError:
+                tool_done()  # Mark Docker build as done with error
+                print(f"\n⚠️ Docker build failed for {os.path.relpath(dockerfile_path, temp_dir)}. Please check the Dockerfile and try building manually with 'docker build -t {image_tag} .' to debug.")
+                explain_exit("Docker build failed.")
+
+        if not built_images:
+            explain_exit("No images were successfully built and scanned.")
+
+        # Use the first built image for GHAS upload
+        image = built_images[0]
         repo = get_repo_from_url(args.repo_url)
     else:
         image = args.image
@@ -706,65 +756,74 @@ def main(args):
         print(f"🛡️ Starting vulnerability scans against image: {image}")
         summary_lines.append(f"🛡️ Scanning image: {image}")
 
-    trivy_path = scan_dir / "original_trivy.json"
-    grype_path = scan_dir / "original_grype.json"
+        # Scan the single image
+        trivy_path = scan_dir / "original_trivy.json"
+        grype_path = scan_dir / "original_grype.json"
 
-    # Trivy scan as a sub-process of "Starting vulnerability scans"
-    tool_progress("🔹", "Scanning with Trivy")
-    if not run_scan("trivy", image, trivy_path, verbose=args.verbose):
-        explain_exit("Trivy scan failed or image not found.")
-    tool_done()
-    trivy_version = get_version("trivy")
-    print(f"   🔢 Trivy version: {trivy_version}")
-    summary_lines.append(f"🔢 Trivy version: {trivy_version}")
-    print(f"   ✅ Trivy scan saved to {trivy_path}")
+        # Trivy scan
+        tool_progress("🔹", "Scanning with Trivy")
+        if not run_scan("trivy", image, trivy_path, verbose=args.verbose):
+            explain_exit("Trivy scan failed or image not found.")
+        tool_done()
+        trivy_version = get_version("trivy")
+        print(f"   🔢 Trivy version: {trivy_version}")
+        summary_lines.append(f"🔢 Trivy version: {trivy_version}")
+        print(f"   ✅ Trivy scan saved to {trivy_path}")
 
-    # Grype scan as a sub-process of "Starting vulnerability scans"
-    tool_progress("🔹", "Scanning with Grype")
-    if not run_scan("grype", image, grype_path, verbose=args.verbose):
-        explain_exit("Grype scan failed or image not found.")
-    tool_done()
-    grype_version = get_version("grype")
-    print(f"   🔢 Grype version: {grype_version}")
-    summary_lines.append(f"🔢 Grype version: {grype_version}")
-    print(f"   ✅ Grype scan saved to {grype_path}")
+        # Grype scan
+        tool_progress("🔹", "Scanning with Grype")
+        if not run_scan("grype", image, grype_path, verbose=args.verbose):
+            explain_exit("Grype scan failed or image not found.")
+        tool_done()
+        grype_version = get_version("grype")
+        print(f"   🔢 Grype version: {grype_version}")
+        summary_lines.append(f"🔢 Grype version: {grype_version}")
+        print(f"   ✅ Grype scan saved to {grype_path}")
 
-    trivy_data = extract_cves_with_severity(trivy_path)
-    grype_data = extract_cves_with_severity(grype_path)
+        trivy_data = extract_cves_with_severity(trivy_path)
+        grype_data = extract_cves_with_severity(grype_path)
 
-    shared, only_trivy, only_grype = display_summary(trivy_data, grype_data)
+        shared, only_trivy, only_grype = display_summary(trivy_data, grype_data)
 
-    print_cves_by_severity("Unique to Grype", {c: grype_data[c] for c in only_grype})
-    print_cves_by_severity("Unique to Trivy", {c: trivy_data[c] for c in only_trivy})
-    print_cves_by_severity("Shared CVEs", {c: trivy_data.get(c, grype_data.get(c, "Unknown")) for c in shared})
-
-    if repo:
-        print(f"🛠️ Trivy and Grype scans complete. Preparing upload to GitHub Advanced Security (GHAS)...")
-        upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, temp_dir, verbose=args.verbose)
+        print_cves_by_severity("Unique to Grype", {c: grype_data[c] for c in only_grype})
+        print_cves_by_severity("Unique to Trivy", {c: trivy_data[c] for c in only_trivy})
+        print_cves_by_severity("Shared CVEs", {c: trivy_data.get(c, grype_data.get(c, "Unknown")) for c in shared})
 
         # Generate HTML report
         generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
 
-        # Cleanup: Show progress
-        print("🧹 Cleaning up old scan artifacts...")
-        summary_lines.append("🧹 Cleaned up old scan artifacts.")
-        for path in scan_dir.glob("*.*"):
-            if path.name not in {trivy_path.name, grype_path.name} and not path.name.endswith(".html"):
-                path.unlink()
+    if repo:
+        print(f"🛠️ Trivy and Grype scans complete. Attempting upload to GitHub Advanced Security (GHAS)...")
+        try:
+            upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, temp_dir, verbose=args.verbose)
+        except Exception as e:
+            print(f"⚠️ GHAS upload failed: {e}")
+            print("ℹ️ Continuing with local scan results...")
 
-        if args.keep_data:
-            print("🛑 Cleanup skipped due to --keep-data. Keeping Docker image, cloned repo, and scan artifacts.")
-            summary_lines.append("🛑 Cleanup skipped due to --keep-data. Keeping Docker image, cloned repo, and scan artifacts.")
-        else:
-            # Clean up Docker image and repo
-            print(f"🧼 Removing temporary Docker image '{image_tag}'...")
-            subprocess.run(["docker", "rmi", "-f", image_tag], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Cleanup: Show progress
+    print("🧹 Cleaning up old scan artifacts...")
+    summary_lines.append("🧹 Cleaned up old scan artifacts.")
+    for path in scan_dir.glob("*.*"):
+        if not path.name.endswith(".html"):
+            path.unlink()
 
-            if temp_dir and os.path.isdir(temp_dir):
-                print(f"🧹 Removing temporary cloned repository from '{temp_dir}'...")
-                shutil.rmtree(temp_dir)
+    if args.keep_data:
+        print("🛑 Cleanup skipped due to --keep-data. Keeping Docker images, cloned repo, and scan artifacts.")
+        summary_lines.append("🛑 Cleanup skipped due to --keep-data. Keeping Docker images, cloned repo, and scan artifacts.")
     else:
-        generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype, trivy_version, grype_version)
+        # Clean up Docker images
+        if args.repo_url and built_images:
+            for image_tag in built_images:
+                print(f"🧼 Removing temporary Docker image '{image_tag}'...")
+                subprocess.run(["docker", "rmi", "-f", image_tag], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        elif image:
+            print(f"🧼 Removing temporary Docker image '{image}'...")
+            subprocess.run(["docker", "rmi", "-f", image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        # Clean up cloned repository if it exists
+        if temp_dir and os.path.isdir(temp_dir):
+            print(f"🧹 Removing temporary cloned repository from '{temp_dir}'...")
+            shutil.rmtree(temp_dir)
 
     if summary_lines:
         with open(summary_log, "a") as log_file:
