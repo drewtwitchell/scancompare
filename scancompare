@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scancompare version 1.0.0
+# scancompare version 1.0.1
 
 import os
 import sys
@@ -25,7 +25,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 args = None  # global placeholder
 cloned_repo_dir = None # global placeholder
@@ -646,7 +646,14 @@ def publish_to_github_pages(report_path, image_name):
                 print("   git remote add origin <your-repo-url>")
                 return None
                 
-        repo_name = repo_url.split('/')[-1].replace('.git', '')
+        # Extract repository owner and name from URL
+        repo_parts = repo_url.split('/')
+        if len(repo_parts) >= 2:
+            repo_owner = repo_parts[-2]
+            repo_name = repo_parts[-1].replace('.git', '')
+        else:
+            print("⚠️ Invalid repository URL format")
+            return None
         
         # Switch to main branch
         try:
@@ -782,8 +789,8 @@ def publish_to_github_pages(report_path, image_name):
             # Remove the temporary worktree
             subprocess.run(["git", "worktree", "remove", temp_dir], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-            # Generate the GitHub Pages URL
-            pages_url = f"https://{repo_url.split('/')[-2]}.github.io/{repo_name}/{report_dir}"
+            # Generate the GitHub Pages URL using the correct repository owner and name
+            pages_url = f"https://{repo_owner}.github.io/{repo_name}/{report_dir}"
             return pages_url
 
     except Exception as e:
