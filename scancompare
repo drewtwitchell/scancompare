@@ -645,10 +645,24 @@ def publish_to_github_pages(report_path, image):
         print("Usage: --repo-url <url> [--other-options]")
         sys.exit(1)
 
-    # Proceed if --repo-url is supplied
-    if not args.repo_url:
-        print("⚠️ No --repo-url supplied. Publishing to the default fork.")
-        return None  # If no repo URL, do nothing
+    # Parse GitHub info safely
+    parsed = urlparse(args.repo_url)
+    repo_path = parsed.path.strip("/")
+    if repo_path.endswith(".git"):
+        repo_path = repo_path[:-4]
+    user, repo = repo_path.split("/")[-2:]
+
+    # Detect if this is a fork
+    upstream_url = f"https://github.com/{user}/{repo}"
+    fork_url = f"https://github.com/{user}/{repo}"
+
+    # Check if it's a fork and ask for confirmation
+    if user != 'drewtwitchell' and args.repo_url != upstream_url:
+        print(f"⚠️ It looks like this is a fork of the repository. You are attempting to push to your fork ({user}/{repo}).")
+        confirm = input("Do you want to continue and publish to your fork (y/n)? ").strip().lower()
+        if confirm != 'y':
+            print("⚠️ Operation aborted. Please use the correct repo URL.")
+            sys.exit(1)
 
     try:
         tool_progress("🔄", "Pulling latest gh-pages")
@@ -657,13 +671,6 @@ def publish_to_github_pages(report_path, image):
     except Exception:
         print("⚠️ Warning: failed to pull latest changes. Continuing anyway.")
         tool_done()
-
-    # Parse GitHub info safely
-    parsed = urlparse(args.repo_url)
-    repo_path = parsed.path.strip("/")
-    if repo_path.endswith(".git"):
-        repo_path = repo_path[:-4]
-    user, repo = repo_path.split("/")[-2:]
 
     # Check if docs/ folder exists
     use_docs_folder = Path("docs").exists()
@@ -684,7 +691,7 @@ def publish_to_github_pages(report_path, image):
     target_path = target_dir / report_filename
     shutil.copy2(report_path, target_path)
 
-    # Create index.html redirecting to the latest report
+    # Create index.html redirecting to latest report
     index_html = target_dir / "index.html"
     index_html.write_text(f"""<html>
 <head><meta http-equiv='refresh' content='0; URL={report_filename}'></head>
