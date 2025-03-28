@@ -32,7 +32,6 @@ tool_done() {
   echo -e " \033[32m✔\033[0m"
 }
 
-# Starting installation
 echo "🛠️  Starting scancompare installation..."
 
 # Check if already installed and check for updates
@@ -60,7 +59,7 @@ install_homebrew() {
   fi
 }
 
-# Install Python3 if not installed
+# Check if Python3 is installed, otherwise install using Homebrew or fallback
 if ! command -v python3 &> /dev/null; then
   echo "❌ Python3 not found"
   if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -68,6 +67,21 @@ if ! command -v python3 &> /dev/null; then
     tool_progress "⚙️ Installing" "Python3 using Homebrew..."
     brew install python &> /dev/null || echo "⚠️ Failed to install Python3 with Homebrew. Please install manually."
     tool_done
+  elif command -v apt &> /dev/null; then
+    tool_progress "⚙️ Installing" "Python3 with apt..."
+    sudo apt update &> /dev/null && sudo apt install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with apt. Please install manually."
+    tool_done
+  elif command -v dnf &> /dev/null; then
+    tool_progress "⚙️ Installing" "Python3 with dnf..."
+    sudo dnf install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with dnf. Please install manually."
+    tool_done
+  elif command -v yum &> /dev/null; then
+    tool_progress "⚙️ Installing" "Python3 with yum..."
+    sudo yum install -y python3 python3-venv python3-pip &> /dev/null || echo "⚠️ Failed to install Python3 with yum. Please install manually."
+    tool_done
+  else
+    echo "❌ Could not determine package manager. Please install Python3 manually."
+    exit 1
   fi
 fi
 
@@ -91,7 +105,7 @@ fi
 
 deactivate
 
-# Install Trivy and Grype if not installed
+# Install trivy
 if ! command -v trivy &> /dev/null; then
   tool_progress "⚙️ Installing" "Trivy..."
   curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
@@ -100,6 +114,7 @@ if ! command -v trivy &> /dev/null; then
   tool_done
 fi
 
+# Install grype
 if ! command -v grype &> /dev/null; then
   tool_progress "⚙️ Installing" "Grype..."
   curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
@@ -108,48 +123,13 @@ if ! command -v grype &> /dev/null; then
   tool_done
 fi
 
-tool_done  # Done with installing required tools
-
-# Fallback installation methods for package managers
-install_package_manager() {
-  if command -v apt &> /dev/null; then
-    tool_progress "⚙️ Installing" "Python3 with apt..."
-    sudo apt update &> /dev/null && sudo apt install -y python3 python3-venv python3-pip &> /dev/null || {
-      echo "⚠️ Failed to install Python3 with apt. Please install manually."
-      tool_done
-    }
-  elif command -v dnf &> /dev/null; then
-    tool_progress "⚙️ Installing" "Python3 with dnf..."
-    sudo dnf install -y python3 python3-venv python3-pip &> /dev/null || {
-      echo "⚠️ Failed to install Python3 with dnf. Please install manually."
-      tool_done
-    }
-  elif command -v yum &> /dev/null; then
-    tool_progress "⚙️ Installing" "Python3 with yum..."
-    sudo yum install -y python3 python3-venv python3-pip &> /dev/null || {
-      echo "⚠️ Failed to install Python3 with yum. Please install manually."
-      tool_done
-    }
-  else
-    echo "❌ Could not determine package manager. Please install Python3 manually."
-    exit 1
-    tool_done
-  fi
-}
-
-# Ensure Homebrew is installed for macOS
-command -v brew &>/dev/null || install_homebrew
-
-# Ensure a package manager is available for Linux
-command -v apt &>/dev/null || command -v dnf &>/dev/null || command -v yum &>/dev/null || install_package_manager
-
-# Downloading and installing scancompare script
-tool_progress "📦 Downloading and Installing" "$SCRIPT_NAME script version..."
+# Download the scancompare script
+tool_progress "Downloading" "$SCRIPT_NAME script"
 curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" &> /dev/null
 tool_done
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
-tool_progress "⚙️ Installing version:" "$VERSION"
+tool_progress "Installing version:" "$VERSION"
 tool_done
 
 # Ensure the script is executable
@@ -179,4 +159,4 @@ else
   echo "✅ $INSTALL_BIN is in your PATH"
 fi
 
-echo "🎉 You can now run: scancompare <image-name>"
+echo "🎉 You can now run: $SCRIPT_NAME <image-name>"
