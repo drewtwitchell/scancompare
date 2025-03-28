@@ -636,6 +636,7 @@ def publish_to_github_pages(report_path, image_name):
     import shutil
     import subprocess
     from datetime import datetime
+    import zipfile
 
     if not args.repo_url:
         return None
@@ -656,9 +657,11 @@ def publish_to_github_pages(report_path, image_name):
     if use_docs_folder:
         target_dir = Path("docs")
         target_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
+        cleanup_after = False
     else:
         target_dir = Path("gh-pages")
         target_branch = "gh-pages"
+        cleanup_after = True
 
     target_dir.mkdir(exist_ok=True)
 
@@ -692,16 +695,60 @@ def publish_to_github_pages(report_path, image_name):
         subprocess.run(["git", "checkout", "-B", target_branch], check=True)
         tool_done()
 
+    # Pull latest to avoid diverged history
+    tool_progress("🔄", f"Pulling latest {target_branch}...")
+    try:
+        subprocess.run(["git", "pull", "--rebase", "origin", target_branch], check=True)
+    except subprocess.CalledProcessError:
+        print("⚠️ Warning: failed to pull latest changes. Continuing anyway.")
+    tool_done()
+
     # Stage and commit (force add to bypass .gitignore)
     tool_progress("📦", f"Adding {target_dir} contents to git...")
     subprocess.run(["git", "add", "-f", str(target_dir)], check=True)
     subprocess.run(["git", "commit", "-m", f"📊 Add scan report for {image_name}"], check=True)
-    subprocess.run(["git", "push", "-u", "origin", target_branch], check=True)
+    subprocess.run(["git", "push", "-f", "origin", target_branch], check=True)
     tool_done()
 
     # Return to original branch if we switched
     if target_branch != current_branch:
         subprocess.run(["git", "checkout", current_branch], check=True)
+
+    # Backup and clean up if needed
+    if cleanup_after and target_dir.exists() and not args.keep_data:
+        try:
+            # Create backups folder
+            backup_dir = Path("backups")
+            backup_dir.mkdir(exist_ok=True)
+
+            # Build backup zip name
+            backup_name = backup_dir / f"{target_dir.name}-backup-{timestamp}.zip"
+            with zipfile.ZipFile(backup_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                # Add contents of target_dir
+                for path in target_dir.rglob('*'):
+                    zipf.write(path, path.relative_to(Path.cwd()))
+                # Also add scan_reports/*.json and *.html
+                scan_reports = Path("scan_reports")
+                if scan_reports.exists():
+                    for extra in scan_reports.glob("*.json"):
+                        zipf.write(extra, extra.relative_to(Path.cwd()))
+                    for extra in scan_reports.glob("*.html"):
+                        zipf.write(extra, extra.relative_to(Path.cwd()))
+
+            print(f"🗃️  Backup created: {backup_name.name}")
+
+            # Delete gh-pages/ folder
+            shutil.rmtree(target_dir)
+            print(f"🧹 Cleaned up temporary folder: {target_dir}")
+
+            # Enforce backup retention (keep last 3)
+            backups = sorted(backup_dir.glob(f"{target_dir.name}-backup-*.zip"), key=os.path.getmtime, reverse=True)
+            for old_backup in backups[3:]:
+                old_backup.unlink()
+                print(f"🗑️  Removed old backup: {old_backup.name}")
+
+        except Exception as e:
+            print(f"⚠️ Failed to backup or clean {target_dir}: {e}")
 
     # Return the public report URL
     base_url = f"https://{user}.github.io/{repo}"
@@ -850,7 +897,7 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     template_path = template_dir / "scan_template.html"
 
     if not template_path.exists():
-        tool_progress("updates_html","📄 scan_template.html missing — restoring latest version...")
+        tool_progress("📄", "scan_template.html missing — restoring latest version...")
         try:
             urlretrieve(
                 "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html",
