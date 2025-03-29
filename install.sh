@@ -8,6 +8,9 @@ FORCE_REINSTALL=0
 
 INSTALL_BIN="$HOME/.local/bin"
 INSTALL_LIB="$HOME/.local/lib/scancompare"
+USER_ROOT="$HOME/ScanCompare"
+SCANREPORTS_DIR="$USER_ROOT/scan_reports"
+TEMP_DIR="$USER_ROOT/temp"
 SCRIPT_NAME="scancompare"
 SCRIPT_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
 TEMPLATE_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html"
@@ -142,12 +145,19 @@ else
   printf "🔹 Wrapper script already exists. Skipping.\n"
 fi
 
+# Ensure the PATH setup is correct
 if ! command -v scancompare &> /dev/null; then
   printf "⚠️ scancompare was installed but isn't available in this shell session.\n"
   printf "➡️  Try running: export PATH=\"\$HOME/.local/bin:\$PATH\"\n"
   printf "   or close and reopen your terminal.\n"
 else
   printf "✅ $INSTALL_BIN is in your PATH\n"
+fi
+
+# Ensure the ScanCompare root folder structure
+if [[ ! -d "$USER_ROOT" ]]; then
+  mkdir -p "$SCANREPORTS_DIR" "$TEMP_DIR"
+  echo "Created ScanCompare directory structure at $USER_ROOT"
 fi
 
 printf "🎉 You can now run: $SCRIPT_NAME <image-name>\n"
