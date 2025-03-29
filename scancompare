@@ -705,7 +705,7 @@ def get_upstream_url(repo_url):
     # If it's not a fork, return the original repo URL
     return f"https://github.com/{user}/{repo}"
 
-def publish_to_github_pages(report_path, image, shared, only_trivy, only_grype):
+def publish_to_github_pages(report_path, image):
     """Publish the HTML report to GitHub Pages, choosing 'docs/' or 'gh-pages' based on the repo."""
     import os
     from pathlib import Path
@@ -729,14 +729,11 @@ def publish_to_github_pages(report_path, image, shared, only_trivy, only_grype):
             # Update the repo_url to the upstream URL
             print(f"🔄 Changing to upstream repository URL: {upstream_url}")
             args.repo_url = upstream_url
-            subprocess.run(["git", "remote", "set-url", "origin", upstream_url], check=True)
         else:
             print(f"🔄 Keeping the forked repository URL: {args.repo_url}")
-            subprocess.run(["git", "remote", "set-url", "origin", args.repo_url], check=True)
 
     else:
         print(f"⚠️ You are using your forked repository URL: {args.repo_url}")
-        subprocess.run(["git", "remote", "set-url", "origin", args.repo_url], check=True)
 
     # Parse the user and repo from the updated repo URL
     parsed = urlparse(args.repo_url)
@@ -764,16 +761,12 @@ def publish_to_github_pages(report_path, image, shared, only_trivy, only_grype):
     target_path = target_dir / report_filename
     shutil.copy2(report_path, target_path)
 
-    # Add SARIF upload link
-    ghas_link = f"https://github.com/{user}/{repo}/security/code-scanning"
-    
     # Create index.html redirecting to latest report
     index_html = target_dir / "index.html"
     index_html.write_text(f"""<html>
 <head><meta http-equiv='refresh' content='0; URL={report_filename}'></head>
 <body>
 <p>Redirecting to <a href='{report_filename}'>{report_filename}</a></p>
-<p>For security findings, view <a href="{ghas_link}">GHAS code scanning results</a></p>
 </body>
 </html>""")
 
