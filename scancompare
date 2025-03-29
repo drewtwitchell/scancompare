@@ -1063,17 +1063,24 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
         print(f"\n✅ Report published to GitHub Pages:")
         print(f"   \033[4;36m🔗 {pages_url}\033[0m")
 
-        # Ask if user wants to open in browser
-        open_html = input("📁 Open report in browser? (y/n): ").strip().lower()
+        # Open both GHAS and report if --repo-url is used
+        if args.repo_url:
+            print(f"✅ SARIF uploaded to GHAS:")
+            print(f"   \033[4;36m🔗 {ghas_link}\033[0m")
+
+        # Ask if user wants to open both in browser
+        open_html = input("\n📁 Open both the GitHub Pages report and GHAS security code scanning results in browser? (y/n): ").strip().lower()
         if open_html == "y":
             webbrowser.open(pages_url)
+            webbrowser.open(ghas_link)
+
     else:
         print(f"\n✅ Local HTML report saved: {report_path}")
 
         # Only show local file option if GitHub Pages publishing fails
-    open_html = input("📁 Open local HTML report in browser? (y/n): ").strip().lower()
-    if open_html == "y":
-        webbrowser.open(f"file://{report_path.absolute()}")
+        open_html = input("📁 Open local HTML report in browser? (y/n): ").strip().lower()
+        if open_html == "y":
+            webbrowser.open(f"file://{report_path.absolute()}")
 
 def explain_exit(msg):
     print(f"⚠️ {msg}")
