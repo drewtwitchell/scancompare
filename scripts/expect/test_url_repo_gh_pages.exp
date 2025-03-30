@@ -1,0 +1,62 @@
+#!/usr/bin/expect -f
+set timeout 300
+set log_file [open "test_results/test_repo_url_gh_pages.log" w]
+
+# Set default test result
+set test_result "FAIL"
+
+# Use the specific GitHub repo with a Dockerfile for testing
+spawn python scancompare --repo-url https://github.com/drewtwitchell/dockerfile-test --gh-pages --mock-no
+
+# Process output continuously looking for various indicators of progress
+expect {
+  "Automatically selecting 'no'" {
+    puts $log_file "REPO URL GH-PAGES TEST: Started correctly with mock-no"
+    exp_continue
+  }
+  "Cloning " {
+    puts $log_file "REPO URL GH-PAGES TEST: Started cloning repository"
+    exp_continue
+  }
+  "GitHub Pages" {
+    puts $log_file "REPO URL GH-PAGES TEST: PASS - GitHub Pages functionality detected"
+    set test_result "PASS"
+    exp_continue
+  }
+  "Preparing GitHub Pages" {
+    puts $log_file "REPO URL GH-PAGES TEST: PASS - GitHub Pages preparation started"
+    set test_result "PASS"
+    exp_continue
+  }
+  "Publishing to GitHub Pages" {
+    puts $log_file "REPO URL GH-PAGES TEST: PASS - GitHub Pages publishing started"
+    set test_result "PASS"
+    exp_continue
+  }
+  "gh-pages" {
+    puts $log_file "REPO URL GH-PAGES TEST: PASS - gh-pages reference detected"
+    set test_result "PASS"
+    exp_continue
+  }
+  "Local HTML report saved" {
+    puts $log_file "REPO URL GH-PAGES TEST: Report generation completed"
+    exp_continue
+  }
+  timeout {
+    puts $log_file "REPO URL GH-PAGES TEST: FAIL - GitHub Pages functionality not detected within timeout"
+    set test_result "FAIL"
+  }
+  eof {
+    if {$test_result == "FAIL"} {
+      puts $log_file "REPO URL GH-PAGES TEST: FAIL - Command completed without GitHub Pages output"
+    }
+  }
+}
+
+puts $log_file "Test result: $test_result"
+close $log_file
+
+# Write result to results file
+set results_file [open "test_results/test_repo_url_gh_pages_result.txt" w]
+puts $results_file $test_result
+close $results_file

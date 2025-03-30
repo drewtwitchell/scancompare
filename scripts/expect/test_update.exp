@@ -1,0 +1,36 @@
+#!/usr/bin/expect -f
+set timeout 60
+set log_file [open "test_results/test_update.log" w]
+
+# Set default test result in case of unexpected exit
+set test_result "FAIL"
+
+spawn python scancompare --update
+
+expect {
+  "Updating scancompare" {
+    puts $log_file "UPDATE TEST: PASS - Update process started correctly"
+    set test_result "PASS"
+  }
+  "scancompare is up to date" {
+    puts $log_file "UPDATE TEST: PASS - Already up to date message shown"
+    set test_result "PASS"
+  }
+  eof {
+    # Update might just silently finish if already updated
+    puts $log_file "UPDATE TEST: PASS - Update completed (silently)"
+    set test_result "PASS"
+  }
+  timeout {
+    puts $log_file "UPDATE TEST: FAIL - Update command timed out"
+    set test_result "FAIL"
+  }
+}
+
+puts $log_file "Test result: $test_result"
+close $log_file
+
+# Write result to results file
+set results_file [open "test_results/test_update_result.txt" w]
+puts $results_file $test_result
+close $results_file

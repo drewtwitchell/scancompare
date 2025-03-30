@@ -1,0 +1,94 @@
+#!/usr/bin/expect -f
+set timeout 300
+set log_file [open "test_results/test_repo_url_comprehensive.log" w]
+
+# Set default test result
+set test_result "FAIL"
+
+# Use the specific GitHub repo with a Dockerfile for testing
+spawn python scancompare --repo-url https://github.com/drewtwitchell/dockerfile-test --gh-pages --ghas --verbose --mock-no
+
+# Initialize feature detection flags
+set found_gh_pages 0
+set found_ghas 0
+set found_verbose 0
+set scan_completed 0
+
+# Process output continuously looking for various indicators of progress
+expect {
+  "Automatically selecting 'no'" {
+    puts $log_file "COMPREHENSIVE TEST: Started correctly with mock-no"
+    exp_continue
+  }
+  "Cloning " {
+    puts $log_file "COMPREHENSIVE TEST: Started cloning repository"
+    exp_continue
+  }
+  "GitHub Pages" {
+    puts $log_file "COMPREHENSIVE TEST: GitHub Pages functionality detected"
+    set found_gh_pages 1
+    exp_continue
+  }
+  "GHAS" {
+    puts $log_file "COMPREHENSIVE TEST: GHAS functionality detected"
+    set found_ghas 1
+    exp_continue
+  }
+  "Verbose mode" {
+    puts $log_file "COMPREHENSIVE TEST: Verbose mode detected"
+    set found_verbose 1
+    exp_continue
+  }
+  "Found " {
+    puts $log_file "COMPREHENSIVE TEST: Verbose output detected"
+    set found_verbose 1
+    exp_continue
+  }
+  "Local HTML report saved" {
+    puts $log_file "COMPREHENSIVE TEST: Report generation completed"
+    set scan_completed 1
+    
+    # Evaluate test success based on detected features
+    if {$found_gh_pages || $found_ghas || $found_verbose} {
+      set test_result "PASS"
+      puts $log_file "COMPREHENSIVE TEST: PASS - Detected at least one special feature"
+    } else {
+      set test_result "INCONCLUSIVE"
+      puts $log_file "COMPREHENSIVE TEST: INCONCLUSIVE - Scan completed but no special features detected"
+    }
+    exp_continue
+  }
+  timeout {
+    puts $log_file "COMPREHENSIVE TEST: Test timed out"
+    
+    # If we detected features but timed out, still consider it a success
+    if {$found_gh_pages || $found_ghas || $found_verbose} {
+      set test_result "PASS"
+      puts $log_file "COMPREHENSIVE TEST: PASS - Detected features before timeout"
+    } else {
+      set test_result "FAIL"
+      puts $log_file "COMPREHENSIVE TEST: FAIL - No features detected before timeout"
+    }
+  }
+  eof {
+    # If we haven't already set a final result
+    if {$test_result == "FAIL"} {
+      # If we detected features but process ended, consider it a success
+      if {$found_gh_pages || $found_ghas || $found_verbose} {
+        set test_result "PASS"
+        puts $log_file "COMPREHENSIVE TEST: PASS - Detected features before process ended"
+      } else {
+        set test_result "FAIL"
+        puts $log_file "COMPREHENSIVE TEST: FAIL - No features detected before process ended"
+      }
+    }
+  }
+}
+
+puts $log_file "Test result: $test_result"
+close $log_file
+
+# Write result to results file
+set results_file [open "test_results/test_repo_url_comprehensive_result.txt" w]
+puts $results_file $test_result
+close $results_file

@@ -1,0 +1,320 @@
+name: ScanCompare Tests
+
+on:
+  push:
+    branches: [main, develop, 'release-*']
+  pull_request:
+    branches: [main, develop, 'release-*']
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      security-events: write
+      pages: write
+    env:
+      SCANCOMPARE_UPDATED: "1"
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.8'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y expect
+          pip install jinja2 requests
+
+      - name: Install Trivy and Grype
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.42.0
+          trivy --version
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          grype --version
+
+      - name: Set up Docker
+        run: |
+          curl -fsSL https://get.docker.com -o get-docker.sh
+          sudo sh get-docker.sh
+          sudo systemctl start docker
+
+      - name: Set up directory structure
+        run: |
+          mkdir -p ~/ScanCompare/scan_reports
+          mkdir -p ~/ScanCompare/temp
+          mkdir -p ~/ScanCompare/backups
+          mkdir -p ~/ScanCompare/temp/gh-pages
+          mkdir -p ~/ScanCompare/temp/docker
+          mkdir -p test_results
+          mkdir -p test_scripts
+
+      - name: Initialize test report
+        run: |
+          echo '# Scancompare Automation Flags Test Results' > test_results/report.md
+          echo '' >> test_results/report.md
+          echo '| Test Case | Status | Details |' >> test_results/report.md
+          echo '|-----------|--------|---------|' >> test_results/report.md
+
+      - name: Copy test scripts
+        run: |
+          # Copy all expect scripts to test_scripts directory 
+          cp scripts/expect/*.exp test_scripts/
+          chmod +x test_scripts/*.exp
+          chmod +x scripts/configure_github_tests.sh
+          chmod +x scripts/count_test_results.sh
+          chmod +x scripts/run_github_tests.sh
+
+      - name: Verify scancompare script
+        id: verify
+        run: |
+          chmod +x scancompare
+          if ./scancompare --help | grep -E -- "--auto|--mock-yes|--mock-no"; then
+            echo "| Script Help Check | ✅ PASS | Automation flags found in help text |" >> test_results/report.md
+            echo "Automation flags found in help text"
+          else
+            echo "| Script Help Check | ❌ FAIL | Automation flags NOT found in help text |" >> test_results/report.md
+            echo "Automation flags NOT found in help text"
+            exit 1
+          fi
+
+      - name: Test argument parsing
+        id: parser
+        run: |
+          chmod +x scripts/test_parser.py
+          python3 scripts/test_parser.py || (echo "Argument parser tests failed" && touch test_results/parser_results.md)
+          if [ ! -f "test_results/parser_results.md" ]; then
+            echo "| Test Case | Status | Details |" > test_results/parser_results.md
+            echo "|-----------|--------|---------|" >> test_results/parser_results.md
+            echo "| Parser Test | ❌ FAIL | Test script failed to run correctly |" >> test_results/parser_results.md
+            echo "" >> test_results/parser_results.md
+            echo "## Summary" >> test_results/parser_results.md
+            echo "Passed 0 out of 1 tests" >> test_results/parser_results.md
+          fi
+          cat test_results/parser_results.md >> test_results/report.md
+
+      - name: Run basic automation tests
+        id: automation_tests
+        run: |
+          echo "Running basic automation tests..."
+          echo "" >> test_results/report.md
+          echo "## Basic Automation Test Results" >> test_results/report.md
+          echo "" >> test_results/report.md
+          echo "| Test Case | Status | Details |" >> test_results/report.md
+          echo "|-----------|--------|---------|" >> test_results/report.md
+          
+          # Run automation tests - using the exact filenames from your screenshot
+          for script in test_scripts/basic_auto.exp test_scripts/basic_yes.exp test_scripts/basic_no.exp test_scripts/multiple_flags.exp; do
+            if [ -f "$script" ]; then
+              echo "Running test: $(basename $script)"
+              $script || echo "Test execution error: $(basename $script)"
+            fi
+          done
+          
+          # Process automation test results
+          for mode in auto yes no multiple_flags; do
+            file="test_results/basic_${mode}_result.txt"
+            if [ "$mode" = "multiple_flags" ]; then
+              file="test_results/multiple_flags_result.txt"
+            fi
+            
+            case $mode in
+              auto) label="Auto Mode Test" ;;
+              yes) label="Mock-Yes Mode Test" ;;
+              no) label="Mock-No Mode Test" ;;
+              multiple_flags) label="Multiple Flags Test" ;;
+            esac
+            
+            if [ -f "$file" ]; then
+              result=$(cat "$file")
+              if [ "$result" = "PASS" ]; then
+                echo "| $label | ✅ PASS | $mode mode correctly handled interactive flow |" >> test_results/report.md
+              elif [ "$result" = "INCONCLUSIVE" ]; then
+                echo "| $label | ⚠️ INCONCLUSIVE | Script completed but $mode behavior unclear |" >> test_results/report.md
+              else
+                echo "| $label | ❌ FAIL | $mode mode failed to handle interactive flow |" >> test_results/report.md
+              fi
+            else
+              echo "| $label | ❌ FAIL | Test did not complete |" >> test_results/report.md
+            fi
+          done
+
+      - name: Run utility command tests
+        id: utility_tests
+        run: |
+          echo "Running utility command tests..."
+          echo "" >> test_results/report.md
+          echo "## Utility Command Tests" >> test_results/report.md
+          echo "" >> test_results/report.md
+          echo "| Test Case | Status | Details |" >> test_results/report.md
+          echo "|-----------|--------|---------|" >> test_results/report.md
+          
+          # Using the exact filenames from your screenshot
+          for script in test_scripts/test_help.exp test_scripts/test_version.exp test_scripts/test_update.exp test_scripts/test_uninstall.exp; do
+            test_name=$(basename "$script" .exp | sed 's/test_//')
+            echo "Running test: $script"
+            if [ -f "$script" ]; then
+              $script || echo "Test execution error: $script"
+            else
+              echo "Script not found: $script"
+            fi
+            
+            file="test_results/$(basename $script .exp)_result.txt"
+            case $test_name in
+              help) label="Help Command Test" ;;
+              version) label="Version Command Test" ;;
+              update) label="Update Command Test" ;;
+              uninstall) label="Uninstall Command Test" ;;
+            esac
+            
+            if [ -f "$file" ]; then
+              result=$(cat "$file")
+              if [ "$result" = "PASS" ]; then
+                echo "| $label | ✅ PASS | --$test_name command handled correctly |" >> test_results/report.md
+              elif [ "$result" = "INCONCLUSIVE" ]; then
+                echo "| $label | ⚠️ INCONCLUSIVE | --$test_name command completed with unclear results |" >> test_results/report.md
+              else
+                echo "| $label | ❌ FAIL | --$test_name command failed |" >> test_results/report.md
+              fi
+            else
+              echo "| $label | ❌ FAIL | --$test_name test did not complete |" >> test_results/report.md
+            fi
+          done
+
+      - name: Run feature tests
+        id: feature_tests
+        run: |
+          echo "Running feature tests..."
+          echo "" >> test_results/report.md
+          echo "## Feature Tests" >> test_results/report.md
+          echo "" >> test_results/report.md
+          echo "| Test Case | Status | Details |" >> test_results/report.md
+          echo "|-----------|--------|---------|" >> test_results/report.md
+          
+          # Using the exact filenames from your screenshot
+          for script in test_scripts/test_verbose.exp test_scripts/test_keep_data.exp; do
+            test_name=$(basename "$script" .exp | sed 's/test_//')
+            echo "Running test: $script"
+            if [ -f "$script" ]; then
+              $script || echo "Test execution error: $script"
+            else
+              echo "Script not found: $script"
+            fi
+            
+            file="test_results/$(basename $script .exp)_result.txt"
+            case $test_name in
+              verbose) label="Verbose Mode Test" ;;
+              keep_data) label="Keep Data Flag Test" ;;
+            esac
+            
+            if [ -f "$file" ]; then
+              result=$(cat "$file")
+              if [ "$result" = "PASS" ]; then
+                echo "| $label | ✅ PASS | --$test_name flag handled correctly |" >> test_results/report.md
+              elif [ "$result" = "INCONCLUSIVE" ]; then
+                echo "| $label | ⚠️ INCONCLUSIVE | --$test_name flag completed with unclear results |" >> test_results/report.md
+              else
+                echo "| $label | ❌ FAIL | --$test_name flag failed |" >> test_results/report.md
+              fi
+            else
+              echo "| $label | ❌ FAIL | --$test_name test did not complete |" >> test_results/report.md
+            fi
+          done
+
+      - name: Configure GitHub tests
+        run: |
+          ./scripts/configure_github_tests.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_GITHUB_ADVANCED_TESTS: "true"
+
+      - name: Run GitHub repo URL test
+        run: |
+          # Run the basic repo URL test
+          if [ -f "test_scripts/test_repo_url.exp" ]; then
+            echo "Running test_repo_url.exp"
+            test_scripts/test_repo_url.exp
+          else
+            echo "Script not found: test_repo_url.exp"
+          fi
+
+      - name: Run GitHub advanced tests
+        run: |
+          # Run all the GitHub-specific tests directly
+          for script in test_scripts/test_repo_url_ghas.exp test_scripts/test_url_repo_comprehensive.exp test_scripts/test_url_repo_gh_pages.exp; do
+            if [ -f "$script" ]; then
+              echo "Running test: $script"
+              $script || echo "Test execution error: $script"
+            else
+              echo "Script not found: $script"
+            fi
+          done
+          
+          # Also run through the github tests script
+          ./scripts/run_github_tests.sh
+
+      - name: Generate test summary
+        run: |
+          ./scripts/count_test_results.sh
+
+      - name: Save test artifacts
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/test-artifacts
+          cp -r test_results/* $GITHUB_WORKSPACE/test-artifacts/
+          echo "Test artifacts are stored in $GITHUB_WORKSPACE/test-artifacts" > $GITHUB_WORKSPACE/test-artifacts/README.txt
+          chmod -R a+r $GITHUB_WORKSPACE/test-artifacts
+          echo "Artifact Directory: $GITHUB_WORKSPACE/test-artifacts" | tee -a $GITHUB_STEP_SUMMARY
+
+      - name: Output test summary
+        run: |
+          cat test_results/report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Run final uninstall test
+        id: final_uninstall
+        if: always()  # Run even if previous steps failed
+        run: |
+          echo "Running final uninstall test (all other tests should be complete)..."
+          test_scripts/test_final_uninstall.exp
+          
+          echo "" >> test_results/report.md
+          echo "## Final Uninstall Test Result" >> test_results/report.md
+          echo "" >> test_results/report.md
+          echo "| Test Case | Status | Details |" >> test_results/report.md
+          echo "|-----------|--------|---------|" >> test_results/report.md
+          
+          file="test_results/test_final_uninstall_result.txt"
+          if [ -f "$file" ]; then
+            result=$(cat "$file")
+            if [ "$result" = "PASS" ]; then
+              echo "| Complete Uninstall Test | ✅ PASS | Application uninstalled successfully |" >> test_results/report.md
+            else
+              echo "| Complete Uninstall Test | ❌ FAIL | Application uninstall failed |" >> test_results/report.md
+            fi
+          else
+            echo "| Complete Uninstall Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
+          fi
+
+      - name: Report test status
+        if: always()
+        run: |
+          echo "Contents of scancompare_status.txt:"
+          cat test_results/scancompare_status.txt 2>/dev/null || echo "File not found"
+          
+          result=$(cat test_results/scancompare_status.txt 2>/dev/null || echo "failure")
+          echo "Final result: $result"
+          
+          if [[ "$result" == success* ]]; then
+            echo "✅ All tests passed! (Some may be inconclusive)"
+            exit 0
+          else
+            echo "❌ Some tests failed. See test report for details."
+            cat test_results/report.md
+            exit 1
+          fi

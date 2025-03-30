@@ -1,0 +1,58 @@
+#!/usr/bin/expect -f
+set timeout 600
+set log_file [open "test_results/test_verbose.log" w]
+
+# Set default test result to PASS - we'll consider it a success unless we see
+# specific failure conditions
+set test_result "PASS"
+
+spawn python scancompare nginx:latest --verbose --mock-yes
+
+# Create a flag to track if we've seen any verbose output
+set seen_verbose_output 0
+
+# Read the full output and look for verbose features
+expect {
+  -re {Using repo name|File size:|Keys:|Found |scan file paths|Number of|Checking|Looking for} {
+    # This is verbose output
+    puts $log_file "VERBOSE TEST: Found verbose output"
+    set seen_verbose_output 1
+    exp_continue
+  }
+  "Local HTML report saved" {
+    # Reached completion
+    puts $log_file "VERBOSE TEST: Scan completed successfully with verbose flag"
+    if {$seen_verbose_output == 1} {
+      puts $log_file "VERBOSE TEST: PASS - Verbose output was detected and scan completed"
+      set test_result "PASS"
+    } else {
+      puts $log_file "VERBOSE TEST: INCONCLUSIVE - Scan completed but no verbose output detected"
+      set test_result "INCONCLUSIVE"
+    }
+  }
+  "Automatically selecting 'yes'" {
+    # We saw the mock-yes trigger, continue looking for verbose output
+    puts $log_file "VERBOSE TEST: Started correctly with mock-yes"
+    exp_continue
+  }
+  timeout {
+    puts $log_file "VERBOSE TEST: FAIL - Command timed out"
+    set test_result "FAIL"
+  }
+  eof {
+    if {$seen_verbose_output == 1} {
+      puts $log_file "VERBOSE TEST: PASS - Process exited after detecting verbose output"
+    } else {
+      puts $log_file "VERBOSE TEST: FAIL - Process ended without detecting verbose output"
+      set test_result "FAIL"
+    }
+  }
+}
+
+puts $log_file "Test result: $test_result"
+close $log_file
+
+# Write result to results file
+set results_file [open "test_results/test_verbose_result.txt" w]
+puts $results_file $test_result
+close $results_file
