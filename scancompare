@@ -995,7 +995,7 @@ def ensure_gh_authenticated():
             return
         sys.exit(1)
 
-def resolve_fork(repo, action_label="upload", remember_choice=False):
+def resolve_fork(repo, action_label="upload", remember_choice=True, cache_key="fork-choice"):
     """
     Handles forked GitHub repos and lets the user choose upstream or fork.
     Preserves fork choice temporarily for multi-step flows, unless repo context changes.
@@ -1005,7 +1005,7 @@ def resolve_fork(repo, action_label="upload", remember_choice=False):
     from urllib.parse import urlparse
 
     os.makedirs(TEMP_DIR, exist_ok=True)
-    CHOICE_FILE = os.path.join(TEMP_DIR, "fork_choice.json")
+    CHOICE_FILE = os.path.join(TEMP_DIR, f"{cache_key}.json")
 
     repo_url = f"https://github.com/{repo}"
     upstream_url = get_upstream_url(repo_url)
@@ -1029,9 +1029,11 @@ def resolve_fork(repo, action_label="upload", remember_choice=False):
         except Exception:
             previous_choice = None
 
-    # If choice already matches current resolved URL, reuse it
+    if previous_choice:
+        return previous_choice, get_repo_from_url(previous_choice)
+
     automation_mode = get_automation_mode(args)
-    
+
     if automation_mode == "auto" or automation_mode == "yes":
         print(f"\n⚠️ The repository you selected appears to be a fork:\n")
         print(f"  Forked repo:\n    {repo_url}")
@@ -1045,7 +1047,6 @@ def resolve_fork(repo, action_label="upload", remember_choice=False):
         print(f"\nℹ️ Automatically selecting forked repository in no-automation mode.\n")
         final_url = repo_url
     else:
-        # Existing interactive prompt
         print(f"\n⚠️ The repository you selected appears to be a fork:\n")
         print(f"  Forked repo:\n    {repo_url}")
         print(f"\n  Upstream repo:\n    {upstream_url}")
@@ -1058,12 +1059,12 @@ def resolve_fork(repo, action_label="upload", remember_choice=False):
             print(f"🔄 Keeping the forked repository URL:\n{repo_url}")
             final_url = repo_url
 
-    # Save selected choice temporarily
-    try:
-        with open(CHOICE_FILE, "w") as f:
-            json.dump({"repo_url": final_url}, f)
-    except Exception:
-        pass
+    if remember_choice:
+        try:
+            with open(CHOICE_FILE, "w") as f:
+                json.dump({"repo_url": final_url}, f)
+        except Exception:
+            pass
 
     return final_url, get_repo_from_url(final_url)
 
@@ -1079,7 +1080,7 @@ def publish_to_github_pages(report_path, image, repo_url, remember_choice=False)
         return None
 
     repo_obj = get_repo_from_url(repo_url)
-    repo_url, repo = resolve_fork(repo_obj, action_label="publish", remember_choice=remember_choice)
+    repo_url, repo = resolve_fork(repo_obj, action_label="publish", remember_choice=remember_choice, cache_key="gh-pages")
 
     parsed = urlparse(repo_url)
     repo_path = parsed.path.strip("/")
@@ -1442,7 +1443,7 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
     import json, base64, tempfile, subprocess, gzip
     from datetime import datetime, timezone
 
-    repo_url, repo = resolve_fork(repo, action_label="upload", remember_choice=True)
+    repo_url, repo = resolve_fork(repo, action_label="upload", remember_choice=True, cache_key="ghas")
 
     def is_valid_sarif(sarif_path):
         try:
@@ -1805,10 +1806,19 @@ def handle_post_scan_prompts(image_tag, html_path, repo_url=None, trivy_path=Non
 
 def main():
     global args
+    fork_choice_cache = {}
     global cloned_repo_dir
 
     # Capture the command-line arguments
     args = handle_cli_args()
+
+    # Clear fork choice cache unless user explicitly sets --ghas or --gh-pages
+    if not (args.ghas or args.gh_pages):
+        for key in ["ghas", "gh-pages"]:
+            try:
+                os.remove(os.path.join(TEMP_DIR, f"{key}.json"))
+            except Exception:
+                pass
 
     # ✅ Always check for updates *before* anything else
     if args.update:
