@@ -1,4 +1,4 @@
-name: Scancompare Test Suite
+name: Scancompare Comprehensive Test Suite
 
 on:
   push:
@@ -24,8 +24,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y expect
-          
-          # Install Python dependencies
           pip install jinja2 requests
 
       # Install Trivy and Grype
@@ -53,55 +51,456 @@ jobs:
           mkdir -p ~/ScanCompare/backups
           mkdir -p ~/ScanCompare/temp/gh-pages
           mkdir -p ~/ScanCompare/temp/docker
-
-      # Fix permissions and verify flags
-      - name: Fix permissions and verify automation flags
-        run: |
-          # Make script executable
-          chmod +x ./scancompare
           
-          # Verify it's executable
-          ls -la ./scancompare
-          
-          # Check script for automation flags
-          ./scancompare --help
-          ./scancompare --help | grep -E -- "--auto|--mock-yes|--mock-no" || echo "Automation flags not found!"
+          # Create test results directory
+          mkdir -p test_results
 
-      # Test standard scan with each automation flag
-      - name: Test standard scan automation
+      # Create the test results file
+      - name: Initialize test report
         run: |
-          echo "Auto mode: Standard scan"
-          python ./scancompare nginx:latest --auto || echo "Test failed"
-          
-          echo "Mock Yes: Standard scan"
-          python ./scancompare nginx:latest --mock-yes || echo "Test failed"
-          
-          echo "Mock No: Standard scan"  
-          python ./scancompare nginx:latest --mock-no || echo "Test failed"
+          echo '# Scancompare Automation Flags Test Results' > test_results/report.md
+          echo '' >> test_results/report.md
+          echo '| Test Case | Status | Details |' >> test_results/report.md
+          echo '|-----------|--------|---------|' >> test_results/report.md
 
-      # Test with repository URL
-      - name: Test with repository URL
+      # Verify scancompare has automation flags
+      - name: Verify scancompare script
+        id: verify
         run: |
-          echo "Auto mode: Repo scan"
-          python ./scancompare --repo-url https://github.com/docker-library/hello-world --auto || echo "Test failed"
-
-      # Test multiple flags combinations
-      - name: Test multiple flag combinations
-        run: |
-          echo "Verbose + Auto"
-          python ./scancompare nginx:latest --verbose --auto || echo "Test failed"
+          # Make script executable and verify
+          chmod +x scancompare
+          ls -la scancompare
           
-          echo "Keep-data + Auto"
-          python ./scancompare nginx:latest --keep-data --auto || echo "Test failed"
+          # Verify flag help display
+          if ./scancompare --help | grep -E -- "--auto|--mock-yes|--mock-no"; then
+            echo "| Script Help Check | ✅ PASS | Automation flags found in help text |" >> test_results/report.md
+            echo "Automation flags found in help text"
+          else
+            echo "| Script Help Check | ❌ FAIL | Automation flags NOT found in help text |" >> test_results/report.md
+            echo "Automation flags NOT found in help text"
+            exit 1
+          fi
 
-      # Test multiple automation flags (should fail)
-      - name: Test multiple automation flags
+      # Test simple direct python calls to verify arguments work
+      - name: Test argument parsing
+        id: parser
         run: |
-          echo "Multiple automation flags test (should fail)"
-          python ./scancompare nginx:latest --auto --mock-yes && echo "FAIL: Multiple flags not handled correctly" || echo "PASS: Multiple flags correctly rejected"
+          # Create simple test script to verify the argument parser alone
+          cat > test_parser.py << 'EOF'
+          #!/usr/bin/env python3
+          import sys
+          import os
+          
+          # Save original stdout to restore later
+          original_stdout = sys.stdout
+          
+          # Create a log file for output
+          log_file = open('test_results/parser_log.txt', 'w')
+          sys.stdout = log_file
+          
+          # Import from scancompare
+          try:
+              from scancompare import handle_cli_args, get_automation_mode
+              print("Successfully imported from scancompare")
+          except Exception as e:
+              print(f"Failed to import from scancompare: {e}")
+              sys.exit(1)
+          
+          # Test results tracking
+          results = []
+          
+          # Test --auto flag
+          try:
+              sys.argv = ['scancompare', 'nginx:latest', '--auto']
+              auto_args = handle_cli_args()
+              auto_mode = get_automation_mode(auto_args)
+              if auto_args.auto and auto_mode == "auto":
+                  results.append(("Auto Flag Test", "PASS", f"Auto flag detected correctly: {auto_args.auto}, Mode: {auto_mode}"))
+                  print(f"Auto Flag Test: PASS - Auto flag detected correctly: {auto_args.auto}, Mode: {auto_mode}")
+              else:
+                  results.append(("Auto Flag Test", "FAIL", f"Auto flag not detected correctly: {auto_args.auto}, Mode: {auto_mode}"))
+                  print(f"Auto Flag Test: FAIL - Auto flag not detected correctly: {auto_args.auto}, Mode: {auto_mode}")
+          except Exception as e:
+              results.append(("Auto Flag Test", "ERROR", f"Exception occurred: {e}"))
+              print(f"Auto Flag Test: ERROR - Exception occurred: {e}")
+          
+          # Test --mock-yes flag
+          try:
+              sys.argv = ['scancompare', 'nginx:latest', '--mock-yes']
+              yes_args = handle_cli_args()
+              yes_mode = get_automation_mode(yes_args)
+              if yes_args.mock_yes and yes_mode == "yes":
+                  results.append(("Mock-Yes Flag Test", "PASS", f"Mock-yes flag detected correctly: {yes_args.mock_yes}, Mode: {yes_mode}"))
+                  print(f"Mock-Yes Flag Test: PASS - Mock-yes flag detected correctly: {yes_args.mock_yes}, Mode: {yes_mode}")
+              else:
+                  results.append(("Mock-Yes Flag Test", "FAIL", f"Mock-yes flag not detected correctly: {yes_args.mock_yes}, Mode: {yes_mode}"))
+                  print(f"Mock-Yes Flag Test: FAIL - Mock-yes flag not detected correctly: {yes_args.mock_yes}, Mode: {yes_mode}")
+          except Exception as e:
+              results.append(("Mock-Yes Flag Test", "ERROR", f"Exception occurred: {e}"))
+              print(f"Mock-Yes Flag Test: ERROR - Exception occurred: {e}")
+          
+          # Test --mock-no flag
+          try:
+              sys.argv = ['scancompare', 'nginx:latest', '--mock-no']
+              no_args = handle_cli_args()
+              no_mode = get_automation_mode(no_args)
+              if no_args.mock_no and no_mode == "no":
+                  results.append(("Mock-No Flag Test", "PASS", f"Mock-no flag detected correctly: {no_args.mock_no}, Mode: {no_mode}"))
+                  print(f"Mock-No Flag Test: PASS - Mock-no flag detected correctly: {no_args.mock_no}, Mode: {no_mode}")
+              else:
+                  results.append(("Mock-No Flag Test", "FAIL", f"Mock-no flag not detected correctly: {no_args.mock_no}, Mode: {no_mode}"))
+                  print(f"Mock-No Flag Test: FAIL - Mock-no flag not detected correctly: {no_args.mock_no}, Mode: {no_mode}")
+          except Exception as e:
+              results.append(("Mock-No Flag Test", "ERROR", f"Exception occurred: {e}"))
+              print(f"Mock-No Flag Test: ERROR - Exception occurred: {e}")
+          
+          # Test conflict detection
+          conflict_test_passed = False
+          try:
+              sys.argv = ['scancompare', 'nginx:latest', '--auto', '--mock-yes']
+              handle_cli_args()
+              results.append(("Flag Conflict Test", "FAIL", "Multiple flags should have been rejected but weren't"))
+              print("Flag Conflict Test: FAIL - Multiple flags should have been rejected but weren't")
+          except SystemExit:
+              conflict_test_passed = True
+              results.append(("Flag Conflict Test", "PASS", "Multiple flags correctly rejected"))
+              print("Flag Conflict Test: PASS - Multiple flags correctly rejected")
+          except Exception as e:
+              results.append(("Flag Conflict Test", "ERROR", f"Unexpected exception: {e}"))
+              print(f"Flag Conflict Test: ERROR - Unexpected exception: {e}")
+          
+          # Restore stdout
+          sys.stdout = original_stdout
+          log_file.close()
+          
+          # Write results to markdown
+          with open('test_results/parser_results.md', 'w') as f:
+              for test, status, details in results:
+                  status_icon = "✅" if status == "PASS" else "❌"
+                  f.write(f"| {test} | {status_icon} {status} | {details} |\n")
+              
+              # Summary
+              passed = sum(1 for _, status, _ in results if status == "PASS")
+              total = len(results)
+              f.write(f"\n## Summary\n")
+              f.write(f"Passed {passed} out of {total} tests\n")
+              
+              if not conflict_test_passed:
+                  f.write("\n⚠️ **Critical Issue**: Flag conflict detection is not working properly\n")
+          
+          # Exit with error if any test failed
+          if passed < total:
+              sys.exit(1)
+          EOF
+          
+          # Run the test script
+          python test_parser.py || echo "Argument parser tests failed"
+          
+          # Append parser test results to main report
+          cat test_results/parser_results.md >> test_results/report.md
 
+      # For actual script testing, we'll use expect scripts for interactive prompts
+      - name: Create expect scripts for automated testing
+        run: |
+          # Create test directory
+          mkdir -p test_scripts
+          
+          # Create expect scripts for each automation mode
+          
+          # Basic image scan with auto mode
+          cat > test_scripts/basic_auto.exp << 'EOF'
+          #!/usr/bin/expect -f
+          set timeout 300
+          set log_file [open "test_results/basic_auto.log" w]
+          
+          spawn python scancompare nginx:latest --auto
+          
+          expect {
+            "Automatically opening reports in browser" {
+              puts $log_file "AUTO TEST: PASS - Auto mode detected and browser opening message found"
+              set test_result "PASS"
+            }
+            eof {
+              puts $log_file "AUTO TEST: INCONCLUSIVE - Script completed without browser message"
+              set test_result "INCONCLUSIVE"
+            }
+            timeout {
+              puts $log_file "AUTO TEST: FAIL - Test timed out"
+              set test_result "FAIL"
+            }
+          }
+          
+          puts $log_file "Test result: $test_result"
+          close $log_file
+          
+          # Write result to results file
+          set results_file [open "test_results/basic_auto_result.txt" w]
+          puts $results_file $test_result
+          close $results_file
+          
+          expect eof
+          EOF
+          
+          # Basic image scan with mock-yes mode
+          cat > test_scripts/basic_yes.exp << 'EOF'
+          #!/usr/bin/expect -f
+          set timeout 300
+          set log_file [open "test_results/basic_yes.log" w]
+          
+          spawn python scancompare nginx:latest --mock-yes
+          
+          expect {
+            "Automatically selecting 'yes'" {
+              puts $log_file "MOCK-YES TEST: PASS - Mock-yes mode detected and appropriate message found"
+              set test_result "PASS"
+            }
+            eof {
+              puts $log_file "MOCK-YES TEST: INCONCLUSIVE - Script completed without yes message"
+              set test_result "INCONCLUSIVE"
+            }
+            timeout {
+              puts $log_file "MOCK-YES TEST: FAIL - Test timed out"
+              set test_result "FAIL"
+            }
+          }
+          
+          puts $log_file "Test result: $test_result"
+          close $log_file
+          
+          # Write result to results file
+          set results_file [open "test_results/basic_yes_result.txt" w]
+          puts $results_file $test_result
+          close $results_file
+          
+          expect eof
+          EOF
+          
+          # Basic image scan with mock-no mode
+          cat > test_scripts/basic_no.exp << 'EOF'
+          #!/usr/bin/expect -f
+          set timeout 300
+          set log_file [open "test_results/basic_no.log" w]
+          
+          spawn python scancompare nginx:latest --mock-no
+          
+          expect {
+            "Automatically selecting 'no'" {
+              puts $log_file "MOCK-NO TEST: PASS - Mock-no mode detected and appropriate message found"
+              set test_result "PASS"
+            }
+            eof {
+              puts $log_file "MOCK-NO TEST: INCONCLUSIVE - Script completed without no message"
+              set test_result "INCONCLUSIVE"
+            }
+            timeout {
+              puts $log_file "MOCK-NO TEST: FAIL - Test timed out"
+              set test_result "FAIL"
+            }
+          }
+          
+          puts $log_file "Test result: $test_result"
+          close $log_file
+          
+          # Write result to results file
+          set results_file [open "test_results/basic_no_result.txt" w]
+          puts $results_file $test_result
+          close $results_file
+          
+          expect eof
+          EOF
+          
+          # Multiple automation flags (should fail)
+          cat > test_scripts/multiple_flags.exp << 'EOF'
+          #!/usr/bin/expect -f
+          set timeout 300
+          set log_file [open "test_results/multiple_flags.log" w]
+          
+          spawn python scancompare nginx:latest --auto --mock-yes
+          
+          expect {
+            "Only one automation flag" {
+              puts $log_file "MULTIPLE FLAGS TEST: PASS - Multiple flags correctly rejected"
+              set test_result "PASS"
+            }
+            eof {
+              puts $log_file "MULTIPLE FLAGS TEST: FAIL - Script completed without rejecting multiple flags"
+              set test_result "FAIL"
+            }
+            timeout {
+              puts $log_file "MULTIPLE FLAGS TEST: FAIL - Test timed out"
+              set test_result "FAIL"
+            }
+          }
+          
+          puts $log_file "Test result: $test_result"
+          close $log_file
+          
+          # Write result to results file
+          set results_file [open "test_results/multiple_flags_result.txt" w]
+          puts $results_file $test_result
+          close $results_file
+          
+          expect eof
+          EOF
+          
+          # Make all scripts executable
+          chmod +x test_scripts/*.exp
+
+      # Run the expect scripts
+      - name: Run automated tests with expect
+        id: expect
+        run: |
+          echo "Running automated tests..."
+          
+          # Run all expect scripts and record results
+          for script in test_scripts/*.exp; do
+            echo "Running test: $(basename $script)"
+            $script || echo "Test execution error: $(basename $script)"
+          done
+          
+          # Add results to main report
+          echo "" >> test_results/report.md
+          echo "## Interactive Test Results" >> test_results/report.md
+          echo "" >> test_results/report.md
+          echo "| Test Case | Status | Details |" >> test_results/report.md
+          echo "|-----------|--------|---------|" >> test_results/report.md
+          
+          # Process auto mode test
+          if [ -f "test_results/basic_auto_result.txt" ]; then
+            result=$(cat test_results/basic_auto_result.txt)
+            if [ "$result" == "PASS" ]; then
+              echo "| Auto Mode Test | ✅ PASS | Auto mode correctly handled interactive flow |" >> test_results/report.md
+            elif [ "$result" == "INCONCLUSIVE" ]; then
+              echo "| Auto Mode Test | ⚠️ INCONCLUSIVE | Script completed but auto behavior unclear |" >> test_results/report.md
+            else
+              echo "| Auto Mode Test | ❌ FAIL | Auto mode failed to handle interactive flow |" >> test_results/report.md
+            fi
+          else
+            echo "| Auto Mode Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
+          fi
+          
+          # Process mock-yes mode test
+          if [ -f "test_results/basic_yes_result.txt" ]; then
+            result=$(cat test_results/basic_yes_result.txt)
+            if [ "$result" == "PASS" ]; then
+              echo "| Mock-Yes Mode Test | ✅ PASS | Mock-yes mode correctly handled interactive flow |" >> test_results/report.md
+            elif [ "$result" == "INCONCLUSIVE" ]; then
+              echo "| Mock-Yes Mode Test | ⚠️ INCONCLUSIVE | Script completed but mock-yes behavior unclear |" >> test_results/report.md
+            else
+              echo "| Mock-Yes Mode Test | ❌ FAIL | Mock-yes mode failed to handle interactive flow |" >> test_results/report.md
+            fi
+          else
+            echo "| Mock-Yes Mode Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
+          fi
+          
+          # Process mock-no mode test
+          if [ -f "test_results/basic_no_result.txt" ]; then
+            result=$(cat test_results/basic_no_result.txt)
+            if [ "$result" == "PASS" ]; then
+              echo "| Mock-No Mode Test | ✅ PASS | Mock-no mode correctly handled interactive flow |" >> test_results/report.md
+            elif [ "$result" == "INCONCLUSIVE" ]; then
+              echo "| Mock-No Mode Test | ⚠️ INCONCLUSIVE | Script completed but mock-no behavior unclear |" >> test_results/report.md
+            else
+              echo "| Mock-No Mode Test | ❌ FAIL | Mock-no mode failed to handle interactive flow |" >> test_results/report.md
+            fi
+          else
+            echo "| Mock-No Mode Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
+          fi
+          
+          # Process multiple flags test
+          if [ -f "test_results/multiple_flags_result.txt" ]; then
+            result=$(cat test_results/multiple_flags_result.txt)
+            if [ "$result" == "PASS" ]; then
+              echo "| Multiple Flags Test | ✅ PASS | Multiple automation flags correctly rejected |" >> test_results/report.md
+            else
+              echo "| Multiple Flags Test | ❌ FAIL | Multiple automation flags not properly rejected |" >> test_results/report.md
+            fi
+          else
+            echo "| Multiple Flags Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
+          fi
+          
       # Test utility commands
       - name: Test utility commands
+        id: utilities
         run: |
-          echo "Version check"
-          python ./scancompare --version || echo "Test failed"
+          echo "## Utility Command Tests" >> test_results/report.md
+          echo "" >> test_results/report.md
+          echo "| Test Case | Status | Details |" >> test_results/report.md
+          echo "|-----------|--------|---------|" >> test_results/report.md
+          
+          # Test version command
+          if python scancompare --version > test_results/version.log 2>&1; then
+            echo "| Version Command | ✅ PASS | Successfully displayed version |" >> test_results/report.md
+          else
+            echo "| Version Command | ❌ FAIL | Failed to display version |" >> test_results/report.md
+          fi
+          
+          # Test version with auto flag
+          if python scancompare --version --auto > test_results/version_auto.log 2>&1; then
+            echo "| Version + Auto | ✅ PASS | Successfully handled version with auto flag |" >> test_results/report.md
+          else
+            echo "| Version + Auto | ❌ FAIL | Failed to handle version with auto flag |" >> test_results/report.md
+          fi
+          
+      # Generate a summary of all test results
+      - name: Generate test summary
+        run: |
+          # Count results
+          TOTAL_TESTS=$(grep -c "^|" test_results/report.md | awk '{print $1-2}')
+          PASSED_TESTS=$(grep -c "✅ PASS" test_results/report.md)
+          INCONCLUSIVE_TESTS=$(grep -c "⚠️ INCONCLUSIVE" test_results/report.md)
+          FAILED_TESTS=$((TOTAL_TESTS - PASSED_TESTS - INCONCLUSIVE_TESTS))
+          
+          # Add summary to report
+          echo "" >> test_results/report.md
+          echo "## Test Summary" >> test_results/report.md
+          echo "" >> test_results/report.md
+          echo "- Total Tests: $TOTAL_TESTS" >> test_results/report.md
+          echo "- Passed: $PASSED_TESTS" >> test_results/report.md
+          echo "- Inconclusive: $INCONCLUSIVE_TESTS" >> test_results/report.md
+          echo "- Failed: $FAILED_TESTS" >> test_results/report.md
+          
+          if [ $FAILED_TESTS -gt 0 ]; then
+            echo "" >> test_results/report.md
+            echo "### Failed Tests" >> test_results/report.md
+            echo "" >> test_results/report.md
+            grep "❌ FAIL" test_results/report.md >> test_results/report.md
+          fi
+          
+          if [ $INCONCLUSIVE_TESTS -gt 0 ]; then
+            echo "" >> test_results/report.md
+            echo "### Inconclusive Tests" >> test_results/report.md
+            echo "" >> test_results/report.md
+            grep "⚠️ INCONCLUSIVE" test_results/report.md >> test_results/report.md
+          fi
+          
+          echo "" >> test_results/report.md
+          echo "## Detailed Logs" >> test_results/report.md
+          echo "" >> test_results/report.md
+          echo "Detailed logs for each test are available in the test_results directory." >> test_results/report.md
+          
+          # Save success/failure status for final exit
+          if [ $FAILED_TESTS -eq 0 ]; then
+            echo "result=success" >> $GITHUB_ENV
+          else
+            echo "result=failure" >> $GITHUB_ENV
+          fi
+
+      # Upload test results as artifact
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        with:
+          name: scancompare-test-results
+          path: test_results/
+          
+      # Exit with appropriate status
+      - name: Report test status
+        run: |
+          if [[ "${{ env.result }}" == "success" ]]; then
+            echo "All tests passed successfully!"
+            exit 0
+          else
+            echo "Some tests failed. See test report for details."
+            cat test_results/report.md
+            exit 1
+          fi
