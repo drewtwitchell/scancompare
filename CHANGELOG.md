@@ -4,4 +4,3 @@
 
 ### 🐛 Bug Fixes
 - Fixed issue with auto updater
-
