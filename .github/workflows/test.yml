@@ -51,8 +51,6 @@ jobs:
           mkdir -p ~/ScanCompare/backups
           mkdir -p ~/ScanCompare/temp/gh-pages
           mkdir -p ~/ScanCompare/temp/docker
-          
-          # Create test results directory
           mkdir -p test_results
 
       - name: Initialize test report
@@ -65,11 +63,8 @@ jobs:
       - name: Verify scancompare script
         id: verify
         run: |
-          # Make script executable and verify
           chmod +x scancompare
           ls -la scancompare
-          
-          # Verify flag help display
           if ./scancompare --help | grep -E -- "--auto|--mock-yes|--mock-no"; then
             echo "| Script Help Check | ✅ PASS | Automation flags found in help text |" >> test_results/report.md
             echo "Automation flags found in help text"
@@ -86,13 +81,10 @@ jobs:
         run: |
           mkdir -p test_results
           chmod +x scripts/test_parser.py
-          
           echo "Current directory: $(pwd)"
           echo "Script location check:"
           ls -la scripts/
-          
           python3 scripts/test_parser.py || (echo "Argument parser tests failed" && touch test_results/parser_results.md)
-          
           if [ ! -f "test_results/parser_results.md" ]; then
             echo "| Test Case | Status | Details |" > test_results/parser_results.md
             echo "|-----------|--------|---------|" >> test_results/parser_results.md
@@ -101,29 +93,25 @@ jobs:
             echo "## Summary" >> test_results/parser_results.md
             echo "Passed 0 out of 1 tests" >> test_results/parser_results.md
           fi
-          
           cat test_results/parser_results.md >> test_results/report.md
 
       - name: Run expect scripts for automated testing
         id: expect
         run: |
           echo "Running automated tests..."
-          
           mkdir -p test_scripts
           cp scripts/expect/*.exp test_scripts/
           chmod +x test_scripts/*.exp
-          
           for script in test_scripts/*.exp; do
             echo "Running test: $(basename $script)"
             $script || echo "Test execution error: $(basename $script)"
           done
-          
           echo "" >> test_results/report.md
           echo "## Interactive Test Results" >> test_results/report.md
           echo "" >> test_results/report.md
           echo "| Test Case | Status | Details |" >> test_results/report.md
           echo "|-----------|--------|---------|" >> test_results/report.md
-          
+
           if [ -f "test_results/basic_auto_result.txt" ]; then
             result=$(cat test_results/basic_auto_result.txt)
             if [ "$result" == "PASS" ]; then
@@ -136,7 +124,7 @@ jobs:
           else
             echo "| Auto Mode Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
           fi
-          
+
           if [ -f "test_results/basic_yes_result.txt" ]; then
             result=$(cat test_results/basic_yes_result.txt)
             if [ "$result" == "PASS" ]; then
@@ -149,7 +137,7 @@ jobs:
           else
             echo "| Mock-Yes Mode Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
           fi
-          
+
           if [ -f "test_results/basic_no_result.txt" ]; then
             result=$(cat test_results/basic_no_result.txt)
             if [ "$result" == "PASS" ]; then
@@ -162,7 +150,7 @@ jobs:
           else
             echo "| Mock-No Mode Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
           fi
-          
+
           if [ -f "test_results/multiple_flags_result.txt" ]; then
             result=$(cat test_results/multiple_flags_result.txt)
             if [ "$result" == "PASS" ]; then
@@ -181,13 +169,13 @@ jobs:
           echo "" >> test_results/report.md
           echo "| Test Case | Status | Details |" >> test_results/report.md
           echo "|-----------|--------|---------|" >> test_results/report.md
-          
+
           if python scancompare --version > test_results/version.log 2>&1; then
             echo "| Version Command | ✅ PASS | Successfully displayed version |" >> test_results/report.md
           else
             echo "| Version Command | ❌ FAIL | Failed to display version |" >> test_results/report.md
           fi
-          
+
           if python scancompare --version --auto > test_results/version_auto.log 2>&1; then
             echo "| Version + Auto | ✅ PASS | Successfully handled version with auto flag |" >> test_results/report.md
           else
@@ -200,18 +188,18 @@ jobs:
             echo "Error: test_results/report.md not found"
             exit 1
           fi
-          
+
           echo "Contents of report.md:"
           cat test_results/report.md
-          
+
           TOTAL_ROWS=$(grep -c "^|" test_results/report.md || echo 0)
           HEADER_ROWS=$(grep -c "^|---" test_results/report.md || echo 0)
           TOTAL_TESTS=$((TOTAL_ROWS - HEADER_ROWS))
           PASSED_TESTS=$(grep -c "✅ PASS" test_results/report.md || echo 0)
           INCONCLUSIVE_TESTS=$(grep -c "⚠️ INCONCLUSIVE" test_results/report.md || echo 0)
           FAILED_TESTS=$((TOTAL_TESTS - PASSED_TESTS - INCONCLUSIVE_TESTS))
-          if [ $FAILED_TESTS -lt 0 ]; then FAILED_TESTS=0; fi
-          
+          if [ "${FAILED_TESTS:-0}" -lt 0 ]; then FAILED_TESTS=0; fi
+
           echo "" >> test_results/report.md
           echo "## Test Summary" >> test_results/report.md
           echo "" >> test_results/report.md
@@ -219,28 +207,28 @@ jobs:
           echo "- Passed: $PASSED_TESTS" >> test_results/report.md
           echo "- Inconclusive: $INCONCLUSIVE_TESTS" >> test_results/report.md
           echo "- Failed: $FAILED_TESTS" >> test_results/report.md
-          
-          if [ $FAILED_TESTS -gt 0 ]; then
+
+          if [ "${FAILED_TESTS:-0}" -gt 0 ]; then
             echo "" >> test_results/report.md
             echo "### Failed Tests" >> test_results/report.md
             echo "" >> test_results/report.md
             grep "❌ FAIL" test_results/report.md >> test_results/report.md || echo "- Error listing failed tests" >> test_results/report.md
           fi
-          
-          if [ $INCONCLUSIVE_TESTS -gt 0 ]; then
+
+          if [ "${INCONCLUSIVE_TESTS:-0}" -gt 0 ]; then
             echo "" >> test_results/report.md
             echo "### Inconclusive Tests" >> test_results/report.md
             echo "" >> test_results/report.md
             grep "⚠️ INCONCLUSIVE" test_results/report.md >> test_results/report.md || echo "- Error listing inconclusive tests" >> test_results/report.md
           fi
-          
+
           echo "" >> test_results/report.md
           echo "## Detailed Logs" >> test_results/report.md
           echo "" >> test_results/report.md
           echo "Detailed logs for each test are available in the test_results directory." >> test_results/report.md
-          
+
           FAIL_COUNT=$(grep -c "❌ FAIL" test_results/report.md || echo 0)
-          if [ $FAIL_COUNT -eq 0 ]; then
+          if [ "${FAIL_COUNT:-0}" -eq 0 ]; then
             echo "result=success" >> $GITHUB_ENV
           else
             echo "result=failure" >> $GITHUB_ENV
@@ -260,7 +248,7 @@ jobs:
 
       - name: Report test status
         run: |
-          if [[ "${{ env.result }}" == "success" ]]; then
+          if [ "$result" == "success" ]; then
             echo "All tests passed successfully!"
             exit 0
           else
@@ -268,3 +256,5 @@ jobs:
             cat test_results/report.md
             exit 1
           fi
+        env:
+          result: ${{ env.result }}
