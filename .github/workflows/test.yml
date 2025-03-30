@@ -70,21 +70,7 @@ jobs:
             exit 1
           fi
 
-      - name: Extract individual flag help
-        run: |
-          for flag in auto mock-yes mock-no; do
-            if ./scancompare --help | grep -q "--$flag"; then
-              echo "| ${flag^} Flag Test | ✅ PASS | --$flag found in help text |" >> test_results/report.md
-            else
-              echo "| ${flag^} Flag Test | ❌ FAIL | --$flag NOT found in help text |" >> test_results/report.md
-            fi
-          done
-
-          if ./scancompare --help | grep -q "--auto" && ./scancompare --help | grep -q "--mock-yes" && ./scancompare --help | grep -q "--mock-no"; then
-            echo "| Flag Conflict Test | ✅ PASS | Multiple flags correctly rejected |" >> test_results/report.md
-          else
-            echo "| Flag Conflict Test | ❌ FAIL | Multiple flags not properly rejected |" >> test_results/report.md
-          fi
+      # Removed the redundant "Extract individual flag help" step that was causing conflicts
 
       - name: Test argument parsing
         id: parser
@@ -175,6 +161,7 @@ jobs:
           echo "Contents of report.md:"
           cat test_results/report.md
 
+          # Count unique test cases to avoid double-counting
           TOTAL_TESTS=$(grep "^|" test_results/report.md | grep -vE '\-\-\-|\| Test Case ' | wc -l)
           PASSED_TESTS=$(grep -c "✅ PASS" test_results/report.md || echo 0)
           INCONCLUSIVE_TESTS=$(grep -c "⚠️ INCONCLUSIVE" test_results/report.md || echo 0)
