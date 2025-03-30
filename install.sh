@@ -77,22 +77,20 @@ install_python_and_tools() {
     fi
   fi
 
+  # Create virtual environment without showing output
   if [[ ! -d "$VENV_DIR" ]]; then
-    tool_progress "🐍 Creating" "Python virtual environment"
     python3 -m venv "$VENV_DIR" &> /dev/null || {
       echo "❌ Failed to create virtual environment"; exit 1;
     }
-    tool_done
   fi
 
   source "$VENV_DIR/bin/activate"
 
+  # Install jinja2 without showing output
   if ! python -c "import jinja2" &> /dev/null; then
-    tool_progress "⚙️ Installing" "jinja2 package"
     pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location || {
-      printf " ❌ Failed to install jinja2."; exit 1;
+      printf "❌ Failed to install jinja2."; exit 1;
     }
-    tool_done
   fi
 
   if ! command -v trivy &> /dev/null; then
@@ -126,28 +124,30 @@ if [[ -f "$PYTHON_SCRIPT" && "$FORCE_REINSTALL" -eq 0 ]]; then
   fi
 fi
 
-printf "📦 Installing required tools: python3, trivy, grype...\n"
+# Add a progress indicator for tools installation
+tool_progress "📦 Installing" "required tools"
 install_python_and_tools
+tool_done
 
-printf "📦 Downloading and Installing scancompare script version...\n"
+# Add a progress indicator for script installation
+tool_progress "📦 Installing" "scancompare script"
 # Create necessary directories
 mkdir -p "$INSTALL_BIN" "$INSTALL_LIB" "$SCANREPORTS_DIR" "$TEMP_DIR"
 
 # Download the script with better error handling
 if ! curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" 2>/dev/null; then
-  printf "❌ Failed to download scancompare script from %s\n" "$SCRIPT_URL"
+  printf "\n❌ Failed to download scancompare script from %s\n" "$SCRIPT_URL"
   printf "⚠️ Check your network connection or if the repository exists.\n"
   exit 1
 fi
 
 # Check if we got an actual script file
 if [[ ! -s "$PYTHON_SCRIPT" ]]; then
-  printf "❌ Downloaded file is empty. Repository may be private or URL is incorrect.\n"
+  printf "\n❌ Downloaded file is empty. Repository may be private or URL is incorrect.\n"
   exit 1
 fi
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
-tool_progress "⚙️ Installing version:" "$VERSION"
 tool_done
 
 if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
@@ -164,8 +164,6 @@ chmod +x "$PYTHON_SCRIPT"
 TEMPLATE_INSTALL_PATH="$INSTALL_LIB/scan_template.html"
 if ! curl -fsSL "$TEMPLATE_URL" -o "$TEMPLATE_INSTALL_PATH" 2>/dev/null; then
   printf "⚠️ Failed to download template file. Will be downloaded on first run.\n"
-else
-  printf "📄 Template file downloaded to %s\n" "$TEMPLATE_INSTALL_PATH"
 fi
 
 if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c \"$PYTHON_SCRIPT\" \"$WRAPPER_SCRIPT\" 2>/dev/null || echo 0)" -eq 0 ]]; then
@@ -176,32 +174,19 @@ source "$VENV_DIR/bin/activate"
 exec python "$PYTHON_SCRIPT" "\$@"
 EOF
   chmod +x "$WRAPPER_SCRIPT"
-else
-  printf "🔹 Wrapper script already exists. Skipping.\n"
 fi
 
-# Ensure the PATH setup is correct
-if ! command -v scancompare &> /dev/null; then
-  printf "⚠️ scancompare was installed but isn't available in this shell session.\n"
-  
-  # Add bin directory to PATH in shell profiles
-  for PROFILE in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.profile"; do
-    if [[ -f "$PROFILE" ]]; then
-      if ! grep -q "PATH=\"$INSTALL_BIN:\$PATH\"" "$PROFILE"; then
-        printf "\n# Added by scancompare installer\nexport PATH=\"$INSTALL_BIN:\$PATH\"\n" >> "$PROFILE"
-        printf "➡️  Added PATH to %s\n" "$PROFILE"
-      fi
+# Add to PATH automatically for current session
+export PATH="$INSTALL_BIN:$PATH"
+
+# Add to shell profiles but don't show the warning
+for PROFILE in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+  if [[ -f "$PROFILE" ]]; then
+    if ! grep -q "PATH=\"$INSTALL_BIN:\$PATH\"" "$PROFILE"; then
+      printf "\n# Added by scancompare installer\nexport PATH=\"$INSTALL_BIN:\$PATH\"\n" >> "$PROFILE"
     fi
-  done
-  
-  printf "➡️  Try running: export PATH=\"$INSTALL_BIN:\$PATH\"\n"
-  printf "   or close and reopen your terminal.\n"
-else
-  printf "✅ $INSTALL_BIN is in your PATH\n"
-fi
+  fi
+done
 
-# Ensure the ScanCompare root folder structure
-mkdir -p "$SCANREPORTS_DIR" "$TEMP_DIR" "$INSTALL_LIB"
-echo "Created ScanCompare directory structure at $USER_ROOT"
-
+printf "✅ Installed scancompare version %s\n" "$VERSION"
 printf "🎉 You can now run: $SCRIPT_NAME <image-name>\n"
