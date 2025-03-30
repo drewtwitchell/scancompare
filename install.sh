@@ -231,3 +231,5 @@ export PATH="$LOCAL_BIN:$PATH"
 
 printf "✅ scancompare v%s installed successfully\n" "$VERSION"
 printf "🎉 Type 'scancompare --help' to get started!\n"
+
+####this is a test
