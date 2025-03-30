@@ -39,12 +39,6 @@ jobs:
           source ~/ScanCompare/main/lib/venv/bin/activate
           pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location
 
-      # Activate the virtual environment and verify jinja2 installation
-      - name: Activate virtual environment and verify jinja2
-        run: |
-          source ~/ScanCompare/main/lib/venv/bin/activate
-          python -c "import jinja2; print('Jinja2 version:', jinja2.__version__)"
-
       # Set up Docker (this is required to run docker commands)
       - name: Set up Docker
         run: |
@@ -58,102 +52,121 @@ jobs:
       - name: Test scancompare with GitHub repo URL and Docker build (Mock Yes)
         run: |
           echo "Testing scancompare with GitHub repo URL and Docker build (Mock Yes)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --auto --mock-yes
 
       - name: Test scancompare with GitHub repo URL and Docker build (Mock No)
         run: |
           echo "Testing scancompare with GitHub repo URL and Docker build (Mock No)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --auto --mock-no
 
       - name: Test scancompare with GitHub repo URL and Docker build (Auto)
         run: |
           echo "Testing scancompare with GitHub repo URL and Docker build (Auto)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --auto
 
       - name: Test scancompare with GitHub repo URL and Docker build (Interactive Yes)
         run: |
           echo "Testing scancompare with GitHub repo URL and Docker build (Interactive Yes)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --auto --mock-yes
 
       - name: Test scancompare with GitHub repo URL and Docker build (Interactive No)
         run: |
           echo "Testing scancompare with GitHub repo URL and Docker build (Interactive No)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --auto --mock-no
 
       # Test upload to GitHub Advanced Security (GHAS) with --auto flag
       - name: Test upload to GHAS (Mock Yes)
         run: |
           echo "Testing scancompare with GHAS upload (Mock Yes)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --ghas --auto --mock-yes
 
       - name: Test upload to GHAS (Mock No)
         run: |
           echo "Testing scancompare with GHAS upload (Mock No)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --ghas --auto --mock-no
 
       - name: Test upload to GHAS (Auto)
         run: |
           echo "Testing scancompare with GHAS upload (Auto)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --ghas --auto
 
       - name: Test upload to GHAS (Interactive Yes)
         run: |
           echo "Testing scancompare with GHAS upload (Interactive Yes)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --ghas --auto --mock-yes
 
       - name: Test upload to GHAS (Interactive No)
         run: |
           echo "Testing scancompare with GHAS upload (Interactive No)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --ghas --auto --mock-no
 
       # Test publishing report to GitHub Pages with --auto flag
       - name: Test publish to GitHub Pages (Mock Yes)
         run: |
           echo "Testing scancompare with GitHub Pages upload (Mock Yes)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --gh-pages --auto --mock-yes
 
       - name: Test publish to GitHub Pages (Mock No)
         run: |
           echo "Testing scancompare with GitHub Pages upload (Mock No)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --gh-pages --auto --mock-no
 
       - name: Test publish to GitHub Pages (Auto)
         run: |
           echo "Testing scancompare with GitHub Pages upload (Auto)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --gh-pages --auto
 
       - name: Test publish to GitHub Pages (Interactive Yes)
         run: |
           echo "Testing scancompare with GitHub Pages upload (Interactive Yes)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --gh-pages --auto --mock-yes
 
       - name: Test publish to GitHub Pages (Interactive No)
         run: |
           echo "Testing scancompare with GitHub Pages upload (Interactive No)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --gh-pages --auto --mock-no
 
       # Test verbose mode with --auto flag
       - name: Test scancompare in verbose mode (Auto)
         run: |
           echo "Testing scancompare in verbose mode (Auto)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --repo-url https://github.com/docker-library/hello-world --verbose --auto
           
       # Test version check with --auto flag
       - name: Test scancompare version (Auto)
         run: |
           echo "Testing scancompare version (Auto)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --version --auto
 
       # Test update functionality with --auto flag
       - name: Test scancompare update (Auto)
         run: |
           echo "Testing scancompare update (Auto)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --update --auto
 
       # Uninstall scancompare once and then reinstall
       - name: Uninstall scancompare
         run: |
           echo "Uninstalling scancompare..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --uninstall --auto
 
       # Reinstall scancompare
@@ -178,6 +191,7 @@ jobs:
       - name: Test scancompare uninstall after reinstall (Auto)
         run: |
           echo "Testing scancompare uninstall after reinstall (Auto)..."
+          source ~/ScanCompare/main/lib/venv/bin/activate
           python scancompare --uninstall --auto
 
       # Check for failed tests and stop the build if any test fails
