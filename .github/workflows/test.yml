@@ -2,9 +2,9 @@ name: Scancompare Comprehensive Test Suite
 
 on:
   push:
-    branches: [ main, develop, 'release-*' ]
+    branches: [main, develop, 'release-*']
   pull_request:
-    branches: [ main, develop, 'release-*' ]
+    branches: [main, develop, 'release-*']
 
 jobs:
   test:
@@ -48,6 +48,7 @@ jobs:
           mkdir -p ~/ScanCompare/temp/gh-pages
           mkdir -p ~/ScanCompare/temp/docker
           mkdir -p test_results
+          mkdir -p test_scripts
 
       - name: Initialize test report
         run: |
@@ -56,620 +57,23 @@ jobs:
           echo '| Test Case | Status | Details |' >> test_results/report.md
           echo '|-----------|--------|---------|' >> test_results/report.md
 
-      - name: Setup test scripts
+      - name: Copy existing test scripts
         run: |
-          mkdir -p test_scripts
-          
-          # Copy existing expect scripts
-          if [ -d "scripts/expect" ]; then
-            cp scripts/expect/*.exp test_scripts/
-          fi
-          
-          # Create new test scripts
-          cat > test_scripts/test_help.exp << 'EOL'
-#!/usr/bin/expect -f
-set timeout 30
-set log_file [open "test_results/test_help.log" w]
-
-spawn python scancompare --help
-
-expect {
-  "Scan and compare Docker image vulnerabilities" {
-    puts $log_file "HELP TEST: PASS - Help message displayed correctly"
-    set test_result "PASS"
-  }
-  eof {
-    puts $log_file "HELP TEST: FAIL - Help command completed without proper output"
-    set test_result "FAIL"
-  }
-  timeout {
-    puts $log_file "HELP TEST: FAIL - Help command timed out"
-    set test_result "FAIL"
-  }
-}
-
-puts $log_file "Test result: $test_result"
-close $log_file
-
-# Write result to results file
-set results_file [open "test_results/test_help_result.txt" w]
-puts $results_file $test_result
-close $results_file
-
-expect eof
-EOL
-
-          cat > test_scripts/test_version.exp << 'EOL'
-#!/usr/bin/expect -f
-set timeout 30
-set log_file [open "test_results/test_version.log" w]
-
-spawn python scancompare --version
-
-expect {
-  "scancompare version" {
-    puts $log_file "VERSION TEST: PASS - Version info displayed correctly"
-    set test_result "PASS"
-  }
-  eof {
-    puts $log_file "VERSION TEST: FAIL - Version command completed without proper output"
-    set test_result "FAIL"
-  }
-  timeout {
-    puts $log_file "VERSION TEST: FAIL - Version command timed out"
-    set test_result "FAIL"
-  }
-}
-
-puts $log_file "Test result: $test_result"
-close $log_file
-
-# Write result to results file
-set results_file [open "test_results/test_version_result.txt" w]
-puts $results_file $test_result
-close $results_file
-
-expect eof
-EOL
-
-          cat > test_scripts/test_update.exp << 'EOL'
-#!/usr/bin/expect -f
-set timeout 60
-set log_file [open "test_results/test_update.log" w]
-
-spawn python scancompare --update
-
-expect {
-  "Updating scancompare" {
-    puts $log_file "UPDATE TEST: PASS - Update process started correctly"
-    set test_result "PASS"
-  }
-  "scancompare is up to date" {
-    puts $log_file "UPDATE TEST: PASS - Already up to date message shown"
-    set test_result "PASS"
-  }
-  eof {
-    # Update might just silently finish if already updated
-    puts $log_file "UPDATE TEST: PASS - Update completed (silently)"
-    set test_result "PASS"
-  }
-  timeout {
-    puts $log_file "UPDATE TEST: FAIL - Update command timed out"
-    set test_result "FAIL"
-  }
-}
-
-puts $log_file "Test result: $test_result"
-close $log_file
-
-# Write result to results file
-set results_file [open "test_results/test_update_result.txt" w]
-puts $results_file $test_result
-close $results_file
-
-expect eof
-EOL
-
-          cat > test_scripts/test_uninstall.exp << 'EOL'
-#!/usr/bin/expect -f
-set timeout 60
-set log_file [open "test_results/test_uninstall.log" w]
-
-# Testing the uninstall functionality but interrupting it before completion
-spawn python scancompare --uninstall
-
-# Check if uninstall process starts
-expect {
-  "Uninstalling scancompare" {
-    puts $log_file "UNINSTALL TEST: Uninstall process started correctly"
-    
-    # Now we need to interrupt the process before it completes
-    # Most command line tools will ask for confirmation before deleting files
-    # We'll send Ctrl+C to interrupt the process
-    send \003
-    
-    puts $log_file "UNINSTALL TEST: PASS - Uninstall function works, but was cancelled"
-    set test_result "PASS"
-  }
-  eof {
-    puts $log_file "UNINSTALL TEST: FAIL - Command exited without starting uninstall"
-    set test_result "FAIL"
-  }
-  timeout {
-    puts $log_file "UNINSTALL TEST: FAIL - Uninstall command timed out"
-    set test_result "FAIL"
-  }
-}
-
-puts $log_file "Test result: $test_result"
-close $log_file
-
-# Write result to results file
-set results_file [open "test_results/test_uninstall_result.txt" w]
-puts $results_file $test_result
-close $results_file
-
-expect eof
-EOL
-
-          cat > test_scripts/test_keep_data.exp << 'EOL'
-#!/usr/bin/expect -f
-set timeout 300
-set log_file [open "test_results/test_keep_data.log" w]
-
-spawn python scancompare nginx:latest --keep-data --mock-yes
-
-expect {
-  "Automatically selecting 'yes'" {
-    puts $log_file "KEEP DATA TEST: Started correctly with mock-yes"
-  }
-  timeout {
-    puts $log_file "KEEP DATA TEST: FAIL - Command timed out at start"
-    set test_result "FAIL"
-    close $log_file
-    exit
-  }
-}
-
-# Wait for scan completion
-expect {
-  "Local HTML report saved" {
-    puts $log_file "KEEP DATA TEST: PASS - Scan completed with keep-data flag"
-    set test_result "PASS"
-  }
-  timeout {
-    puts $log_file "KEEP DATA TEST: FAIL - Scan timed out"
-    set test_result "FAIL"
-  }
-  eof {
-    puts $log_file "KEEP DATA TEST: FAIL - Command exited before completion"
-    set test_result "FAIL"
-  }
-}
-
-puts $log_file "Test result: $test_result"
-close $log_file
-
-# Write result to results file
-set results_file [open "test_results/test_keep_data_result.txt" w]
-puts $results_file $test_result
-close $results_file
-
-expect eof
-EOL
-
-          cat > test_scripts/test_verbose.exp << 'EOL'
-#!/usr/bin/expect -f
-set timeout 300
-set log_file [open "test_results/test_verbose.log" w]
-
-spawn python scancompare nginx:latest --verbose --mock-yes
-
-expect {
-  "Automatically selecting 'yes'" {
-    puts $log_file "VERBOSE TEST: Started correctly with mock-yes"
-  }
-  timeout {
-    puts $log_file "VERBOSE TEST: FAIL - Command timed out at start"
-    set test_result "FAIL"
-    close $log_file
-    exit
-  }
-}
-
-# The verbose flag should show more output, look for detailed scan information
-expect {
-  "Found " {
-    puts $log_file "VERBOSE TEST: PASS - Verbose output detected"
-    set test_result "PASS"
-  }
-  "using repo name" {
-    puts $log_file "VERBOSE TEST: PASS - Verbose output detected"
-    set test_result "PASS"
-  }
-  "scan file paths" {
-    puts $log_file "VERBOSE TEST: PASS - Verbose output detected"
-    set test_result "PASS"
-  }
-  timeout {
-    puts $log_file "VERBOSE TEST: FAIL - Verbose output not detected"
-    set test_result "FAIL"
-  }
-  eof {
-    puts $log_file "VERBOSE TEST: FAIL - Command exited before completion"
-    set test_result "FAIL"
-  }
-}
-
-puts $log_file "Test result: $test_result"
-close $log_file
-
-# Write result to results file
-set results_file [open "test_results/test_verbose_result.txt" w]
-puts $results_file $test_result
-close $results_file
-
-expect eof
-EOL
-
-          cat > test_scripts/test_repo_url.exp << 'EOL'
-#!/usr/bin/expect -f
-set timeout 300
-set log_file [open "test_results/test_repo_url.log" w]
-
-# Use a simple GitHub repo with a Dockerfile for testing
-spawn python scancompare --repo-url https://github.com/docker-library/hello-world --mock-no
-
-expect {
-  "Automatically selecting 'no'" {
-    puts $log_file "REPO URL TEST: Started correctly with mock-no"
-  }
-  "Cloning " {
-    puts $log_file "REPO URL TEST: Started cloning repository"
-  }
-  timeout {
-    puts $log_file "REPO URL TEST: FAIL - Command timed out at start"
-    set test_result "FAIL"
-    close $log_file
-    exit
-  }
-}
-
-# Wait for scan completion
-expect {
-  "Local HTML report saved" {
-    puts $log_file "REPO URL TEST: PASS - Repository cloned and scanned successfully"
-    set test_result "PASS"
-  }
-  "No Dockerfile found" {
-    puts $log_file "REPO URL TEST: INCONCLUSIVE - No Dockerfile found in repo"
-    set test_result "INCONCLUSIVE"
-  }
-  timeout {
-    puts $log_file "REPO URL TEST: FAIL - Scan timed out"
-    set test_result "FAIL"
-  }
-  eof {
-    puts $log_file "REPO URL TEST: FAIL - Command exited before completion"
-    set test_result "FAIL"
-  }
-}
-
-puts $log_file "Test result: $test_result"
-close $log_file
-
-# Write result to results file
-set results_file [open "test_results/test_repo_url_result.txt" w]
-puts $results_file $test_result
-close $results_file
-
-expect eof
-EOL
-
-          cat > test_scripts/test_repo_url_ghas.exp << 'EOL'
-#!/usr/bin/expect -f
-set timeout 300
-set log_file [open "test_results/test_repo_url_ghas.log" w]
-
-# Use a simple GitHub repo with a Dockerfile for testing
-spawn python scancompare --repo-url https://github.com/docker-library/hello-world --ghas --mock-no
-
-expect {
-  "Automatically selecting 'no'" {
-    puts $log_file "REPO URL GHAS TEST: Started correctly with mock-no"
-  }
-  "Cloning " {
-    puts $log_file "REPO URL GHAS TEST: Started cloning repository"
-  }
-  timeout {
-    puts $log_file "REPO URL GHAS TEST: FAIL - Command timed out at start"
-    set test_result "FAIL"
-    close $log_file
-    exit
-  }
-}
-
-# Look for GHAS-specific output
-expect {
-  "GHAS upload" {
-    puts $log_file "REPO URL GHAS TEST: PASS - GHAS upload started"
-    set test_result "PASS"
-  }
-  "GitHub authentication required" {
-    puts $log_file "REPO URL GHAS TEST: PASS - GitHub authentication prompt shown"
-    set test_result "PASS"
-  }
-  "Skipping GHAS upload" {
-    puts $log_file "REPO URL GHAS TEST: PASS - GHAS upload skipped in mock-no mode"
-    set test_result "PASS"
-  }
-  timeout {
-    puts $log_file "REPO URL GHAS TEST: FAIL - GHAS functionality not detected"
-    set test_result "FAIL"
-  }
-  eof {
-    puts $log_file "REPO URL GHAS TEST: INCONCLUSIVE - Command completed without GHAS output"
-    set test_result "INCONCLUSIVE"
-  }
-}
-
-puts $log_file "Test result: $test_result"
-close $log_file
-
-# Write result to results file
-set results_file [open "test_results/test_repo_url_ghas_result.txt" w]
-puts $results_file $test_result
-close $results_file
-
-expect eof
-EOL
-
-          cat > test_scripts/test_repo_url_gh_pages.exp << 'EOL'
-#!/usr/bin/expect -f
-set timeout 300
-set log_file [open "test_results/test_repo_url_gh_pages.log" w]
-
-# Use a simple GitHub repo with a Dockerfile for testing
-spawn python scancompare --repo-url https://github.com/docker-library/hello-world --gh-pages --mock-no
-
-expect {
-  "Automatically selecting 'no'" {
-    puts $log_file "REPO URL GH-PAGES TEST: Started correctly with mock-no"
-  }
-  "Cloning " {
-    puts $log_file "REPO URL GH-PAGES TEST: Started cloning repository"
-  }
-  timeout {
-    puts $log_file "REPO URL GH-PAGES TEST: FAIL - Command timed out at start"
-    set test_result "FAIL"
-    close $log_file
-    exit
-  }
-}
-
-# Look for GitHub Pages specific output
-expect {
-  "GitHub Pages" {
-    puts $log_file "REPO URL GH-PAGES TEST: PASS - GitHub Pages functionality detected"
-    set test_result "PASS"
-  }
-  "Preparing GitHub Pages" {
-    puts $log_file "REPO URL GH-PAGES TEST: PASS - GitHub Pages preparation started"
-    set test_result "PASS"
-  }
-  "Publishing to GitHub Pages" {
-    puts $log_file "REPO URL GH-PAGES TEST: PASS - GitHub Pages publishing started"
-    set test_result "PASS"
-  }
-  timeout {
-    puts $log_file "REPO URL GH-PAGES TEST: FAIL - GitHub Pages functionality not detected"
-    set test_result "FAIL"
-  }
-  eof {
-    puts $log_file "REPO URL GH-PAGES TEST: INCONCLUSIVE - Command completed without GitHub Pages output"
-    set test_result "INCONCLUSIVE"
-  }
-}
-
-puts $log_file "Test result: $test_result"
-close $log_file
-
-# Write result to results file
-set results_file [open "test_results/test_repo_url_gh_pages_result.txt" w]
-puts $results_file $test_result
-close $results_file
-
-expect eof
-EOL
-
-          cat > test_scripts/test_repo_url_comprehensive.exp << 'EOL'
-#!/usr/bin/expect -f
-set timeout 300
-set log_file [open "test_results/test_repo_url_comprehensive.log" w]
-
-# Use a simple GitHub repo with a Dockerfile for testing
-spawn python scancompare --repo-url https://github.com/docker-library/hello-world --gh-pages --ghas --verbose --mock-no
-
-expect {
-  "Automatically selecting 'no'" {
-    puts $log_file "COMPREHENSIVE TEST: Started correctly with mock-no"
-  }
-  "Cloning " {
-    puts $log_file "COMPREHENSIVE TEST: Started cloning repository"
-  }
-  timeout {
-    puts $log_file "COMPREHENSIVE TEST: FAIL - Command timed out at start"
-    set test_result "FAIL"
-    close $log_file
-    exit
-  }
-}
-
-# The test is successful if any of these features are detected
-set found_feature 0
-
-# Look for GitHub Pages output
-expect {
-  "GitHub Pages" {
-    puts $log_file "COMPREHENSIVE TEST: GitHub Pages functionality detected"
-    set found_feature 1
-    exp_continue
-  }
-  "GHAS" {
-    puts $log_file "COMPREHENSIVE TEST: GHAS functionality detected"
-    set found_feature 1
-    exp_continue
-  }
-  "Found " {
-    puts $log_file "COMPREHENSIVE TEST: Verbose output detected"
-    set found_feature 1
-    exp_continue
-  }
-  "Local HTML report saved" {
-    if {$found_feature == 1} {
-      puts $log_file "COMPREHENSIVE TEST: PASS - Detected at least one special feature"
-      set test_result "PASS"
-    } else {
-      puts $log_file "COMPREHENSIVE TEST: INCONCLUSIVE - Scan completed but no special features detected"
-      set test_result "INCONCLUSIVE"
-    }
-  }
-  timeout {
-    puts $log_file "COMPREHENSIVE TEST: FAIL - Test timed out"
-    set test_result "FAIL"
-  }
-  eof {
-    puts $log_file "COMPREHENSIVE TEST: INCONCLUSIVE - Command exited before completion"
-    set test_result "INCONCLUSIVE"
-  }
-}
-
-puts $log_file "Test result: $test_result"
-close $log_file
-
-# Write result to results file
-set results_file [open "test_results/test_repo_url_comprehensive_result.txt" w]
-puts $results_file $test_result
-close $results_file
-
-expect eof
-EOL
-
-          cat > test_scripts/test_final_uninstall.exp << 'EOL'
-#!/usr/bin/expect -f
-set timeout 120
-set log_file [open "test_results/test_final_uninstall.log" w]
-
-# This is meant to be the LAST test in the workflow
-# It fully uninstalls the application to verify the complete uninstall process
-spawn python scancompare --uninstall
-
-expect {
-  "Uninstalling scancompare" {
-    puts $log_file "FINAL UNINSTALL TEST: Uninstall process started correctly"
-  }
-  timeout {
-    puts $log_file "FINAL UNINSTALL TEST: FAIL - Uninstall command timed out at start"
-    set test_result "FAIL"
-    close $log_file
-    exit
-  }
-}
-
-# Look for evidence of successful uninstall steps
-set uninstall_steps_found 0
-
-expect {
-  "✔" {
-    # Count successful steps
-    incr uninstall_steps_found
-    exp_continue
-  }
-  "successfully uninstalled" {
-    puts $log_file "FINAL UNINSTALL TEST: PASS - Uninstall completed successfully"
-    set test_result "PASS"
-  }
-  "not found or already uninstalled" {
-    puts $log_file "FINAL UNINSTALL TEST: PASS - Application reported as already uninstalled"
-    set test_result "PASS"
-  }
-  timeout {
-    puts $log_file "FINAL UNINSTALL TEST: FAIL - Uninstall process timed out"
-    set test_result "FAIL"
-  }
-  eof {
-    # If we reach EOF but saw some uninstall steps, consider it a success
-    if {$uninstall_steps_found > 0} {
-      puts $log_file "FINAL UNINSTALL TEST: PASS - Uninstall process completed with $uninstall_steps_found successful steps"
-      set test_result "PASS"
-    } else {
-      puts $log_file "FINAL UNINSTALL TEST: FAIL - Uninstall process exited without showing progress"
-      set test_result "FAIL"
-    }
-  }
-}
-
-puts $log_file "Test result: $test_result"
-close $log_file
-
-# Write result to results file
-set results_file [open "test_results/test_final_uninstall_result.txt" w]
-puts $results_file $test_result
-close $results_file
-
-expect eof
-EOL
-
-          # Fix multiple_flags.exp to better detect error messages
-          cat > test_scripts/multiple_flags.exp << 'EOL'
-#!/usr/bin/expect -f
-set timeout 300
-set log_file [open "test_results/multiple_flags.log" w]
-
-spawn python scancompare nginx:latest --auto --mock-yes
-
-expect {
-  "Only one automation flag" {
-    puts $log_file "MULTIPLE FLAGS TEST: PASS - Multiple flags correctly rejected"
-    set test_result "PASS"
-  }
-  "can be used at a time" {
-    puts $log_file "MULTIPLE FLAGS TEST: PASS - Multiple flags correctly rejected"
-    set test_result "PASS"
-  }
-  "⚠️" {
-    puts $log_file "MULTIPLE FLAGS TEST: PASS - Multiple flags correctly rejected"
-    set test_result "PASS"
-  }
-  eof {
-    puts $log_file "MULTIPLE FLAGS TEST: FAIL - Script completed without rejecting multiple flags"
-    set test_result "FAIL"
-  }
-  timeout {
-    puts $log_file "MULTIPLE FLAGS TEST: FAIL - Test timed out"
-    set test_result "FAIL"
-  }
-}
-
-puts $log_file "Test result: $test_result"
-close $log_file
-
-# Write result to results file
-set results_file [open "test_results/multiple_flags_result.txt" w]
-puts $results_file $test_result
-close $results_file
-
-expect eof
-EOL
-
-          # Make all test scripts executable
+          # Copy all expect scripts to test_scripts directory
+          cp scripts/expect/*.exp test_scripts/
+          chmod +x test_scripts/*.exp
+
+      - name: Prepare additional test scripts
+        run: |
+          # Instead of creating Expect scripts with heredoc, pull them from custom script directory
+          cp .github/test_scripts/multiple_flags.exp test_scripts/
+          cp .github/test_scripts/test_final_uninstall.exp test_scripts/
           chmod +x test_scripts/*.exp
 
       - name: Verify scancompare script
         id: verify
         run: |
           chmod +x scancompare
-          ls -la scancompare
           if ./scancompare --help | grep -E -- "--auto|--mock-yes|--mock-no"; then
             echo "| Script Help Check | ✅ PASS | Automation flags found in help text |" >> test_results/report.md
             echo "Automation flags found in help text"
@@ -682,11 +86,7 @@ EOL
       - name: Test argument parsing
         id: parser
         run: |
-          mkdir -p test_results
           chmod +x scripts/test_parser.py
-          echo "Current directory: $(pwd)"
-          echo "Script location check:"
-          ls -la scripts/
           python3 scripts/test_parser.py || (echo "Argument parser tests failed" && touch test_results/parser_results.md)
           if [ ! -f "test_results/parser_results.md" ]; then
             echo "| Test Case | Status | Details |" > test_results/parser_results.md
@@ -698,25 +98,28 @@ EOL
           fi
           cat test_results/parser_results.md >> test_results/report.md
 
-      - name: Run basic automation expect scripts
-        id: automation_expect
+      - name: Run basic automation tests
+        id: automation_tests
         run: |
-          echo "Running automation tests..."
+          echo "Running basic automation tests..."
+          echo "" >> test_results/report.md
+          echo "## Basic Automation Test Results" >> test_results/report.md
+          echo "" >> test_results/report.md
+          echo "| Test Case | Status | Details |" >> test_results/report.md
+          echo "|-----------|--------|---------|" >> test_results/report.md
+          
+          # Run automation tests
           for script in test_scripts/basic_*.exp test_scripts/multiple_flags.exp; do
             if [ -f "$script" ]; then
               echo "Running test: $(basename $script)"
               $script || echo "Test execution error: $(basename $script)"
             fi
           done
-          echo "" >> test_results/report.md
-          echo "## Basic Automation Test Results" >> test_results/report.md
-          echo "" >> test_results/report.md
-          echo "| Test Case | Status | Details |" >> test_results/report.md
-          echo "|-----------|--------|---------|" >> test_results/report.md
 
+          # Process automation test results
           for mode in auto yes no multiple_flags; do
             file="test_results/basic_${mode}_result.txt"
-            if [ "$mode" == "multiple_flags" ]; then
+            if [ "$mode" = "multiple_flags" ]; then
               file="test_results/multiple_flags_result.txt"
             fi
             
@@ -729,9 +132,9 @@ EOL
 
             if [ -f "$file" ]; then
               result=$(cat "$file")
-              if [ "$result" == "PASS" ]; then
+              if [ "$result" = "PASS" ]; then
                 echo "| $label | ✅ PASS | $mode mode correctly handled interactive flow |" >> test_results/report.md
-              elif [ "$result" == "INCONCLUSIVE" ]; then
+              elif [ "$result" = "INCONCLUSIVE" ]; then
                 echo "| $label | ⚠️ INCONCLUSIVE | Script completed but $mode behavior unclear |" >> test_results/report.md
               else
                 echo "| $label | ❌ FAIL | $mode mode failed to handle interactive flow |" >> test_results/report.md
@@ -741,113 +144,87 @@ EOL
             fi
           done
 
-      - name: Run quick command tests
-        id: command_tests
+      - name: Run utility command tests
+        id: utility_tests
         run: |
-          echo "Running quick command tests..."
+          echo "Running utility command tests..."
           echo "" >> test_results/report.md
-          echo "## Command Tests" >> test_results/report.md
+          echo "## Utility Command Tests" >> test_results/report.md
           echo "" >> test_results/report.md
           echo "| Test Case | Status | Details |" >> test_results/report.md
           echo "|-----------|--------|---------|" >> test_results/report.md
+          
+          # Run basic command tests
+          for test in help version update uninstall; do
+            if [ -f "test_scripts/test_${test}.exp" ]; then
+              echo "Running test: test_${test}.exp"
+              test_scripts/test_${test}.exp || echo "Test execution error: test_${test}.exp"
+              
+              file="test_results/test_${test}_result.txt"
+              case $test in
+                help) label="Help Command Test" ;;
+                version) label="Version Command Test" ;;
+                update) label="Update Command Test" ;;
+                uninstall) label="Uninstall Command Test" ;;
+              esac
 
-          # Run help, version, update tests (fast tests)
-          for test in help version update; do
-            echo "Running test: test_${test}.exp"
-            test_scripts/test_${test}.exp || echo "Test execution error: test_${test}.exp"
-            
-            file="test_results/test_${test}_result.txt"
-            case $test in
-              help) label="Help Command Test" ;;
-              version) label="Version Command Test" ;;
-              update) label="Update Command Test" ;;
-            esac
-
-            if [ -f "$file" ]; then
-              result=$(cat "$file")
-              if [ "$result" == "PASS" ]; then
-                echo "| $label | ✅ PASS | --$test command handled correctly |" >> test_results/report.md
-              elif [ "$result" == "INCONCLUSIVE" ]; then
-                echo "| $label | ⚠️ INCONCLUSIVE | --$test command completed with unclear results |" >> test_results/report.md
+              if [ -f "$file" ]; then
+                result=$(cat "$file")
+                if [ "$result" = "PASS" ]; then
+                  echo "| $label | ✅ PASS | --$test command handled correctly |" >> test_results/report.md
+                elif [ "$result" = "INCONCLUSIVE" ]; then
+                  echo "| $label | ⚠️ INCONCLUSIVE | --$test command completed with unclear results |" >> test_results/report.md
+                else
+                  echo "| $label | ❌ FAIL | --$test command failed |" >> test_results/report.md
+                fi
               else
-                echo "| $label | ❌ FAIL | --$test command failed |" >> test_results/report.md
+                echo "| $label | ❌ FAIL | --$test test did not complete |" >> test_results/report.md
               fi
             else
-              echo "| $label | ❌ FAIL | --$test test did not complete |" >> test_results/report.md
+              echo "| $label | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
             fi
           done
 
-      - name: Run longer tests (in parallel)
-        id: longer_tests
+      - name: Run feature tests
+        id: feature_tests
         run: |
-          echo "Running longer tests (limited selection for CI)..."
+          echo "Running feature tests..."
           echo "" >> test_results/report.md
           echo "## Feature Tests" >> test_results/report.md
           echo "" >> test_results/report.md
           echo "| Test Case | Status | Details |" >> test_results/report.md
           echo "|-----------|--------|---------|" >> test_results/report.md
           
-          # Run verbose test first (will complete faster than full scan)
-          test_scripts/test_verbose.exp &
-          # Wait for this test to complete
-          wait
-          
-          # Check verbose test result
-          file="test_results/test_verbose_result.txt"
-          if [ -f "$file" ]; then
-            result=$(cat "$file")
-            if [ "$result" == "PASS" ]; then
-              echo "| Verbose Mode Test | ✅ PASS | --verbose flag handled correctly |" >> test_results/report.md
-            elif [ "$result" == "INCONCLUSIVE" ]; then
-              echo "| Verbose Mode Test | ⚠️ INCONCLUSIVE | --verbose flag completed with unclear results |" >> test_results/report.md
-            else
-              echo "| Verbose Mode Test | ❌ FAIL | --verbose flag failed |" >> test_results/report.md
-            fi
-          else
-            echo "| Verbose Mode Test | ❌ FAIL | --verbose test did not complete |" >> test_results/report.md
-          fi
-          
-          # Run keep-data test next
-          test_scripts/test_keep_data.exp &
-          # Wait for this test to complete
-          wait
-          
-          # Check keep-data test result
-          file="test_results/test_keep_data_result.txt"
-          if [ -f "$file" ]; then
-            result=$(cat "$file")
-            if [ "$result" == "PASS" ]; then
-              echo "| Keep Data Flag Test | ✅ PASS | --keep-data flag handled correctly |" >> test_results/report.md
-            elif [ "$result" == "INCONCLUSIVE" ]; then
-              echo "| Keep Data Flag Test | ⚠️ INCONCLUSIVE | --keep-data flag completed with unclear results |" >> test_results/report.md
-            else
-              echo "| Keep Data Flag Test | ❌ FAIL | --keep-data flag failed |" >> test_results/report.md
-            fi
-          else
-            echo "| Keep Data Flag Test | ❌ FAIL | --keep-data test did not complete |" >> test_results/report.md
-          fi
+          # Run feature tests sequentially
+          for test in verbose keep_data; do
+            if [ -f "test_scripts/test_${test}.exp" ]; then
+              echo "Running test: test_${test}.exp"
+              test_scripts/test_${test}.exp || echo "Test execution error: test_${test}.exp"
+              
+              file="test_results/test_${test}_result.txt"
+              case $test in
+                verbose) label="Verbose Mode Test" ;;
+                keep_data) label="Keep Data Flag Test" ;;
+              esac
 
-      - name: Run uninstall test
-        id: uninstall_test
-        run: |
-          echo "Running uninstall test..."
-          test_scripts/test_uninstall.exp
-          
-          file="test_results/test_uninstall_result.txt"
-          if [ -f "$file" ]; then
-            result=$(cat "$file")
-            if [ "$result" == "PASS" ]; then
-              echo "| Uninstall Command Test | ✅ PASS | --uninstall command started correctly |" >> test_results/report.md
-            elif [ "$result" == "INCONCLUSIVE" ]; then
-              echo "| Uninstall Command Test | ⚠️ INCONCLUSIVE | --uninstall command completed with unclear results |" >> test_results/report.md
+              if [ -f "$file" ]; then
+                result=$(cat "$file")
+                if [ "$result" = "PASS" ]; then
+                  echo "| $label | ✅ PASS | --${test//_/-} flag handled correctly |" >> test_results/report.md
+                elif [ "$result" = "INCONCLUSIVE" ]; then
+                  echo "| $label | ⚠️ INCONCLUSIVE | --${test//_/-} flag completed with unclear results |" >> test_results/report.md
+                else
+                  echo "| $label | ❌ FAIL | --${test//_/-} flag failed |" >> test_results/report.md
+                fi
+              else
+                echo "| $label | ❌ FAIL | --${test//_/-} test did not complete |" >> test_results/report.md
+              fi
             else
-              echo "| Uninstall Command Test | ❌ FAIL | --uninstall command failed |" >> test_results/report.md
+              echo "| $label | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
             fi
-          else
-            echo "| Uninstall Command Test | ❌ FAIL | --uninstall test did not complete |" >> test_results/report.md
-          fi
+          done
 
-      - name: Run GitHub repo-related tests (if possible)
+      - name: Run GitHub-specific tests
         id: github_tests
         if: env.GITHUB_TOKEN != ''
         run: |
@@ -858,63 +235,75 @@ EOL
           echo "| Test Case | Status | Details |" >> test_results/report.md
           echo "|-----------|--------|---------|" >> test_results/report.md
           
-          # Only run a limited subset of GitHub tests since they require authentication
-          # Running with the repo-url test as this is the most basic
-          test_scripts/test_repo_url.exp
-          
-          file="test_results/test_repo_url_result.txt"
-          if [ -f "$file" ]; then
-            result=$(cat "$file")
-            if [ "$result" == "PASS" ]; then
-              echo "| Repository URL Test | ✅ PASS | --repo-url flag handled correctly |" >> test_results/report.md
-            elif [ "$result" == "INCONCLUSIVE" ]; then
-              echo "| Repository URL Test | ⚠️ INCONCLUSIVE | --repo-url flag completed with unclear results |" >> test_results/report.md
+          # Run repo-url test
+          if [ -f "test_scripts/test_repo_url.exp" ]; then
+            test_scripts/test_repo_url.exp
+            
+            file="test_results/test_repo_url_result.txt"
+            if [ -f "$file" ]; then
+              result=$(cat "$file")
+              if [ "$result" = "PASS" ]; then
+                echo "| Repository URL Test | ✅ PASS | --repo-url flag handled correctly |" >> test_results/report.md
+              elif [ "$result" = "INCONCLUSIVE" ]; then
+                echo "| Repository URL Test | ⚠️ INCONCLUSIVE | --repo-url flag completed with unclear results |" >> test_results/report.md
+              else
+                echo "| Repository URL Test | ❌ FAIL | --repo-url flag failed |" >> test_results/report.md
+              fi
             else
-              echo "| Repository URL Test | ❌ FAIL | --repo-url flag failed |" >> test_results/report.md
+              echo "| Repository URL Test | ❌ FAIL | --repo-url test did not complete |" >> test_results/report.md
             fi
           else
-            echo "| Repository URL Test | ❌ FAIL | --repo-url test did not complete |" >> test_results/report.md
+            echo "| Repository URL Test | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
           fi
           
-          # Skip the GHAS and GitHub Pages tests in CI environment unless explicitly enabled
-          if [ "$RUN_GITHUB_ADVANCED_TESTS" == "true" ]; then
-            test_scripts/test_repo_url_ghas.exp
-            test_scripts/test_repo_url_gh_pages.exp
-            
-            # Process GHAS test results
-            file="test_results/test_repo_url_ghas_result.txt"
-            if [ -f "$file" ]; then
-              result=$(cat "$file")
-              if [ "$result" == "PASS" ]; then
-                echo "| GHAS Integration Test | ✅ PASS | --ghas flag handled correctly |" >> test_results/report.md
-              elif [ "$result" == "INCONCLUSIVE" ]; then
-                echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | --ghas flag completed with unclear results |" >> test_results/report.md
+          # Skip advanced GitHub tests unless explicitly enabled
+          if [ "$RUN_GITHUB_ADVANCED_TESTS" = "true" ]; then
+            # Run GHAS test
+            if [ -f "test_scripts/test_repo_url_ghas.exp" ]; then
+              test_scripts/test_repo_url_ghas.exp
+              
+              file="test_results/test_repo_url_ghas_result.txt"
+              if [ -f "$file" ]; then
+                result=$(cat "$file")
+                if [ "$result" = "PASS" ]; then
+                  echo "| GHAS Integration Test | ✅ PASS | --ghas flag handled correctly |" >> test_results/report.md
+                elif [ "$result" = "INCONCLUSIVE" ]; then
+                  echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | --ghas flag completed with unclear results |" >> test_results/report.md
+                else
+                  echo "| GHAS Integration Test | ❌ FAIL | --ghas flag failed |" >> test_results/report.md
+                fi
               else
-                echo "| GHAS Integration Test | ❌ FAIL | --ghas flag failed |" >> test_results/report.md
+                echo "| GHAS Integration Test | ❌ FAIL | --ghas test did not complete |" >> test_results/report.md
               fi
             else
-              echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | --ghas test skipped |" >> test_results/report.md
+              echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
             fi
             
-            # Process GitHub Pages test results
-            file="test_results/test_repo_url_gh_pages_result.txt"
-            if [ -f "$file" ]; then
-              result=$(cat "$file")
-              if [ "$result" == "PASS" ]; then
-                echo "| GitHub Pages Test | ✅ PASS | --gh-pages flag handled correctly |" >> test_results/report.md
-              elif [ "$result" == "INCONCLUSIVE" ]; then
-                echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | --gh-pages flag completed with unclear results |" >> test_results/report.md
+            # Run GitHub Pages test
+            if [ -f "test_scripts/test_repo_url_gh_pages.exp" ]; then
+              test_scripts/test_repo_url_gh_pages.exp
+              
+              file="test_results/test_repo_url_gh_pages_result.txt"
+              if [ -f "$file" ]; then
+                result=$(cat "$file")
+                if [ "$result" = "PASS" ]; then
+                  echo "| GitHub Pages Test | ✅ PASS | --gh-pages flag handled correctly |" >> test_results/report.md
+                elif [ "$result" = "INCONCLUSIVE" ]; then
+                  echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | --gh-pages flag completed with unclear results |" >> test_results/report.md
+                else
+                  echo "| GitHub Pages Test | ❌ FAIL | --gh-pages flag failed |" >> test_results/report.md
+                fi
               else
-                echo "| GitHub Pages Test | ❌ FAIL | --gh-pages flag failed |" >> test_results/report.md
+                echo "| GitHub Pages Test | ❌ FAIL | --gh-pages test did not complete |" >> test_results/report.md
               fi
             else
-              echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | --gh-pages test skipped |" >> test_results/report.md
+              echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
             fi
           else
             echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | --ghas test skipped in CI environment |" >> test_results/report.md
             echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | --gh-pages test skipped in CI environment |" >> test_results/report.md
           fi
-        
+
       - name: Generate test summary
         run: |
           if [ ! -f "test_results/report.md" ]; then
@@ -922,15 +311,13 @@ EOL
             exit 1
           fi
 
-          echo "Contents of report.md:"
-          cat test_results/report.md
-
-          # Count unique test cases to avoid double-counting
+          # Count test results
           TOTAL_TESTS=$(grep "^|" test_results/report.md | grep -vE '\-\-\-|\| Test Case ' | wc -l)
           PASSED_TESTS=$(grep -c "✅ PASS" test_results/report.md || echo 0)
           INCONCLUSIVE_TESTS=$(grep -c "⚠️ INCONCLUSIVE" test_results/report.md || echo 0)
           FAILED_TESTS=$(grep -c "❌ FAIL" test_results/report.md || echo 0)
 
+          # Add summary to report
           echo "" >> test_results/report.md
           echo "## Test Summary" >> test_results/report.md
           echo "" >> test_results/report.md
@@ -939,6 +326,7 @@ EOL
           echo "- Inconclusive: $INCONCLUSIVE_TESTS" >> test_results/report.md
           echo "- Failed: $FAILED_TESTS" >> test_results/report.md
 
+          # Add failed test details if any
           if [ "$FAILED_TESTS" -gt 0 ]; then
             echo "" >> test_results/report.md
             echo "### Failed Tests" >> test_results/report.md
@@ -948,6 +336,7 @@ EOL
             rm -f temp_failed.txt
           fi
 
+          # Add inconclusive test details if any
           if [ "$INCONCLUSIVE_TESTS" -gt 0 ]; then
             echo "" >> test_results/report.md
             echo "### Inconclusive Tests" >> test_results/report.md
@@ -957,11 +346,13 @@ EOL
             rm -f temp_inconclusive.txt
           fi
 
+          # Add log information
           echo "" >> test_results/report.md
           echo "## Detailed Logs" >> test_results/report.md
           echo "" >> test_results/report.md
           echo "Detailed logs for each test are available in the test_results directory." >> test_results/report.md
 
+          # Set overall test status
           if [ "$FAILED_TESTS" -eq 0 ]; then
             echo "success" > test_results/scancompare_status.txt
           else
@@ -985,7 +376,6 @@ EOL
         if: always()  # Run even if previous steps failed
         run: |
           echo "Running final uninstall test (all other tests should be complete)..."
-          chmod +x test_scripts/test_final_uninstall.exp
           test_scripts/test_final_uninstall.exp
           
           echo "" >> test_results/report.md
@@ -997,7 +387,7 @@ EOL
           file="test_results/test_final_uninstall_result.txt"
           if [ -f "$file" ]; then
             result=$(cat "$file")
-            if [ "$result" == "PASS" ]; then
+            if [ "$result" = "PASS" ]; then
               echo "| Complete Uninstall Test | ✅ PASS | Application uninstalled successfully |" >> test_results/report.md
             else
               echo "| Complete Uninstall Test | ❌ FAIL | Application uninstall failed |" >> test_results/report.md

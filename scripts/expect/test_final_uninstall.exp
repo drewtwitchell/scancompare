@@ -3,7 +3,6 @@ set timeout 120
 set log_file [open "test_results/test_final_uninstall.log" w]
 
 # This is meant to be the LAST test in the workflow
-# It fully uninstalls the application to verify the complete uninstall process
 spawn python scancompare --uninstall
 
 expect {
