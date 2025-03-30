@@ -147,9 +147,9 @@ def check_latest_version(only_check=False):
         os.remove(tmp_path)
 
         if latest == current:
-            if only_check:
+            if only_check and not already_updated:
                 print(f"📦 scancompare version {current} (latest)")
-            else:
+            elif not only_check:
                 print(f"✅ You are already running the latest version: {current}")
             return
 
