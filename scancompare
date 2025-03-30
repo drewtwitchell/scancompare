@@ -1080,7 +1080,7 @@ def publish_to_github_pages(report_path, image, repo_url, remember_choice=False)
         return None
 
     repo_obj = get_repo_from_url(repo_url)
-    repo_url, repo = resolve_fork(repo_obj, action_label="publish", remember_choice=remember_choice, cache_key="gh-pages")
+    repo_url, repo = resolve_fork(repo_obj, action_label="publish", remember_choice=remember_choice, cache_key="fork-choice")
 
     parsed = urlparse(repo_url)
     repo_path = parsed.path.strip("/")
@@ -1443,7 +1443,7 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
     import json, base64, tempfile, subprocess, gzip
     from datetime import datetime, timezone
 
-    repo_url, repo = resolve_fork(repo, action_label="upload", remember_choice=True, cache_key="ghas")
+    repo_url, repo = resolve_fork(repo, action_label="upload", remember_choice=True, cache_key="fork-choice")
 
     def is_valid_sarif(sarif_path):
         try:
@@ -1814,7 +1814,7 @@ def main():
 
     # Clear fork choice cache unless user explicitly sets --ghas or --gh-pages
     if not (args.ghas or args.gh_pages):
-        for key in ["ghas", "gh-pages"]:
+        for key in ["fork-choice"]:
             try:
                 os.remove(os.path.join(TEMP_DIR, f"{key}.json"))
             except Exception:
