@@ -12,8 +12,8 @@ DEFAULT_SCRIPT_SOURCE="https://raw.githubusercontent.com/drewtwitchell/scancompa
 # Try to extract GitHub user and repo from local .git if available
 if git remote get-url origin &> /dev/null; then
   REMOTE_URL=$(git remote get-url origin)
-  GITHUB_USER=$(echo "$REMOTE_URL" | sed -E 's|.*github.com[:/](.*?)/.*|\1|')
-  GITHUB_REPO=$(echo "$REMOTE_URL" | sed -E 's|.*/(.*?)(\.git)?$|\1|')
+  GITHUB_USER=$(echo "$REMOTE_URL" | sed -E 's|.*github.com[:/]\([^/]*\)/.*|\1|')
+  GITHUB_REPO=$(echo "$REMOTE_URL" | sed -E 's|.*/([^/]+)\.git$|\1|')
 else
   # Fallback to extracting from default URL
   SCRIPT_SOURCE="${SCRIPT_SOURCE:-$DEFAULT_SCRIPT_SOURCE}"
