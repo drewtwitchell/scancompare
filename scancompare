@@ -1438,11 +1438,15 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     
     return report_path
 
-def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, temp_dir, repo_url=None, verbose=False):
+def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, temp_dir, repo_url, verbose=False):
     from pathlib import Path
     import json, base64, tempfile, subprocess, gzip
     from datetime import datetime, timezone
 
+    if not repo_url:
+        return None
+
+    repo_obj = get_repo_from_url(repo_url)
     repo_url, repo = resolve_fork(repo, action_label="upload", remember_choice=True, cache_key="fork-choice")
 
     def is_valid_sarif(sarif_path):
