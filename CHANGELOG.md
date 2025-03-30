@@ -53,3 +53,4 @@
 - Fixed duplicate backups not being timestamped correctly.
 - Fixed issue with the uninstall working correctly
 - Fixed issue with release
+- Fixed issue with auto updater
