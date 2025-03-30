@@ -192,14 +192,18 @@ jobs:
             echo "" >> test_results/report.md
             echo "### Failed Tests" >> test_results/report.md
             echo "" >> test_results/report.md
-            grep "❌ FAIL" test_results/report.md >> test_results/report.md || echo "- Error listing failed tests" >> test_results/report.md
+            grep "❌ FAIL" test_results/report.md > temp_failed.txt || echo "- Error listing failed tests" > temp_failed.txt
+            cat temp_failed.txt >> test_results/report.md
+            rm -f temp_failed.txt
           fi
 
           if [ "$INCONCLUSIVE_TESTS" -gt 0 ]; then
             echo "" >> test_results/report.md
             echo "### Inconclusive Tests" >> test_results/report.md
             echo "" >> test_results/report.md
-            grep "⚠️ INCONCLUSIVE" test_results/report.md >> test_results/report.md || echo "- Error listing inconclusive tests" >> test_results/report.md
+            grep "⚠️ INCONCLUSIVE" test_results/report.md > temp_inconclusive.txt || echo "- Error listing inconclusive tests" > temp_inconclusive.txt
+            cat temp_inconclusive.txt >> test_results/report.md
+            rm -f temp_inconclusive.txt
           fi
 
           echo "" >> test_results/report.md
