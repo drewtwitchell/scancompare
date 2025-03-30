@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+set timeout 300
+set log_file [open "test_results/basic_yes.log" w]
+
+spawn python scancompare nginx:latest --mock-yes
+
+expect {
+  "Automatically selecting 'yes'" {
+    puts $log_file "MOCK-YES TEST: PASS - Mock-yes mode detected and appropriate message found"
+    set test_result "PASS"
+  }
+  eof {
+    puts $log_file "MOCK-YES TEST: INCONCLUSIVE - Script completed without yes message"
+    set test_result "INCONCLUSIVE"
+  }
+  timeout {
+    puts $log_file "MOCK-YES TEST: FAIL - Test timed out"
+    set test_result "FAIL"
+  }
+}
+
+puts $log_file "Test result: $test_result"
+close $log_file
+
+# Write result to results file
+set results_file [open "test_results/basic_yes_result.txt" w]
+puts $results_file $test_result
+close $results_file
+
+expect eof

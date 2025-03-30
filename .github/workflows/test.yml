@@ -85,272 +85,29 @@ jobs:
       - name: Test argument parsing
         id: parser
         run: |
-          # Create simple test script to verify the argument parser alone
-          cat > test_parser.py << 'EOF'
-          #!/usr/bin/env python3
-          import sys
-          import os
-          
-          # Save original stdout to restore later
-          original_stdout = sys.stdout
-          
-          # Create a log file for output
-          log_file = open('test_results/parser_log.txt', 'w')
-          sys.stdout = log_file
-          
-          # Import from scancompare
-          try:
-              from scancompare import handle_cli_args, get_automation_mode
-              print("Successfully imported from scancompare")
-          except Exception as e:
-              print(f"Failed to import from scancompare: {e}")
-              sys.exit(1)
-          
-          # Test results tracking
-          results = []
-          
-          # Test --auto flag
-          try:
-              sys.argv = ['scancompare', 'nginx:latest', '--auto']
-              auto_args = handle_cli_args()
-              auto_mode = get_automation_mode(auto_args)
-              if auto_args.auto and auto_mode == "auto":
-                  results.append(("Auto Flag Test", "PASS", f"Auto flag detected correctly: {auto_args.auto}, Mode: {auto_mode}"))
-                  print(f"Auto Flag Test: PASS - Auto flag detected correctly: {auto_args.auto}, Mode: {auto_mode}")
-              else:
-                  results.append(("Auto Flag Test", "FAIL", f"Auto flag not detected correctly: {auto_args.auto}, Mode: {auto_mode}"))
-                  print(f"Auto Flag Test: FAIL - Auto flag not detected correctly: {auto_args.auto}, Mode: {auto_mode}")
-          except Exception as e:
-              results.append(("Auto Flag Test", "ERROR", f"Exception occurred: {e}"))
-              print(f"Auto Flag Test: ERROR - Exception occurred: {e}")
-          
-          # Test --mock-yes flag
-          try:
-              sys.argv = ['scancompare', 'nginx:latest', '--mock-yes']
-              yes_args = handle_cli_args()
-              yes_mode = get_automation_mode(yes_args)
-              if yes_args.mock_yes and yes_mode == "yes":
-                  results.append(("Mock-Yes Flag Test", "PASS", f"Mock-yes flag detected correctly: {yes_args.mock_yes}, Mode: {yes_mode}"))
-                  print(f"Mock-Yes Flag Test: PASS - Mock-yes flag detected correctly: {yes_args.mock_yes}, Mode: {yes_mode}")
-              else:
-                  results.append(("Mock-Yes Flag Test", "FAIL", f"Mock-yes flag not detected correctly: {yes_args.mock_yes}, Mode: {yes_mode}"))
-                  print(f"Mock-Yes Flag Test: FAIL - Mock-yes flag not detected correctly: {yes_args.mock_yes}, Mode: {yes_mode}")
-          except Exception as e:
-              results.append(("Mock-Yes Flag Test", "ERROR", f"Exception occurred: {e}"))
-              print(f"Mock-Yes Flag Test: ERROR - Exception occurred: {e}")
-          
-          # Test --mock-no flag
-          try:
-              sys.argv = ['scancompare', 'nginx:latest', '--mock-no']
-              no_args = handle_cli_args()
-              no_mode = get_automation_mode(no_args)
-              if no_args.mock_no and no_mode == "no":
-                  results.append(("Mock-No Flag Test", "PASS", f"Mock-no flag detected correctly: {no_args.mock_no}, Mode: {no_mode}"))
-                  print(f"Mock-No Flag Test: PASS - Mock-no flag detected correctly: {no_args.mock_no}, Mode: {no_mode}")
-              else:
-                  results.append(("Mock-No Flag Test", "FAIL", f"Mock-no flag not detected correctly: {no_args.mock_no}, Mode: {no_mode}"))
-                  print(f"Mock-No Flag Test: FAIL - Mock-no flag not detected correctly: {no_args.mock_no}, Mode: {no_mode}")
-          except Exception as e:
-              results.append(("Mock-No Flag Test", "ERROR", f"Exception occurred: {e}"))
-              print(f"Mock-No Flag Test: ERROR - Exception occurred: {e}")
-          
-          # Test conflict detection
-          conflict_test_passed = False
-          try:
-              sys.argv = ['scancompare', 'nginx:latest', '--auto', '--mock-yes']
-              handle_cli_args()
-              results.append(("Flag Conflict Test", "FAIL", "Multiple flags should have been rejected but weren't"))
-              print("Flag Conflict Test: FAIL - Multiple flags should have been rejected but weren't")
-          except SystemExit:
-              conflict_test_passed = True
-              results.append(("Flag Conflict Test", "PASS", "Multiple flags correctly rejected"))
-              print("Flag Conflict Test: PASS - Multiple flags correctly rejected")
-          except Exception as e:
-              results.append(("Flag Conflict Test", "ERROR", f"Unexpected exception: {e}"))
-              print(f"Flag Conflict Test: ERROR - Unexpected exception: {e}")
-          
-          # Restore stdout
-          sys.stdout = original_stdout
-          log_file.close()
-          
-          # Write results to markdown
-          with open('test_results/parser_results.md', 'w') as f:
-              for test, status, details in results:
-                  status_icon = "✅" if status == "PASS" else "❌"
-                  f.write(f"| {test} | {status_icon} {status} | {details} |\n")
-              
-              # Summary
-              passed = sum(1 for _, status, _ in results if status == "PASS")
-              total = len(results)
-              f.write(f"\n## Summary\n")
-              f.write(f"Passed {passed} out of {total} tests\n")
-              
-              if not conflict_test_passed:
-                  f.write("\n⚠️ **Critical Issue**: Flag conflict detection is not working properly\n")
-          
-          # Exit with error if any test failed
-          if passed < total:
-              sys.exit(1)
-          EOF
+          # Make the test parser script executable
+          chmod +x scripts/test_parser.py
           
           # Run the test script
-          python test_parser.py || echo "Argument parser tests failed"
+          python scripts/test_parser.py || echo "Argument parser tests failed"
           
           # Append parser test results to main report
           cat test_results/parser_results.md >> test_results/report.md
 
       # For actual script testing, we'll use expect scripts for interactive prompts
-      - name: Create expect scripts for automated testing
-        run: |
-          # Create test directory
-          mkdir -p test_scripts
-          
-          # Create expect scripts for each automation mode
-          
-          # Basic image scan with auto mode
-          cat > test_scripts/basic_auto.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 300
-          set log_file [open "test_results/basic_auto.log" w]
-          
-          spawn python scancompare nginx:latest --auto
-          
-          expect {
-            "Automatically opening reports in browser" {
-              puts $log_file "AUTO TEST: PASS - Auto mode detected and browser opening message found"
-              set test_result "PASS"
-            }
-            eof {
-              puts $log_file "AUTO TEST: INCONCLUSIVE - Script completed without browser message"
-              set test_result "INCONCLUSIVE"
-            }
-            timeout {
-              puts $log_file "AUTO TEST: FAIL - Test timed out"
-              set test_result "FAIL"
-            }
-          }
-          
-          puts $log_file "Test result: $test_result"
-          close $log_file
-          
-          # Write result to results file
-          set results_file [open "test_results/basic_auto_result.txt" w]
-          puts $results_file $test_result
-          close $results_file
-          
-          expect eof
-          EOF
-          
-          # Basic image scan with mock-yes mode
-          cat > test_scripts/basic_yes.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 300
-          set log_file [open "test_results/basic_yes.log" w]
-          
-          spawn python scancompare nginx:latest --mock-yes
-          
-          expect {
-            "Automatically selecting 'yes'" {
-              puts $log_file "MOCK-YES TEST: PASS - Mock-yes mode detected and appropriate message found"
-              set test_result "PASS"
-            }
-            eof {
-              puts $log_file "MOCK-YES TEST: INCONCLUSIVE - Script completed without yes message"
-              set test_result "INCONCLUSIVE"
-            }
-            timeout {
-              puts $log_file "MOCK-YES TEST: FAIL - Test timed out"
-              set test_result "FAIL"
-            }
-          }
-          
-          puts $log_file "Test result: $test_result"
-          close $log_file
-          
-          # Write result to results file
-          set results_file [open "test_results/basic_yes_result.txt" w]
-          puts $results_file $test_result
-          close $results_file
-          
-          expect eof
-          EOF
-          
-          # Basic image scan with mock-no mode
-          cat > test_scripts/basic_no.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 300
-          set log_file [open "test_results/basic_no.log" w]
-          
-          spawn python scancompare nginx:latest --mock-no
-          
-          expect {
-            "Automatically selecting 'no'" {
-              puts $log_file "MOCK-NO TEST: PASS - Mock-no mode detected and appropriate message found"
-              set test_result "PASS"
-            }
-            eof {
-              puts $log_file "MOCK-NO TEST: INCONCLUSIVE - Script completed without no message"
-              set test_result "INCONCLUSIVE"
-            }
-            timeout {
-              puts $log_file "MOCK-NO TEST: FAIL - Test timed out"
-              set test_result "FAIL"
-            }
-          }
-          
-          puts $log_file "Test result: $test_result"
-          close $log_file
-          
-          # Write result to results file
-          set results_file [open "test_results/basic_no_result.txt" w]
-          puts $results_file $test_result
-          close $results_file
-          
-          expect eof
-          EOF
-          
-          # Multiple automation flags (should fail)
-          cat > test_scripts/multiple_flags.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 300
-          set log_file [open "test_results/multiple_flags.log" w]
-          
-          spawn python scancompare nginx:latest --auto --mock-yes
-          
-          expect {
-            "Only one automation flag" {
-              puts $log_file "MULTIPLE FLAGS TEST: PASS - Multiple flags correctly rejected"
-              set test_result "PASS"
-            }
-            eof {
-              puts $log_file "MULTIPLE FLAGS TEST: FAIL - Script completed without rejecting multiple flags"
-              set test_result "FAIL"
-            }
-            timeout {
-              puts $log_file "MULTIPLE FLAGS TEST: FAIL - Test timed out"
-              set test_result "FAIL"
-            }
-          }
-          
-          puts $log_file "Test result: $test_result"
-          close $log_file
-          
-          # Write result to results file
-          set results_file [open "test_results/multiple_flags_result.txt" w]
-          puts $results_file $test_result
-          close $results_file
-          
-          expect eof
-          EOF
-          
-          # Make all scripts executable
-          chmod +x test_scripts/*.exp
-
-      # Run the expect scripts
-      - name: Run automated tests with expect
+      - name: Run expect scripts for automated testing
         id: expect
         run: |
           echo "Running automated tests..."
+          
+          # Create test_scripts directory
+          mkdir -p test_scripts
+          
+          # Copy expect scripts from repository to test_scripts
+          cp scripts/expect/*.exp test_scripts/
+          
+          # Make all scripts executable
+          chmod +x test_scripts/*.exp
           
           # Run all expect scripts and record results
           for script in test_scripts/*.exp; do

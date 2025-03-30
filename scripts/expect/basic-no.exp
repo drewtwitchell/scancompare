@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+set timeout 300
+set log_file [open "test_results/basic_no.log" w]
+
+spawn python scancompare nginx:latest --mock-no
+
+expect {
+  "Automatically selecting 'no'" {
+    puts $log_file "MOCK-NO TEST: PASS - Mock-no mode detected and appropriate message found"
+    set test_result "PASS"
+  }
+  eof {
+    puts $log_file "MOCK-NO TEST: INCONCLUSIVE - Script completed without no message"
+    set test_result "INCONCLUSIVE"
+  }
+  timeout {
+    puts $log_file "MOCK-NO TEST: FAIL - Test timed out"
+    set test_result "FAIL"
+  }
+}
+
+puts $log_file "Test result: $test_result"
+close $log_file
+
+# Write result to results file
+set results_file [open "test_results/basic_no_result.txt" w]
+puts $results_file $test_result
+close $results_file
+
+expect eof

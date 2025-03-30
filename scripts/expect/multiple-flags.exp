@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+set timeout 300
+set log_file [open "test_results/multiple_flags.log" w]
+
+spawn python scancompare nginx:latest --auto --mock-yes
+
+expect {
+  "Only one automation flag" {
+    puts $log_file "MULTIPLE FLAGS TEST: PASS - Multiple flags correctly rejected"
+    set test_result "PASS"
+  }
+  eof {
+    puts $log_file "MULTIPLE FLAGS TEST: FAIL - Script completed without rejecting multiple flags"
+    set test_result "FAIL"
+  }
+  timeout {
+    puts $log_file "MULTIPLE FLAGS TEST: FAIL - Test timed out"
+    set test_result "FAIL"
+  }
+}
+
+puts $log_file "Test result: $test_result"
+close $log_file
+
+# Write result to results file
+set results_file [open "test_results/multiple_flags_result.txt" w]
+puts $results_file $test_result
+close $results_file
+
+expect eof
