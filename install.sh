@@ -104,7 +104,7 @@ update_path() {
 install_python_and_tools() {
   install_homebrew() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
-      tool_progress "🍺 Installing" "Homebrew"
+      tool_progress "🍺 Installing" "Homebrew..."
       NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
         printf "⚠️ Failed to install Homebrew. Falling back to other installation methods.\n"
       }
@@ -185,11 +185,11 @@ if [[ -f "$PYTHON_SCRIPT" && "$FORCE_REINSTALL" -eq 0 ]]; then
 fi
 
 # Starting both steps with one progress indicator each
-tool_progress "📦 Installing" "required tools"
+tool_progress "📦 Installing" "required tools..."
 install_python_and_tools
 tool_done
 
-tool_progress "📦 Installing" "scancompare script"
+tool_progress "📦 Installing" "scancompare script..."
 # Create necessary directories
 mkdir -p "$INSTALL_BIN" "$INSTALL_LIB" "$SCANREPORTS_DIR" "$TEMP_DIR" "$LOCAL_BIN"
 
@@ -214,7 +214,6 @@ fi
 tool_done
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
-printf "✅ Downloaded scancompare version %s\n" "$VERSION"
 
 if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
   # Handle different sed versions (macOS vs GNU)
@@ -254,4 +253,4 @@ mkdir -p "$SCANREPORTS_DIR" "$TEMP_DIR" "$INSTALL_LIB"
 export PATH="$LOCAL_BIN:$PATH"
 
 printf "✅ scancompare v%s installed successfully\n" "$VERSION"
-printf "🎉 Type 'scancompare' to get started!\n"
+printf "🎉 Type 'scancompare --help' to get started!\n"
