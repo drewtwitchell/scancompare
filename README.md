@@ -30,6 +30,7 @@ Or via the install script:
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh) --uninstall
 ```
+This will remove all contents and settings created during the installation of scancompare
 
 ---
 
