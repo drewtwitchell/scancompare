@@ -53,6 +53,7 @@ PYTHON_SCRIPT="$INSTALL_LIB/$SCRIPT_NAME"
 WRAPPER_SCRIPT="$INSTALL_BIN/$SCRIPT_NAME"
 ENV_GUARD_FILE="$USER_ROOT/env.shexport"
 VENV_DIR="$INSTALL_LIB/venv"
+LOCAL_BIN="$HOME/.local/bin"
 
 log() {
   if [[ "$VERBOSE" -eq 1 ]]; then
@@ -73,7 +74,7 @@ tool_done() {
 # Immediately update PATH in current session and make it permanently available
 update_path() {
   # For current session
-  export PATH="$INSTALL_BIN:$PATH"
+  export PATH="$LOCAL_BIN:$PATH"
   
   # Detect the shell to update the correct profile
   CURRENT_SHELL=$(basename "$SHELL")
@@ -93,30 +94,11 @@ update_path() {
   
   for PROFILE in "${PROFILE_FILES[@]}"; do
     if [[ -f "$PROFILE" ]]; then
-      if ! grep -q "PATH=\"$INSTALL_BIN:\$PATH\"" "$PROFILE"; then
-        printf "\n# Added by scancompare installer\nexport PATH=\"$INSTALL_BIN:\$PATH\"\n" >> "$PROFILE"
+      if ! grep -q "PATH=\"$LOCAL_BIN:\$PATH\"" "$PROFILE"; then
+        printf "\n# Added by scancompare installer\nexport PATH=\"$LOCAL_BIN:\$PATH\"\n" >> "$PROFILE"
       fi
     fi
   done
-  
-  # Immediately source the profile for the current shell
-  if [[ "$CURRENT_SHELL" == "bash" ]]; then
-    # This will be executed in the parent shell
-    printf "\n# Run this to add scancompare to your current session:\nsource \"$HOME/.bashrc\"\n" > "$USER_ROOT/path_setup.sh"
-  elif [[ "$CURRENT_SHELL" == "zsh" ]]; then
-    printf "\n# Run this to add scancompare to your current session:\nsource \"$HOME/.zshrc\"\n" > "$USER_ROOT/path_setup.sh"
-  else
-    printf "\n# Run this to add scancompare to your current session:\nsource \"$HOME/.profile\"\n" > "$USER_ROOT/path_setup.sh"
-  fi
-  
-  # Create a special init script that can be executed directly
-  cat <<EOF > "$USER_ROOT/activate_scancompare.sh"
-#!/bin/bash
-export PATH="$INSTALL_BIN:\$PATH"
-echo "✅ scancompare is now available in this terminal session"
-echo "👉 Try running: scancompare --help"
-EOF
-  chmod +x "$USER_ROOT/activate_scancompare.sh"
 }
 
 install_python_and_tools() {
@@ -209,7 +191,7 @@ tool_done
 
 tool_progress "📦 Installing" "scancompare script"
 # Create necessary directories
-mkdir -p "$INSTALL_BIN" "$INSTALL_LIB" "$SCANREPORTS_DIR" "$TEMP_DIR"
+mkdir -p "$INSTALL_BIN" "$INSTALL_LIB" "$SCANREPORTS_DIR" "$TEMP_DIR" "$LOCAL_BIN"
 
 # Try to download from detected repo first
 if ! curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" 2>/dev/null; then
@@ -258,27 +240,18 @@ EOF
   chmod +x "$WRAPPER_SCRIPT"
 fi
 
+# Create symlink in ~/.local/bin
+ln -sf "$WRAPPER_SCRIPT" "$LOCAL_BIN/scancompare"
+chmod +x "$LOCAL_BIN/scancompare"
+
 # Update PATH in current session and permanently
 update_path
 
 # Ensure the ScanCompare root folder structure
 mkdir -p "$SCANREPORTS_DIR" "$TEMP_DIR" "$INSTALL_LIB"
 
-# Special eval trick to make it work in the current shell
-cat > "$USER_ROOT/temp_path_script.sh" << EOF
-#!/bin/bash
-export PATH="$INSTALL_BIN:\$PATH"
-EOF
+# Make it immediately available
+export PATH="$LOCAL_BIN:$PATH"
 
 printf "✅ scancompare v%s installed successfully\n" "$VERSION"
-
-if [ -d "/usr/local/bin" ]; then
-  sudo ln -sf "$INSTALL_BIN/scancompare" /usr/local/bin/scancompare
-  printf "✅ Created symlink in /usr/local/bin for immediate access\n"
-else
-  # If /usr/local/bin doesn't exist, print instructions for using the full path
-  printf "⚠️ To use scancompare immediately, run with full path: $INSTALL_BIN/scancompare\n"
-  printf "   Or add to your PATH: export PATH=\"$INSTALL_BIN:\$PATH\"\n"
-fi
-
-printf "🎉 You can now run: $SCRIPT_NAME <image-name>\n"
+printf "🎉 Type 'scancompare' to get started!\n"
