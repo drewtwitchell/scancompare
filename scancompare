@@ -137,7 +137,6 @@ def check_latest_version(only_check=False):
         with open(tmp_path, 'r') as f:
             new_code = f.read()
 
-        # More robust regex for version extraction
         latest_match = re.search(r'VERSION\s*=\s*["\']([\d\.]+)["\']', new_code)
         if not latest_match:
             raise ValueError("Could not determine latest version from downloaded script.")
@@ -145,20 +144,21 @@ def check_latest_version(only_check=False):
         latest = latest_match.group(1)
         current = get_current_version()
 
+        os.remove(tmp_path)
+
         if latest == current:
-            if not only_check:
+            if only_check:
+                print(f"📦 scancompare version {current} (latest)")
+            else:
                 print(f"✅ You are already running the latest version: {current}")
-            os.remove(tmp_path)
             return
 
-        # Always notify when a new version is available, even during normal runs
         if only_check:
-            print(f"🔄 New version available: {current} → {latest}")
-        else:
-            print(f"🔄 Updating scancompare from {current} → {latest}...")
+            print(f"📦 scancompare version {current} — 🔄 New version available: {current} → {latest}")
+            return
 
+        print(f"🔄 Updating scancompare from {current} → {latest}...")
         update_script(new_code)
-        os.remove(tmp_path)
 
         print("♻️ Restarting with updated version...")
         os.execve(
@@ -1828,13 +1828,14 @@ def main():
         print(f"📦 scancompare version {get_current_version()}")
         return
 
-    if args.image or args.repo_url:
-        check_latest_version(only_check=True)
-
     # If neither image nor repo URL is provided, show usage and exit
     if not args.image and not args.repo_url:
         print("Usage: scancompare <image> [--repo-url <repo>, --ghas, --gh-pages, --keep-data, --verbose, --version, --update, --uninstall]")
         sys.exit(1)
+
+    # ✅ Print version even if not --version for transparency
+    current = get_current_version()
+    print(f"📦 scancompare version {current} (latest)")
 
     # Check if the provided image exists
     if args.image and not validate_image_exists(args.image):
@@ -1939,7 +1940,6 @@ def main():
                                                   get_version("trivy"), get_version("grype"))
                     print(f"\n✅ Local HTML report saved: {html_path}")
 
-                    # Fixed: Removed extra parameters that weren't in the function signature
                     handle_post_scan_prompts(
                         image_tag=image_tag,
                         html_path=html_path,
@@ -2009,7 +2009,6 @@ def main():
                                           get_version("trivy"), get_version("grype"))
             print(f"\n✅ Local HTML report saved: {html_path}")
 
-            # Fixed: Removed extra parameters that weren't in the function signature 
             handle_post_scan_prompts(
                 image_tag=image,
                 html_path=html_path,
