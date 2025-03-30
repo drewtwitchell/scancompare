@@ -1,19 +1,23 @@
-name: Scancompare Comprehensive Test Suite
+name: ScanCompare Tests
 
 on:
   push:
     branches: [main, develop, 'release-*']
   pull_request:
     branches: [main, develop, 'release-*']
+  workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      security-events: write
+      pages: write
     env:
       SCANCOMPARE_UPDATED: "1"
-      # Make GitHub token available to steps that need it
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -59,11 +63,14 @@ jobs:
           echo '| Test Case | Status | Details |' >> test_results/report.md
           echo '|-----------|--------|---------|' >> test_results/report.md
 
-      - name: Copy existing test scripts
+      - name: Copy test scripts
         run: |
-          # Copy all expect scripts to test_scripts directory
+          # Copy all expect scripts to test_scripts directory 
           cp scripts/expect/*.exp test_scripts/
           chmod +x test_scripts/*.exp
+          chmod +x scripts/configure_github_tests.sh
+          chmod +x scripts/count_test_results.sh
+          chmod +x scripts/run_github_tests.sh
 
       - name: Verify scancompare script
         id: verify
@@ -103,14 +110,14 @@ jobs:
           echo "| Test Case | Status | Details |" >> test_results/report.md
           echo "|-----------|--------|---------|" >> test_results/report.md
           
-          # Run automation tests
-          for script in test_scripts/basic_*.exp test_scripts/multiple_flags.exp; do
+          # Run automation tests - using the exact filenames from your screenshot
+          for script in test_scripts/basic_auto.exp test_scripts/basic_yes.exp test_scripts/basic_no.exp test_scripts/multiple_flags.exp; do
             if [ -f "$script" ]; then
               echo "Running test: $(basename $script)"
               $script || echo "Test execution error: $(basename $script)"
             fi
           done
-
+          
           # Process automation test results
           for mode in auto yes no multiple_flags; do
             file="test_results/basic_${mode}_result.txt"
@@ -124,7 +131,7 @@ jobs:
               no) label="Mock-No Mode Test" ;;
               multiple_flags) label="Multiple Flags Test" ;;
             esac
-
+            
             if [ -f "$file" ]; then
               result=$(cat "$file")
               if [ "$result" = "PASS" ]; then
@@ -149,34 +156,35 @@ jobs:
           echo "| Test Case | Status | Details |" >> test_results/report.md
           echo "|-----------|--------|---------|" >> test_results/report.md
           
-          # Run basic command tests
-          for test in help version update uninstall; do
-            if [ -f "test_scripts/test_${test}.exp" ]; then
-              echo "Running test: test_${test}.exp"
-              test_scripts/test_${test}.exp || echo "Test execution error: test_${test}.exp"
-              
-              file="test_results/test_${test}_result.txt"
-              case $test in
-                help) label="Help Command Test" ;;
-                version) label="Version Command Test" ;;
-                update) label="Update Command Test" ;;
-                uninstall) label="Uninstall Command Test" ;;
-              esac
-
-              if [ -f "$file" ]; then
-                result=$(cat "$file")
-                if [ "$result" = "PASS" ]; then
-                  echo "| $label | ✅ PASS | --$test command handled correctly |" >> test_results/report.md
-                elif [ "$result" = "INCONCLUSIVE" ]; then
-                  echo "| $label | ⚠️ INCONCLUSIVE | --$test command completed with unclear results |" >> test_results/report.md
-                else
-                  echo "| $label | ❌ FAIL | --$test command failed |" >> test_results/report.md
-                fi
+          # Using the exact filenames from your screenshot
+          for script in test_scripts/test_help.exp test_scripts/test_version.exp test_scripts/test_update.exp test_scripts/test_uninstall.exp; do
+            test_name=$(basename "$script" .exp | sed 's/test_//')
+            echo "Running test: $script"
+            if [ -f "$script" ]; then
+              $script || echo "Test execution error: $script"
+            else
+              echo "Script not found: $script"
+            fi
+            
+            file="test_results/$(basename $script .exp)_result.txt"
+            case $test_name in
+              help) label="Help Command Test" ;;
+              version) label="Version Command Test" ;;
+              update) label="Update Command Test" ;;
+              uninstall) label="Uninstall Command Test" ;;
+            esac
+            
+            if [ -f "$file" ]; then
+              result=$(cat "$file")
+              if [ "$result" = "PASS" ]; then
+                echo "| $label | ✅ PASS | --$test_name command handled correctly |" >> test_results/report.md
+              elif [ "$result" = "INCONCLUSIVE" ]; then
+                echo "| $label | ⚠️ INCONCLUSIVE | --$test_name command completed with unclear results |" >> test_results/report.md
               else
-                echo "| $label | ❌ FAIL | --$test test did not complete |" >> test_results/report.md
+                echo "| $label | ❌ FAIL | --$test_name command failed |" >> test_results/report.md
               fi
             else
-              echo "| $label | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
+              echo "| $label | ❌ FAIL | --$test_name test did not complete |" >> test_results/report.md
             fi
           done
 
@@ -190,198 +198,73 @@ jobs:
           echo "| Test Case | Status | Details |" >> test_results/report.md
           echo "|-----------|--------|---------|" >> test_results/report.md
           
-          # Run feature tests sequentially
-          for test in verbose keep_data; do
-            if [ -f "test_scripts/test_${test}.exp" ]; then
-              echo "Running test: test_${test}.exp"
-              test_scripts/test_${test}.exp || echo "Test execution error: test_${test}.exp"
-              
-              file="test_results/test_${test}_result.txt"
-              case $test in
-                verbose) label="Verbose Mode Test" ;;
-                keep_data) label="Keep Data Flag Test" ;;
-              esac
-
-              if [ -f "$file" ]; then
-                result=$(cat "$file")
-                if [ "$result" = "PASS" ]; then
-                  echo "| $label | ✅ PASS | --${test//_/-} flag handled correctly |" >> test_results/report.md
-                elif [ "$result" = "INCONCLUSIVE" ]; then
-                  echo "| $label | ⚠️ INCONCLUSIVE | --${test//_/-} flag completed with unclear results |" >> test_results/report.md
-                else
-                  echo "| $label | ❌ FAIL | --${test//_/-} flag failed |" >> test_results/report.md
-                fi
+          # Using the exact filenames from your screenshot
+          for script in test_scripts/test_verbose.exp test_scripts/test_keep_data.exp; do
+            test_name=$(basename "$script" .exp | sed 's/test_//')
+            echo "Running test: $script"
+            if [ -f "$script" ]; then
+              $script || echo "Test execution error: $script"
+            else
+              echo "Script not found: $script"
+            fi
+            
+            file="test_results/$(basename $script .exp)_result.txt"
+            case $test_name in
+              verbose) label="Verbose Mode Test" ;;
+              keep_data) label="Keep Data Flag Test" ;;
+            esac
+            
+            if [ -f "$file" ]; then
+              result=$(cat "$file")
+              if [ "$result" = "PASS" ]; then
+                echo "| $label | ✅ PASS | --$test_name flag handled correctly |" >> test_results/report.md
+              elif [ "$result" = "INCONCLUSIVE" ]; then
+                echo "| $label | ⚠️ INCONCLUSIVE | --$test_name flag completed with unclear results |" >> test_results/report.md
               else
-                echo "| $label | ❌ FAIL | --${test//_/-} test did not complete |" >> test_results/report.md
+                echo "| $label | ❌ FAIL | --$test_name flag failed |" >> test_results/report.md
               fi
             else
-              echo "| $label | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
+              echo "| $label | ❌ FAIL | --$test_name test did not complete |" >> test_results/report.md
             fi
           done
 
-      - name: Run GitHub-specific tests
-        id: github_tests
-        # Now we ensure the GitHub token is properly added as a repository secret
-        # and make this test more resilient by setting a variable to track whether GitHub tests should run
+      - name: Configure GitHub tests
         run: |
-          # Check if GitHub token is available
-          if [ -n "$GITHUB_TOKEN" ]; then
-            RUN_GITHUB_TESTS="true"
+          ./scripts/configure_github_tests.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_GITHUB_ADVANCED_TESTS: "true"
+
+      - name: Run GitHub repo URL test
+        run: |
+          # Run the basic repo URL test
+          if [ -f "test_scripts/test_repo_url.exp" ]; then
+            echo "Running test_repo_url.exp"
+            test_scripts/test_repo_url.exp
           else
-            RUN_GITHUB_TESTS="false"
-            echo "GitHub token not available, skipping GitHub tests"
+            echo "Script not found: test_repo_url.exp"
           fi
 
-          echo "" >> test_results/report.md
-          echo "## GitHub Integration Tests" >> test_results/report.md
-          echo "" >> test_results/report.md
-          echo "| Test Case | Status | Details |" >> test_results/report.md
-          echo "|-----------|--------|---------|" >> test_results/report.md
+      - name: Run GitHub advanced tests
+        run: |
+          # Run all the GitHub-specific tests directly
+          for script in test_scripts/test_repo_url_ghas.exp test_scripts/test_url_repo_comprehensive.exp test_scripts/test_url_repo_gh_pages.exp; do
+            if [ -f "$script" ]; then
+              echo "Running test: $script"
+              $script || echo "Test execution error: $script"
+            else
+              echo "Script not found: $script"
+            fi
+          done
           
-          if [ "$RUN_GITHUB_TESTS" = "true" ]; then
-            # Run repo-url test
-            if [ -f "test_scripts/test_repo_url.exp" ]; then
-              test_scripts/test_repo_url.exp
-              
-              file="test_results/test_repo_url_result.txt"
-              if [ -f "$file" ]; then
-                result=$(cat "$file")
-                if [ "$result" = "PASS" ]; then
-                  echo "| Repository URL Test | ✅ PASS | --repo-url flag handled correctly |" >> test_results/report.md
-                elif [ "$result" = "INCONCLUSIVE" ]; then
-                  echo "| Repository URL Test | ⚠️ INCONCLUSIVE | --repo-url flag completed with unclear results |" >> test_results/report.md
-                else
-                  echo "| Repository URL Test | ❌ FAIL | --repo-url flag failed |" >> test_results/report.md
-                fi
-              else
-                echo "| Repository URL Test | ❌ FAIL | --repo-url test did not complete |" >> test_results/report.md
-              fi
-            else
-              echo "| Repository URL Test | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
-            fi
-            
-            # Run GHAS and GitHub Pages tests conditionally
-            if [ "$RUN_GITHUB_ADVANCED_TESTS" = "true" ]; then
-              # Run GHAS test
-              if [ -f "test_scripts/test_repo_url_ghas.exp" ]; then
-                test_scripts/test_repo_url_ghas.exp
-                
-                file="test_results/test_repo_url_ghas_result.txt"
-                if [ -f "$file" ]; then
-                  result=$(cat "$file")
-                  if [ "$result" = "PASS" ]; then
-                    echo "| GHAS Integration Test | ✅ PASS | --ghas flag handled correctly |" >> test_results/report.md
-                  elif [ "$result" = "INCONCLUSIVE" ]; then
-                    echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | --ghas flag completed with unclear results |" >> test_results/report.md
-                  else
-                    echo "| GHAS Integration Test | ❌ FAIL | --ghas flag failed |" >> test_results/report.md
-                  fi
-                else
-                  echo "| GHAS Integration Test | ❌ FAIL | --ghas test did not complete |" >> test_results/report.md
-                fi
-              else
-                echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
-              fi
-              
-              # Run GitHub Pages test
-              if [ -f "test_scripts/test_repo_url_gh_pages.exp" ]; then
-                test_scripts/test_repo_url_gh_pages.exp
-                
-                file="test_results/test_repo_url_gh_pages_result.txt"
-                if [ -f "$file" ]; then
-                  result=$(cat "$file")
-                  if [ "$result" = "PASS" ]; then
-                    echo "| GitHub Pages Test | ✅ PASS | --gh-pages flag handled correctly |" >> test_results/report.md
-                  elif [ "$result" = "INCONCLUSIVE" ]; then
-                    echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | --gh-pages flag completed with unclear results |" >> test_results/report.md
-                  else
-                    echo "| GitHub Pages Test | ❌ FAIL | --gh-pages flag failed |" >> test_results/report.md
-                  fi
-                else
-                  echo "| GitHub Pages Test | ❌ FAIL | --gh-pages test did not complete |" >> test_results/report.md
-                fi
-              else
-                echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
-              fi
-            else
-              echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | Advanced GitHub tests disabled |" >> test_results/report.md
-              echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | Advanced GitHub tests disabled |" >> test_results/report.md
-            fi
-          else
-            # If GitHub token not available, mark all GitHub tests as skipped but not failed
-            echo "| Repository URL Test | ⚠️ INCONCLUSIVE | GitHub token not available, test skipped |" >> test_results/report.md
-            echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | GitHub token not available, test skipped |" >> test_results/report.md
-            echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | GitHub token not available, test skipped |" >> test_results/report.md
-          fi
+          # Also run through the github tests script
+          ./scripts/run_github_tests.sh
 
       - name: Generate test summary
         run: |
-          if [ ! -f "test_results/report.md" ]; then
-            echo "Error: test_results/report.md not found"
-            exit 1
-          fi
+          ./scripts/count_test_results.sh
 
-          echo "Contents of report.md:"
-          cat test_results/report.md
-
-          # Count test results, properly handling INCONCLUSIVE tests
-          # Only count FAIL results as failures, INCONCLUSIVE results are not failures
-          TOTAL_TESTS=$(grep "^|" test_results/report.md | grep -vE '\-\-\-|\| Test Case ' | wc -l)
-          PASSED_TESTS=$(grep -c "✅ PASS" test_results/report.md || echo 0)
-          INCONCLUSIVE_TESTS=$(grep -c "⚠️ INCONCLUSIVE" test_results/report.md || echo 0)
-          FAILED_TESTS=$(grep -c "❌ FAIL" test_results/report.md || echo 0)
-
-          # Make sure counts are treated as integers
-          TOTAL_TESTS=$(($TOTAL_TESTS + 0))
-          PASSED_TESTS=$(($PASSED_TESTS + 0))
-          INCONCLUSIVE_TESTS=$(($INCONCLUSIVE_TESTS + 0))
-          FAILED_TESTS=$(($FAILED_TESTS + 0))
-
-          echo "" >> test_results/report.md
-          echo "## Test Summary" >> test_results/report.md
-          echo "" >> test_results/report.md
-          echo "- Total Tests: $TOTAL_TESTS" >> test_results/report.md
-          echo "- Passed: $PASSED_TESTS" >> test_results/report.md
-          echo "- Inconclusive: $INCONCLUSIVE_TESTS" >> test_results/report.md
-          echo "- Failed: $FAILED_TESTS" >> test_results/report.md
-
-          # Add failed test details if any
-          if [ "$FAILED_TESTS" -gt 0 ]; then
-            echo "" >> test_results/report.md
-            echo "### Failed Tests" >> test_results/report.md
-            echo "" >> test_results/report.md
-            grep "❌ FAIL" test_results/report.md > temp_failed.txt || echo "- Error listing failed tests" > temp_failed.txt
-            cat temp_failed.txt >> test_results/report.md
-            rm -f temp_failed.txt
-          fi
-
-          # Add inconclusive test details if any
-          if [ "$INCONCLUSIVE_TESTS" -gt 0 ]; then
-            echo "" >> test_results/report.md
-            echo "### Inconclusive Tests" >> test_results/report.md
-            echo "" >> test_results/report.md
-            grep "⚠️ INCONCLUSIVE" test_results/report.md > temp_inconclusive.txt || echo "- Error listing inconclusive tests" > temp_inconclusive.txt
-            cat temp_inconclusive.txt >> test_results/report.md
-            rm -f temp_inconclusive.txt
-          fi
-
-          # Add log information
-          echo "" >> test_results/report.md
-          echo "## Detailed Logs" >> test_results/report.md
-          echo "" >> test_results/report.md
-          echo "Detailed logs for each test are available in the test_results directory." >> test_results/report.md
-
-          # Fix for success/failure determination:
-          # Only mark as failure if there are actual FAILED tests (not INCONCLUSIVE)
-          if [ "$FAILED_TESTS" -eq 0 ]; then
-            echo "success" > test_results/scancompare_status.txt
-            echo "✅ All required tests PASSED!"
-          else
-            echo "failure" > test_results/scancompare_status.txt
-            echo "❌ Some tests FAILED."
-          fi
-
-      - name: Save test results
+      - name: Save test artifacts
         run: |
           mkdir -p $GITHUB_WORKSPACE/test-artifacts
           cp -r test_results/* $GITHUB_WORKSPACE/test-artifacts/
@@ -393,7 +276,7 @@ jobs:
         run: |
           cat test_results/report.md >> $GITHUB_STEP_SUMMARY
 
-      - name: Final uninstall test
+      - name: Run final uninstall test
         id: final_uninstall
         if: always()  # Run even if previous steps failed
         run: |
