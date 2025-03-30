@@ -1817,9 +1817,6 @@ def main():
     else:
         check_latest_version(only_check=True)
 
-    # ✅ Print version info even during normal flow
-    print(f"📦 scancompare version {get_current_version()} (latest)")
-
     # Now continue with directory setup and command handling
     ensure_directory_structure()
 
