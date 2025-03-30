@@ -6,11 +6,39 @@ VERBOSE=0
 FORCE_REINSTALL=0
 [[ "$1" == "--force-reinstall" ]] && FORCE_REINSTALL=1 && shift
 
-# Always use the canonical repo information
-GITHUB_USER="drewtwitchell"
-GITHUB_REPO="scancompare"
-SCRIPT_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/scancompare"
-TEMPLATE_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/scan_template.html"
+# Default GitHub repo source
+DEFAULT_SCRIPT_SOURCE="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
+
+# Try to extract GitHub user and repo from local .git if available
+if git remote get-url origin &> /dev/null; then
+  REMOTE_URL=$(git remote get-url origin)
+  # Fixed sed pattern for macOS compatibility
+  GITHUB_USER=$(echo "$REMOTE_URL" | sed -E 's|.*github.com[:\/]([^\/]*)/.*|\1|')
+  GITHUB_REPO=$(echo "$REMOTE_URL" | sed -E 's|.*/([^\/\.]*)(\.git)?$|\1|')
+else
+  # Fallback to extracting from default URL
+  SCRIPT_SOURCE="${SCRIPT_SOURCE:-$DEFAULT_SCRIPT_SOURCE}"
+  GITHUB_USER=$(echo "$SCRIPT_SOURCE" | cut -d'/' -f4)
+  GITHUB_REPO=$(echo "$SCRIPT_SOURCE" | cut -d'/' -f5)
+fi
+
+# Fallback to defaults if extraction fails
+if [[ -z "$GITHUB_USER" ]]; then
+  GITHUB_USER="drewtwitchell"
+  [[ $VERBOSE -eq 1 ]] && echo "Failed to extract GitHub user, using default: $GITHUB_USER"
+fi
+
+if [[ -z "$GITHUB_REPO" ]]; then
+  GITHUB_REPO="scancompare"
+  [[ $VERBOSE -eq 1 ]] && echo "Failed to extract GitHub repo, using default: $GITHUB_REPO"
+fi
+
+# Verify we're using the correct repository for scancompare
+if [[ "$GITHUB_REPO" != "scancompare" && "$GITHUB_USER" == "drewtwitchell" ]]; then
+  # If we're in a drewtwitchell repo but not the scancompare repo, use the right repo
+  GITHUB_REPO="scancompare"
+  [[ $VERBOSE -eq 1 ]] && echo "Switching to the scancompare repository"
+fi
 
 USER_ROOT="$HOME/ScanCompare"
 MAIN_DIR="$USER_ROOT/main"
@@ -19,6 +47,8 @@ INSTALL_LIB="$MAIN_DIR/lib"
 SCANREPORTS_DIR="$USER_ROOT/scan_reports"
 TEMP_DIR="$USER_ROOT/temp"
 SCRIPT_NAME="scancompare"
+SCRIPT_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/scancompare"
+TEMPLATE_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/scan_template.html"
 PYTHON_SCRIPT="$INSTALL_LIB/$SCRIPT_NAME"
 WRAPPER_SCRIPT="$INSTALL_BIN/$SCRIPT_NAME"
 ENV_GUARD_FILE="$USER_ROOT/env.shexport"
@@ -40,8 +70,56 @@ tool_done() {
   printf " \033[32m✔\033[0m\n"
 }
 
-install_python_and_tools() {
+# Immediately update PATH in current session and make it permanently available
+update_path() {
+  # For current session
+  export PATH="$INSTALL_BIN:$PATH"
+  
+  # Detect the shell to update the correct profile
+  CURRENT_SHELL=$(basename "$SHELL")
+  
+  # Adding to appropriate profile files
+  case "$CURRENT_SHELL" in
+    bash)
+      PROFILE_FILES=("$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile")
+      ;;
+    zsh)
+      PROFILE_FILES=("$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.profile")
+      ;;
+    *)
+      PROFILE_FILES=("$HOME/.profile")
+      ;;
+  esac
+  
+  for PROFILE in "${PROFILE_FILES[@]}"; do
+    if [[ -f "$PROFILE" ]]; then
+      if ! grep -q "PATH=\"$INSTALL_BIN:\$PATH\"" "$PROFILE"; then
+        printf "\n# Added by scancompare installer\nexport PATH=\"$INSTALL_BIN:\$PATH\"\n" >> "$PROFILE"
+      fi
+    fi
+  done
+  
+  # Immediately source the profile for the current shell
+  if [[ "$CURRENT_SHELL" == "bash" ]]; then
+    # This will be executed in the parent shell
+    printf "\n# Run this to add scancompare to your current session:\nsource \"$HOME/.bashrc\"\n" > "$USER_ROOT/path_setup.sh"
+  elif [[ "$CURRENT_SHELL" == "zsh" ]]; then
+    printf "\n# Run this to add scancompare to your current session:\nsource \"$HOME/.zshrc\"\n" > "$USER_ROOT/path_setup.sh"
+  else
+    printf "\n# Run this to add scancompare to your current session:\nsource \"$HOME/.profile\"\n" > "$USER_ROOT/path_setup.sh"
+  fi
+  
+  # Create a special init script that can be executed directly
+  cat <<EOF > "$USER_ROOT/activate_scancompare.sh"
+#!/bin/bash
+export PATH="$INSTALL_BIN:\$PATH"
+echo "✅ scancompare is now available in this terminal session"
+echo "👉 Try running: scancompare --help"
+EOF
+  chmod +x "$USER_ROOT/activate_scancompare.sh"
+}
 
+install_python_and_tools() {
   install_homebrew() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
       tool_progress "🍺 Installing" "Homebrew"
@@ -77,7 +155,7 @@ install_python_and_tools() {
     fi
   fi
 
-  # Create virtual environment without showing output
+  # Install Python venv silently
   if [[ ! -d "$VENV_DIR" ]]; then
     python3 -m venv "$VENV_DIR" &> /dev/null || {
       echo "❌ Failed to create virtual environment"; exit 1;
@@ -86,9 +164,9 @@ install_python_and_tools() {
 
   source "$VENV_DIR/bin/activate"
 
-  # Install jinja2 without showing output
+  # Install jinja2 silently
   if ! python -c "import jinja2" &> /dev/null; then
-    pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location || {
+    pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location &> /dev/null || {
       printf "❌ Failed to install jinja2."; exit 1;
     }
   fi
@@ -124,31 +202,37 @@ if [[ -f "$PYTHON_SCRIPT" && "$FORCE_REINSTALL" -eq 0 ]]; then
   fi
 fi
 
-# Add a progress indicator for tools installation
+# Starting both steps with one progress indicator each
 tool_progress "📦 Installing" "required tools"
 install_python_and_tools
 tool_done
 
-# Add a progress indicator for script installation
 tool_progress "📦 Installing" "scancompare script"
 # Create necessary directories
 mkdir -p "$INSTALL_BIN" "$INSTALL_LIB" "$SCANREPORTS_DIR" "$TEMP_DIR"
 
-# Download the script with better error handling
+# Try to download from detected repo first
 if ! curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" 2>/dev/null; then
-  printf "\n❌ Failed to download scancompare script from %s\n" "$SCRIPT_URL"
-  printf "⚠️ Check your network connection or if the repository exists.\n"
-  exit 1
+  # If fails, fall back to canonical repo
+  SCRIPT_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
+  TEMPLATE_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html"
+  
+  if ! curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" 2>/dev/null; then
+    printf "\n❌ Failed to download scancompare script from canonical repository.\n"
+    printf "⚠️ Check your network connection or if the repository exists.\n"
+    exit 1
+  fi
 fi
 
-# Check if we got an actual script file
+# Check if we got a valid script file
 if [[ ! -s "$PYTHON_SCRIPT" ]]; then
   printf "\n❌ Downloaded file is empty. Repository may be private or URL is incorrect.\n"
   exit 1
 fi
+tool_done
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
-tool_done
+printf "✅ Downloaded scancompare version %s\n" "$VERSION"
 
 if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
   # Handle different sed versions (macOS vs GNU)
@@ -160,12 +244,10 @@ if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
 fi
 chmod +x "$PYTHON_SCRIPT"
 
-# Download the template file
-TEMPLATE_INSTALL_PATH="$INSTALL_LIB/scan_template.html"
-if ! curl -fsSL "$TEMPLATE_URL" -o "$TEMPLATE_INSTALL_PATH" 2>/dev/null; then
-  printf "⚠️ Failed to download template file. Will be downloaded on first run.\n"
-fi
+# Download the template file silently
+curl -fsSL "$TEMPLATE_URL" -o "$INSTALL_LIB/scan_template.html" 2>/dev/null
 
+# Create/update wrapper script
 if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c \"$PYTHON_SCRIPT\" \"$WRAPPER_SCRIPT\" 2>/dev/null || echo 0)" -eq 0 ]]; then
   mkdir -p "$INSTALL_BIN"
   cat <<EOF > "$WRAPPER_SCRIPT"
@@ -176,17 +258,19 @@ EOF
   chmod +x "$WRAPPER_SCRIPT"
 fi
 
-# Add to PATH automatically for current session
-export PATH="$INSTALL_BIN:$PATH"
+# Update PATH in current session and permanently
+update_path
 
-# Add to shell profiles but don't show the warning
-for PROFILE in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.profile"; do
-  if [[ -f "$PROFILE" ]]; then
-    if ! grep -q "PATH=\"$INSTALL_BIN:\$PATH\"" "$PROFILE"; then
-      printf "\n# Added by scancompare installer\nexport PATH=\"$INSTALL_BIN:\$PATH\"\n" >> "$PROFILE"
-    fi
-  fi
-done
+# Ensure the ScanCompare root folder structure
+mkdir -p "$SCANREPORTS_DIR" "$TEMP_DIR" "$INSTALL_LIB"
 
-printf "✅ Installed scancompare version %s\n" "$VERSION"
-printf "🎉 You can now run: $SCRIPT_NAME <image-name>\n"
+# Special eval trick to make it work in the current shell
+cat > "$USER_ROOT/temp_path_script.sh" << EOF
+#!/bin/bash
+export PATH="$INSTALL_BIN:\$PATH"
+EOF
+
+printf "✅ scancompare v%s installed successfully\n" "$VERSION"
+printf "🎉 Run this to use scancompare immediately:\n"
+printf "   source \"$USER_ROOT/activate_scancompare.sh\"\n"
+printf "🔁 The next time you open a terminal, scancompare will be automatically available\n"
