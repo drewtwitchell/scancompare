@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SCANCOMPARE_UPDATED: "1"
+      # Make GitHub token available to steps that need it
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout code
@@ -57,7 +59,7 @@ jobs:
           echo '| Test Case | Status | Details |' >> test_results/report.md
           echo '|-----------|--------|---------|' >> test_results/report.md
 
-      - name: Prepare test scripts
+      - name: Copy existing test scripts
         run: |
           # Copy all expect scripts to test_scripts directory
           cp scripts/expect/*.exp test_scripts/
@@ -219,82 +221,97 @@ jobs:
 
       - name: Run GitHub-specific tests
         id: github_tests
-        if: env.GITHUB_TOKEN != ''
+        # Now we ensure the GitHub token is properly added as a repository secret
+        # and make this test more resilient by setting a variable to track whether GitHub tests should run
         run: |
-          echo "Running GitHub-specific tests..."
+          # Check if GitHub token is available
+          if [ -n "$GITHUB_TOKEN" ]; then
+            RUN_GITHUB_TESTS="true"
+          else
+            RUN_GITHUB_TESTS="false"
+            echo "GitHub token not available, skipping GitHub tests"
+          fi
+
           echo "" >> test_results/report.md
           echo "## GitHub Integration Tests" >> test_results/report.md
           echo "" >> test_results/report.md
           echo "| Test Case | Status | Details |" >> test_results/report.md
           echo "|-----------|--------|---------|" >> test_results/report.md
           
-          # Run repo-url test
-          if [ -f "test_scripts/test_repo_url.exp" ]; then
-            test_scripts/test_repo_url.exp
-            
-            file="test_results/test_repo_url_result.txt"
-            if [ -f "$file" ]; then
-              result=$(cat "$file")
-              if [ "$result" = "PASS" ]; then
-                echo "| Repository URL Test | ✅ PASS | --repo-url flag handled correctly |" >> test_results/report.md
-              elif [ "$result" = "INCONCLUSIVE" ]; then
-                echo "| Repository URL Test | ⚠️ INCONCLUSIVE | --repo-url flag completed with unclear results |" >> test_results/report.md
-              else
-                echo "| Repository URL Test | ❌ FAIL | --repo-url flag failed |" >> test_results/report.md
-              fi
-            else
-              echo "| Repository URL Test | ❌ FAIL | --repo-url test did not complete |" >> test_results/report.md
-            fi
-          else
-            echo "| Repository URL Test | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
-          fi
-          
-          # Skip advanced GitHub tests unless explicitly enabled
-          if [ "$RUN_GITHUB_ADVANCED_TESTS" = "true" ]; then
-            # Run GHAS test
-            if [ -f "test_scripts/test_repo_url_ghas.exp" ]; then
-              test_scripts/test_repo_url_ghas.exp
+          if [ "$RUN_GITHUB_TESTS" = "true" ]; then
+            # Run repo-url test
+            if [ -f "test_scripts/test_repo_url.exp" ]; then
+              test_scripts/test_repo_url.exp
               
-              file="test_results/test_repo_url_ghas_result.txt"
+              file="test_results/test_repo_url_result.txt"
               if [ -f "$file" ]; then
                 result=$(cat "$file")
                 if [ "$result" = "PASS" ]; then
-                  echo "| GHAS Integration Test | ✅ PASS | --ghas flag handled correctly |" >> test_results/report.md
+                  echo "| Repository URL Test | ✅ PASS | --repo-url flag handled correctly |" >> test_results/report.md
                 elif [ "$result" = "INCONCLUSIVE" ]; then
-                  echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | --ghas flag completed with unclear results |" >> test_results/report.md
+                  echo "| Repository URL Test | ⚠️ INCONCLUSIVE | --repo-url flag completed with unclear results |" >> test_results/report.md
                 else
-                  echo "| GHAS Integration Test | ❌ FAIL | --ghas flag failed |" >> test_results/report.md
+                  echo "| Repository URL Test | ❌ FAIL | --repo-url flag failed |" >> test_results/report.md
                 fi
               else
-                echo "| GHAS Integration Test | ❌ FAIL | --ghas test did not complete |" >> test_results/report.md
+                echo "| Repository URL Test | ❌ FAIL | --repo-url test did not complete |" >> test_results/report.md
               fi
             else
-              echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
+              echo "| Repository URL Test | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
             fi
             
-            # Run GitHub Pages test
-            if [ -f "test_scripts/test_repo_url_gh_pages.exp" ]; then
-              test_scripts/test_repo_url_gh_pages.exp
-              
-              file="test_results/test_repo_url_gh_pages_result.txt"
-              if [ -f "$file" ]; then
-                result=$(cat "$file")
-                if [ "$result" = "PASS" ]; then
-                  echo "| GitHub Pages Test | ✅ PASS | --gh-pages flag handled correctly |" >> test_results/report.md
-                elif [ "$result" = "INCONCLUSIVE" ]; then
-                  echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | --gh-pages flag completed with unclear results |" >> test_results/report.md
+            # Run GHAS and GitHub Pages tests conditionally
+            if [ "$RUN_GITHUB_ADVANCED_TESTS" = "true" ]; then
+              # Run GHAS test
+              if [ -f "test_scripts/test_repo_url_ghas.exp" ]; then
+                test_scripts/test_repo_url_ghas.exp
+                
+                file="test_results/test_repo_url_ghas_result.txt"
+                if [ -f "$file" ]; then
+                  result=$(cat "$file")
+                  if [ "$result" = "PASS" ]; then
+                    echo "| GHAS Integration Test | ✅ PASS | --ghas flag handled correctly |" >> test_results/report.md
+                  elif [ "$result" = "INCONCLUSIVE" ]; then
+                    echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | --ghas flag completed with unclear results |" >> test_results/report.md
+                  else
+                    echo "| GHAS Integration Test | ❌ FAIL | --ghas flag failed |" >> test_results/report.md
+                  fi
                 else
-                  echo "| GitHub Pages Test | ❌ FAIL | --gh-pages flag failed |" >> test_results/report.md
+                  echo "| GHAS Integration Test | ❌ FAIL | --ghas test did not complete |" >> test_results/report.md
                 fi
               else
-                echo "| GitHub Pages Test | ❌ FAIL | --gh-pages test did not complete |" >> test_results/report.md
+                echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
+              fi
+              
+              # Run GitHub Pages test
+              if [ -f "test_scripts/test_repo_url_gh_pages.exp" ]; then
+                test_scripts/test_repo_url_gh_pages.exp
+                
+                file="test_results/test_repo_url_gh_pages_result.txt"
+                if [ -f "$file" ]; then
+                  result=$(cat "$file")
+                  if [ "$result" = "PASS" ]; then
+                    echo "| GitHub Pages Test | ✅ PASS | --gh-pages flag handled correctly |" >> test_results/report.md
+                  elif [ "$result" = "INCONCLUSIVE" ]; then
+                    echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | --gh-pages flag completed with unclear results |" >> test_results/report.md
+                  else
+                    echo "| GitHub Pages Test | ❌ FAIL | --gh-pages flag failed |" >> test_results/report.md
+                  fi
+                else
+                  echo "| GitHub Pages Test | ❌ FAIL | --gh-pages test did not complete |" >> test_results/report.md
+                fi
+              else
+                echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
               fi
             else
-              echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | Test script not found |" >> test_results/report.md
+              echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | Advanced GitHub tests disabled |" >> test_results/report.md
+              echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | Advanced GitHub tests disabled |" >> test_results/report.md
             fi
           else
-            echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | --ghas test skipped in CI environment |" >> test_results/report.md
-            echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | --gh-pages test skipped in CI environment |" >> test_results/report.md
+            # If GitHub token not available, mark all GitHub tests as skipped but not failed
+            echo "| Repository URL Test | ⚠️ INCONCLUSIVE | GitHub token not available, test skipped |" >> test_results/report.md
+            echo "| GHAS Integration Test | ⚠️ INCONCLUSIVE | GitHub token not available, test skipped |" >> test_results/report.md
+            echo "| GitHub Pages Test | ⚠️ INCONCLUSIVE | GitHub token not available, test skipped |" >> test_results/report.md
           fi
 
       - name: Generate test summary
@@ -304,13 +321,22 @@ jobs:
             exit 1
           fi
 
-          # Count test results
+          echo "Contents of report.md:"
+          cat test_results/report.md
+
+          # Count test results, properly handling INCONCLUSIVE tests
+          # Only count FAIL results as failures, INCONCLUSIVE results are not failures
           TOTAL_TESTS=$(grep "^|" test_results/report.md | grep -vE '\-\-\-|\| Test Case ' | wc -l)
           PASSED_TESTS=$(grep -c "✅ PASS" test_results/report.md || echo 0)
           INCONCLUSIVE_TESTS=$(grep -c "⚠️ INCONCLUSIVE" test_results/report.md || echo 0)
           FAILED_TESTS=$(grep -c "❌ FAIL" test_results/report.md || echo 0)
 
-          # Add summary to report
+          # Make sure counts are treated as integers
+          TOTAL_TESTS=$(($TOTAL_TESTS + 0))
+          PASSED_TESTS=$(($PASSED_TESTS + 0))
+          INCONCLUSIVE_TESTS=$(($INCONCLUSIVE_TESTS + 0))
+          FAILED_TESTS=$(($FAILED_TESTS + 0))
+
           echo "" >> test_results/report.md
           echo "## Test Summary" >> test_results/report.md
           echo "" >> test_results/report.md
@@ -345,11 +371,14 @@ jobs:
           echo "" >> test_results/report.md
           echo "Detailed logs for each test are available in the test_results directory." >> test_results/report.md
 
-          # Set overall test status
+          # Fix for success/failure determination:
+          # Only mark as failure if there are actual FAILED tests (not INCONCLUSIVE)
           if [ "$FAILED_TESTS" -eq 0 ]; then
             echo "success" > test_results/scancompare_status.txt
+            echo "✅ All required tests PASSED!"
           else
             echo "failure" > test_results/scancompare_status.txt
+            echo "❌ Some tests FAILED."
           fi
 
       - name: Save test results
@@ -388,12 +417,18 @@ jobs:
           else
             echo "| Complete Uninstall Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
           fi
-          
+
       - name: Report test status
         if: always()  # Run even if previous steps failed
         run: |
+          # Add debug info to help troubleshoot
+          echo "Contents of scancompare_status.txt:"
+          cat test_results/scancompare_status.txt 2>/dev/null || echo "File not found"
+          
+          # Get the status
           result=$(cat test_results/scancompare_status.txt 2>/dev/null || echo "failure")
           echo "Final result: $result"
+          
           if [ "$result" = "success" ]; then
             echo "✅ All tests passed successfully!"
             exit 0
