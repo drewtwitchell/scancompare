@@ -23,15 +23,19 @@ echo "RUN_GITHUB_TESTS: $RUN_GITHUB_TESTS"
 echo "RUN_GITHUB_ADVANCED_TESTS: $RUN_GITHUB_ADVANCED_TESTS"
 
 if [ "$RUN_GITHUB_TESTS" = "true" ]; then
-  # Run GHAS test
+  # Run GHAS test - with better error handling
   if [ -f "scripts/expect/test_repo_url_ghas.exp" ]; then
     echo "Running GHAS integration test..."
-    scripts/expect/test_repo_url_ghas.exp || true  # Continue even if test fails
-    
-    # Ensure we have a result file
-    if [ ! -f "test_results/test_repo_url_ghas_result.txt" ]; then
-      echo "INCONCLUSIVE" > test_results/test_repo_url_ghas_result.txt
-      echo "REPO URL GHAS TEST: INCONCLUSIVE - Test did not complete properly" > test_results/test_repo_url_ghas.log
+    chmod +x scripts/expect/test_repo_url_ghas.exp
+    scripts/expect/test_repo_url_ghas.exp
+    rc=$?
+    if [ $rc -ne 0 ]; then
+      echo "Warning: test_repo_url_ghas.exp exited with code $rc"
+      # If test script failed but no result file, create one marked as INCONCLUSIVE
+      if [ ! -f "test_results/test_repo_url_ghas_result.txt" ]; then
+        echo "INCONCLUSIVE" > test_results/test_repo_url_ghas_result.txt
+        echo "REPO URL GHAS TEST: INCONCLUSIVE - Script crashed or failed to complete" > test_results/test_repo_url_ghas.log
+      fi
     fi
   else
     echo "ERROR: test_repo_url_ghas.exp script not found!"
@@ -39,15 +43,19 @@ if [ "$RUN_GITHUB_TESTS" = "true" ]; then
     echo "REPO URL GHAS TEST: INCONCLUSIVE - Test script not found" > test_results/test_repo_url_ghas.log
   fi
   
-  # Run GitHub Pages test
+  # Run GitHub Pages test with better error handling
   if [ -f "scripts/expect/test_url_repo_gh_pages.exp" ]; then
     echo "Running GitHub Pages test..."
-    scripts/expect/test_url_repo_gh_pages.exp || true  # Continue even if test fails
-    
-    # Ensure we have a result file
-    if [ ! -f "test_results/test_url_repo_gh_pages_result.txt" ]; then
-      echo "INCONCLUSIVE" > test_results/test_url_repo_gh_pages_result.txt
-      echo "REPO URL GH-PAGES TEST: INCONCLUSIVE - Test did not complete properly" > test_results/test_url_repo_gh_pages.log
+    chmod +x scripts/expect/test_url_repo_gh_pages.exp
+    scripts/expect/test_url_repo_gh_pages.exp
+    rc=$?
+    if [ $rc -ne 0 ]; then
+      echo "Warning: test_url_repo_gh_pages.exp exited with code $rc"
+      # If test script failed but no result file, create one marked as INCONCLUSIVE
+      if [ ! -f "test_results/test_url_repo_gh_pages_result.txt" ]; then
+        echo "INCONCLUSIVE" > test_results/test_url_repo_gh_pages_result.txt
+        echo "REPO URL GH-PAGES TEST: INCONCLUSIVE - Script crashed or failed to complete" > test_results/test_url_repo_gh_pages.log
+      fi
     fi
   else
     echo "ERROR: test_url_repo_gh_pages.exp script not found!"
@@ -55,15 +63,19 @@ if [ "$RUN_GITHUB_TESTS" = "true" ]; then
     echo "REPO URL GH-PAGES TEST: INCONCLUSIVE - Test script not found" > test_results/test_url_repo_gh_pages.log
   fi
   
-  # Run comprehensive test
+  # Run comprehensive test with better error handling
   if [ -f "scripts/expect/test_url_repo_comprehensive.exp" ]; then
     echo "Running comprehensive GitHub test..."
-    scripts/expect/test_url_repo_comprehensive.exp || true  # Continue even if test fails
-    
-    # Ensure we have a result file
-    if [ ! -f "test_results/test_url_repo_comprehensive_result.txt" ]; then
-      echo "INCONCLUSIVE" > test_results/test_url_repo_comprehensive_result.txt
-      echo "COMPREHENSIVE TEST: INCONCLUSIVE - Test did not complete properly" > test_results/test_url_repo_comprehensive.log
+    chmod +x scripts/expect/test_url_repo_comprehensive.exp
+    scripts/expect/test_url_repo_comprehensive.exp
+    rc=$?
+    if [ $rc -ne 0 ]; then
+      echo "Warning: test_url_repo_comprehensive.exp exited with code $rc"
+      # If test script failed but no result file, create one marked as INCONCLUSIVE
+      if [ ! -f "test_results/test_url_repo_comprehensive_result.txt" ]; then
+        echo "INCONCLUSIVE" > test_results/test_url_repo_comprehensive_result.txt
+        echo "COMPREHENSIVE TEST: INCONCLUSIVE - Script crashed or failed to complete" > test_results/test_url_repo_comprehensive.log
+      fi
     fi
   else
     echo "ERROR: test_url_repo_comprehensive.exp script not found!"
