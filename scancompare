@@ -74,7 +74,23 @@ def handle_cli_args():
     parser.add_argument("--mock-no", action="store_true", help="Automatically answer no prompts")
 
     args = parser.parse_args()
+
+    automation_flags = [args.auto, args.mock_yes, args.mock_no]
+    if sum(flag for flag in automation_flags) > 1:
+        print("⚠️ Only one automation flag (--auto, --mock-yes, --mock-no) can be used at a time.")
+        sys.exit(1)
+        
     return args
+
+def get_automation_mode(args):
+    """Determine the automation mode based on CLI args."""
+    if args.auto:
+        return "auto"
+    elif args.mock_yes:
+        return "yes"
+    elif args.mock_no:
+        return "no"
+    return None
 
 def tool_progress(ACTION, TOOL_NAME):
     print(f"{ACTION} {TOOL_NAME}...", end=" ")
@@ -896,6 +912,8 @@ def get_repo_from_url(repo_url):
     sys.exit(1)
 
 def ensure_gh_authenticated():
+    automation_mode = get_automation_mode(args)
+    
     try:
         # Check if already authenticated
         subprocess.run(["gh", "auth", "status", "--hostname", "github.com"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -913,6 +931,11 @@ def ensure_gh_authenticated():
         )
 
         if probe.returncode == 403 or "insufficient" in probe.stderr.lower():
+            if automation_mode in ["auto", "yes"]:
+                print("\n🔐 GitHub token needs additional permissions but in automation mode.")
+                print("   Skipping token refresh in automated mode.")
+                return
+                
             print("\n🔐 GitHub token needs additional permissions.")
             print("   Attempting to refresh token with required scopes...")
             try:
@@ -924,6 +947,10 @@ def ensure_gh_authenticated():
                 print("✅ Token refreshed successfully.")
                 return
             except subprocess.CalledProcessError:
+                if automation_mode in ["auto", "yes"]:
+                    print("\n⚠️ Token refresh failed. Skipping GitHub operations in automation mode.")
+                    return
+                    
                 print("\n⚠️ Token refresh failed. Please re-authenticate with GitHub.")
                 print("   This will open your browser to complete the process.")
                 subprocess.run([
@@ -935,6 +962,11 @@ def ensure_gh_authenticated():
                 return
 
     except subprocess.CalledProcessError:
+        if automation_mode in ["auto", "yes"]:
+            print("\n⚠️ GitHub authentication required for auto mode but not available.")
+            print("   Skipping GitHub operations in automated mode.")
+            return
+            
         print("\n🔐 GitHub authentication required.")
         print("   This will open your browser to complete the process.")
         subprocess.run([
@@ -947,6 +979,9 @@ def ensure_gh_authenticated():
 
     except Exception as e:
         print(f"❌ Failed to validate GitHub auth: {e}")
+        if automation_mode in ["auto", "yes"]:
+            print("   Skipping GitHub operations in automated mode.")
+            return
         sys.exit(1)
 
 def resolve_fork(repo, action_label="upload", remember_choice=False):
@@ -984,28 +1019,33 @@ def resolve_fork(repo, action_label="upload", remember_choice=False):
             previous_choice = None
 
     # If choice already matches current resolved URL, reuse it
-    if previous_choice == repo_url or previous_choice == upstream_url:
+    automation_mode = get_automation_mode(args)
+    
+    if automation_mode == "auto" or automation_mode == "yes":
         print(f"\n⚠️ The repository you selected appears to be a fork:\n")
         print(f"  Forked repo:\n    {repo_url}")
         print(f"\n  Upstream repo:\n    {upstream_url}")
-        if previous_choice == upstream_url:
-            print(f"\nℹ️ Using previously selected upstream URL from earlier in this run.\n")
-        else:
-            print(f"\nℹ️ Using previously selected fork URL from earlier in this run.\n")
-        return previous_choice, get_repo_from_url(previous_choice)
-
-    # Prompt user for fork decision
-    print(f"\n⚠️ The repository you selected appears to be a fork:\n")
-    print(f"  Forked repo:\n    {repo_url}")
-    print(f"\n  Upstream repo:\n    {upstream_url}")
-    choice = input(f"\nDo you want to {action_label} to the upstream repository instead? (y/n): ").strip().lower()
-
-    if choice == "y":
-        print(f"🔄 Changing to upstream repository URL:\n{upstream_url}")
+        print(f"\nℹ️ Automatically selecting upstream repository in {automation_mode} mode.\n")
         final_url = upstream_url
-    else:
-        print(f"🔄 Keeping the forked repository URL:\n{repo_url}")
+    elif automation_mode == "no":
+        print(f"\n⚠️ The repository you selected appears to be a fork:\n")
+        print(f"  Forked repo:\n    {repo_url}")
+        print(f"\n  Upstream repo:\n    {upstream_url}")
+        print(f"\nℹ️ Automatically selecting forked repository in no-automation mode.\n")
         final_url = repo_url
+    else:
+        # Existing interactive prompt
+        print(f"\n⚠️ The repository you selected appears to be a fork:\n")
+        print(f"  Forked repo:\n    {repo_url}")
+        print(f"\n  Upstream repo:\n    {upstream_url}")
+        choice = input(f"\nDo you want to {action_label} to the upstream repository instead? (y/n): ").strip().lower()
+
+        if choice == "y":
+            print(f"🔄 Changing to upstream repository URL:\n{upstream_url}")
+            final_url = upstream_url
+        else:
+            print(f"🔄 Keeping the forked repository URL:\n{repo_url}")
+            final_url = repo_url
 
     # Save selected choice temporarily
     try:
@@ -1588,10 +1628,10 @@ def validate_image_exists(image):
         return False
 
 def handle_post_scan_prompts(image_tag, html_path, repo_url=None, trivy_path=None, grype_path=None, shared=None, only_trivy=None, only_grype=None, temp_dir=None, scanned_from_repo=False):
+    """Handle post-scan operations including GitHub uploads and report viewing with support for automation."""
     import webbrowser
     from urllib.parse import urlparse
     from pathlib import Path
-    import sys
 
     uploaded_ghas = False
     uploaded_pages = False
@@ -1605,52 +1645,30 @@ def handle_post_scan_prompts(image_tag, html_path, repo_url=None, trivy_path=Non
 
     repo = get_repo_from_url(repo_url) if repo_url else None
 
-    # Non-interactive mode check for --auto argument
-    non_interactive = '--auto' in sys.argv
-    mock_yes = '--mock-yes' in sys.argv
-    mock_no = '--mock-no' in sys.argv
+    # Determine automation mode from args
+    automation_mode = get_automation_mode(args)
 
+    # Handle GitHub repository integration
     if repo and scanned_from_repo and not (args.ghas or args.gh_pages):
-        if non_interactive:
-            # Automatically select both GHAS and GitHub Pages uploads in non-interactive mode
-            print("\n📋 Automatically uploading results to both GHAS and GitHub Pages.")
+        if automation_mode == "auto":
+            print("\n📋 Automatically uploading results to both GHAS and GitHub Pages in auto mode.")
             upload_options = "b"
+        elif automation_mode == "yes":
+            print("\n📋 Automatically selecting 'yes' to upload to both GHAS and GitHub Pages.")
+            upload_options = "b"
+        elif automation_mode == "no":
+            print("\n📋 Automatically selecting 'no' to GitHub uploads in no-automation mode.")
+            upload_options = "n"
         else:
+            # Interactive mode
             print("\n📋 GitHub Repository Integration Options")
             print("Since you've scanned using a GitHub repository, you can publish your results:")
+            upload_options = input("Would you like to upload results to GitHub? (n = no, g = GHAS only, p = Pages only, b = both): ").strip().lower()
 
-            if mock_yes:
-                # Automatically respond "yes" to all prompts
-                print("Automatically answering 'yes' to the upload prompt.")
-                upload_options = "b"
-            elif mock_no:
-                # Automatically respond "no" to all prompts
-                print("Automatically answering 'no' to the upload prompt.")
-                upload_options = "n"
-            else:
-                upload_options = input("Would you like to upload results to GitHub? (n = no, g = GHAS only, p = Pages only, b = both): ").strip().lower()
-
+        # Process selected upload options
         if upload_options in ("g", "b"):
-            ensure_gh_authenticated()
-            chosen_repo_url, modified_repo, success = upload_to_ghas(
-                image_tag, trivy_path, grype_path, shared, only_trivy,
-                only_grype, repo, temp_dir or ".", repo_url=repo_url,
-                verbose=args.verbose
-            )
-            if success:
-                uploaded_ghas = True
-                ghas_url = f"https://github.com/{modified_repo}/security/code-scanning"
-                urls_to_open["ghas"] = ghas_url
-
-        if upload_options in ("p", "b"):
-            pages_url = publish_to_github_pages(html_path, image_tag, chosen_repo_url, remember_choice=uploaded_ghas)
-            if pages_url:
-                uploaded_pages = True
-                urls_to_open["pages"] = pages_url
-
-    else:
-        if repo:
-            if args.ghas:
+            # Handle GHAS upload
+            try:
                 ensure_gh_authenticated()
                 chosen_repo_url, modified_repo, success = upload_to_ghas(
                     image_tag, trivy_path, grype_path, shared, only_trivy,
@@ -1661,14 +1679,55 @@ def handle_post_scan_prompts(image_tag, html_path, repo_url=None, trivy_path=Non
                     uploaded_ghas = True
                     ghas_url = f"https://github.com/{modified_repo}/security/code-scanning"
                     urls_to_open["ghas"] = ghas_url
+            except Exception as e:
+                print(f"\n⚠️ GHAS upload failed: {e}")
+                if automation_mode == "auto":
+                    print("Continuing with auto mode despite GHAS upload failure.")
 
-            if args.gh_pages:
+        if upload_options in ("p", "b"):
+            # Handle GitHub Pages upload
+            try:
                 pages_url = publish_to_github_pages(html_path, image_tag, chosen_repo_url, remember_choice=uploaded_ghas)
                 if pages_url:
                     uploaded_pages = True
                     urls_to_open["pages"] = pages_url
+            except Exception as e:
+                print(f"\n⚠️ GitHub Pages publishing failed: {e}")
+                if automation_mode == "auto":
+                    print("Continuing with auto mode despite GitHub Pages failure.")
 
-    # Output all URLs (make them 100% clickable)
+    # Handle explicit command line flags for GHAS and GitHub Pages
+    else:
+        if repo:
+            if args.ghas:
+                try:
+                    ensure_gh_authenticated()
+                    chosen_repo_url, modified_repo, success = upload_to_ghas(
+                        image_tag, trivy_path, grype_path, shared, only_trivy,
+                        only_grype, repo, temp_dir or ".", repo_url=repo_url,
+                        verbose=args.verbose
+                    )
+                    if success:
+                        uploaded_ghas = True
+                        ghas_url = f"https://github.com/{modified_repo}/security/code-scanning"
+                        urls_to_open["ghas"] = ghas_url
+                except Exception as e:
+                    print(f"\n⚠️ GHAS upload failed: {e}")
+                    if automation_mode == "auto":
+                        print("Continuing with auto mode despite GHAS upload failure.")
+
+            if args.gh_pages:
+                try:
+                    pages_url = publish_to_github_pages(html_path, image_tag, chosen_repo_url, remember_choice=uploaded_ghas)
+                    if pages_url:
+                        uploaded_pages = True
+                        urls_to_open["pages"] = pages_url
+                except Exception as e:
+                    print(f"\n⚠️ GitHub Pages publishing failed: {e}")
+                    if automation_mode == "auto":
+                        print("Continuing with auto mode despite GitHub Pages failure.")
+
+    # Output all URLs
     if uploaded_ghas or uploaded_pages:
         print("\n✅ Publishing complete!")
         if uploaded_ghas:
@@ -1684,23 +1743,36 @@ def handle_post_scan_prompts(image_tag, html_path, repo_url=None, trivy_path=Non
                 repo_root = f"{parsed.scheme}://{parsed.netloc}/{path_parts[0]}"
                 index_fallback_url = f"{repo_root}/index.html"
                 print("\n⚠️ GitHub Pages may take a minute or two to render your report.")
-                print("   If it doesn’t load immediately, try visiting the root index.html directly:")
+                print("   If it doesn't load immediately, try visiting the root index.html directly:")
                 print("   " + index_fallback_url)
                 print("   Need help? GitHub Pages docs:")
                 print("   https://docs.github.com/en/pages")
 
-    # If in non-interactive mode, automatically open all URLs (GHAS, Pages, local HTML)
-    if non_interactive:
-        print("\n🖥️ Automatically opening the reports in the browser...")
+    # Handle browser opening based on automation mode
+    if automation_mode == "auto":
+        print("\n🖥️ Automatically opening reports in browser (auto mode)...")
+        # In auto mode, we open all available reports
         if not uploaded_pages:
             webbrowser.open(urls_to_open["local"])
         if "ghas" in urls_to_open:
             webbrowser.open(urls_to_open["ghas"])
         if "pages" in urls_to_open:
             webbrowser.open(urls_to_open["pages"])
-
+    elif automation_mode == "yes":
+        print("\n🖥️ Automatically selecting 'yes' to open reports in browser.")
+        # In mock-yes mode, we also open all available reports
+        if not uploaded_pages:
+            webbrowser.open(urls_to_open["local"])
+        if "ghas" in urls_to_open:
+            webbrowser.open(urls_to_open["ghas"])
+        if "pages" in urls_to_open:
+            webbrowser.open(urls_to_open["pages"])
+    elif automation_mode == "no":
+        print("\n🖥️ Automatically selecting 'no' to opening reports in browser.")
+        # In mock-no mode, we don't open any reports
+        pass
     else:
-        # Choose the appropriate prompt if not in non-interactive mode
+        # Interactive mode - ask the user
         if uploaded_ghas and uploaded_pages:
             prompt = "\n🖥️ Open GitHub-hosted reports in browser? (GHAS + GitHub Pages) (y/n): "
         elif uploaded_ghas:
@@ -1710,13 +1782,8 @@ def handle_post_scan_prompts(image_tag, html_path, repo_url=None, trivy_path=Non
         else:
             prompt = "\n🖥️ Open local HTML report in browser? (y/n): "
 
-        if mock_yes:
-            open_reports = "y"
-        elif mock_no:
-            open_reports = "n"
-        else:
-            open_reports = input(prompt).strip().lower()
-
+        open_reports = input(prompt).strip().lower()
+        
         if open_reports == "y":
             if not uploaded_pages:
                 webbrowser.open(urls_to_open["local"])
@@ -1729,10 +1796,13 @@ def main():
     global args
     global cloned_repo_dir
 
+    # Capture the command-line arguments
     args = handle_cli_args()
 
+    # Ensure that necessary directories are created
     ensure_directory_structure()
 
+    # Handle uninstall, version check, and update check
     if args.uninstall:
         uninstall_scancompare()
         return
@@ -1747,13 +1817,16 @@ def main():
     else:
         check_latest_version(only_check=True)
 
+    # If neither image nor repo URL is provided, show usage and exit
     if not args.image and not args.repo_url:
         print("Usage: scancompare <image> [--repo-url <repo>, --ghas, --gh-pages, --keep-data, --verbose, --version, --update, --uninstall]")
         sys.exit(1)
 
+    # Check if the provided image exists
     if args.image and not validate_image_exists(args.image):
         explain_exit(f"Docker image '{args.image}' could not be found locally or remotely.")
 
+    # Prepare for scanning and logging
     summary_lines = ["\n" + "="*40, f"Scan started: {datetime.now().isoformat()}"]
     summary_lines.append(f"🔢 scancompare version: {get_current_version()}")
 
@@ -1761,6 +1834,7 @@ def main():
     image_tag = None
 
     try:
+        # Handle scanning from a repository
         if args.repo_url and not args.image:
             repo_name = args.repo_url.split('/')[-1].replace('.git', '')
             timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
@@ -1851,6 +1925,7 @@ def main():
                                                   get_version("trivy"), get_version("grype"))
                     print(f"\n✅ Local HTML report saved: {html_path}")
 
+                    # Fixed: Removed extra parameters that weren't in the function signature
                     handle_post_scan_prompts(
                         image_tag=image_tag,
                         html_path=html_path,
@@ -1920,6 +1995,7 @@ def main():
                                           get_version("trivy"), get_version("grype"))
             print(f"\n✅ Local HTML report saved: {html_path}")
 
+            # Fixed: Removed extra parameters that weren't in the function signature 
             handle_post_scan_prompts(
                 image_tag=image,
                 html_path=html_path,

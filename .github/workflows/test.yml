@@ -33,6 +33,13 @@ jobs:
         run: |
           bash <(curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh)
 
+      # Copy the current branch version of scancompare
+      - name: Install current branch version of scancompare
+        run: |
+          cp ./scancompare ~/ScanCompare/main/lib/scancompare
+          cp ./scan_template.html ~/ScanCompare/main/lib/scan_template.html
+          chmod +x ~/ScanCompare/main/lib/scancompare
+
       # Ensure jinja2 is installed after running install.sh
       - name: Ensure jinja2 is installed
         run: |
@@ -174,6 +181,13 @@ jobs:
         run: |
           echo "Reinstalling scancompare..."
           bash <(curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh)
+          
+      # Copy the release branch version again after reinstall
+      - name: Install current branch version of scancompare (after reinstall)
+        run: |
+          cp ./scancompare ~/ScanCompare/main/lib/scancompare
+          cp ./scan_template.html ~/ScanCompare/main/lib/scan_template.html
+          chmod +x ~/ScanCompare/main/lib/scancompare
 
       # Ensure jinja2 is installed after reinstallation
       - name: Ensure jinja2 is installed (after reinstall)
