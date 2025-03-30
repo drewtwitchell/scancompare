@@ -9,6 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # Set this to prevent the script from trying to update itself
+      SCANCOMPARE_UPDATED: "1"
     
     steps:
       - name: Checkout code
