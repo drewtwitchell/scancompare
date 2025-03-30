@@ -1033,6 +1033,8 @@ def resolve_fork(repo, action_label="upload", remember_choice=True, cache_key="f
         print(f"\n📌 Using previously selected repository for {action_label}: {previous_choice}")
         return previous_choice, get_repo_from_url(previous_choice)
     else:
+        if args.verbose:
+            print(f"⚠️ Ignoring invalid cached fork choice: {previous_choice}")
         try:
             os.remove(CHOICE_FILE)
         except Exception:
@@ -1444,7 +1446,7 @@ def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only
     
     return report_path
 
-def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, temp_dir, repo_url, verbose=False):
+def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, temp_dir, repo_url=None, verbose=False):
     from pathlib import Path
     import json, base64, tempfile, subprocess, gzip
     from datetime import datetime, timezone
