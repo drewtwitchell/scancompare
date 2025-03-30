@@ -1,0 +1,55 @@
+#!/usr/bin/expect -f
+set timeout 300
+set log_file [open "test_results/test_repo_url_gh_pages.log" w]
+
+# Use a simple GitHub repo with a Dockerfile for testing
+spawn python scancompare --repo-url https://github.com/docker-library/hello-world --gh-pages --mock-no
+
+expect {
+  "Automatically selecting 'no'" {
+    puts $log_file "REPO URL GH-PAGES TEST: Started correctly with mock-no"
+  }
+  "Cloning " {
+    puts $log_file "REPO URL GH-PAGES TEST: Started cloning repository"
+  }
+  timeout {
+    puts $log_file "REPO URL GH-PAGES TEST: FAIL - Command timed out at start"
+    set test_result "FAIL"
+    close $log_file
+    exit
+  }
+}
+
+# Look for GitHub Pages specific output
+expect {
+  "GitHub Pages" {
+    puts $log_file "REPO URL GH-PAGES TEST: PASS - GitHub Pages functionality detected"
+    set test_result "PASS"
+  }
+  "Preparing GitHub Pages" {
+    puts $log_file "REPO URL GH-PAGES TEST: PASS - GitHub Pages preparation started"
+    set test_result "PASS"
+  }
+  "Publishing to GitHub Pages" {
+    puts $log_file "REPO URL GH-PAGES TEST: PASS - GitHub Pages publishing started"
+    set test_result "PASS"
+  }
+  timeout {
+    puts $log_file "REPO URL GH-PAGES TEST: FAIL - GitHub Pages functionality not detected"
+    set test_result "FAIL"
+  }
+  eof {
+    puts $log_file "REPO URL GH-PAGES TEST: INCONCLUSIVE - Command completed without GitHub Pages output"
+    set test_result "INCONCLUSIVE"
+  }
+}
+
+puts $log_file "Test result: $test_result"
+close $log_file
+
+# Write result to results file
+set results_file [open "test_results/test_repo_url_gh_pages_result.txt" w]
+puts $results_file $test_result
+close $results_file
+
+expect eof

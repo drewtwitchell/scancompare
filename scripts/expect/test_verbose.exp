@@ -1,0 +1,51 @@
+#!/usr/bin/expect -f
+set timeout 300
+set log_file [open "test_results/test_verbose.log" w]
+
+spawn python scancompare nginx:latest --verbose --mock-yes
+
+expect {
+  "Automatically selecting 'yes'" {
+    puts $log_file "VERBOSE TEST: Started correctly with mock-yes"
+  }
+  timeout {
+    puts $log_file "VERBOSE TEST: FAIL - Command timed out at start"
+    set test_result "FAIL"
+    close $log_file
+    exit
+  }
+}
+
+# The verbose flag should show more output, look for detailed scan information
+expect {
+  "Found " {
+    puts $log_file "VERBOSE TEST: PASS - Verbose output detected"
+    set test_result "PASS"
+  }
+  "using repo name" {
+    puts $log_file "VERBOSE TEST: PASS - Verbose output detected"
+    set test_result "PASS"
+  }
+  "scan file paths" {
+    puts $log_file "VERBOSE TEST: PASS - Verbose output detected"
+    set test_result "PASS"
+  }
+  timeout {
+    puts $log_file "VERBOSE TEST: FAIL - Verbose output not detected"
+    set test_result "FAIL"
+  }
+  eof {
+    puts $log_file "VERBOSE TEST: FAIL - Command exited before completion"
+    set test_result "FAIL"
+  }
+}
+
+puts $log_file "Test result: $test_result"
+close $log_file
+
+# Write result to results file
+set results_file [open "test_results/test_verbose_result.txt" w]
+puts $results_file $test_result
+close $results_file
+
+expect eof

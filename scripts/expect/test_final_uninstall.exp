@@ -1,0 +1,62 @@
+#!/usr/bin/expect -f
+set timeout 120
+set log_file [open "test_results/test_final_uninstall.log" w]
+
+# This is meant to be the LAST test in the workflow
+# It fully uninstalls the application to verify the complete uninstall process
+spawn python scancompare --uninstall
+
+expect {
+  "Uninstalling scancompare" {
+    puts $log_file "FINAL UNINSTALL TEST: Uninstall process started correctly"
+  }
+  timeout {
+    puts $log_file "FINAL UNINSTALL TEST: FAIL - Uninstall command timed out at start"
+    set test_result "FAIL"
+    close $log_file
+    exit
+  }
+}
+
+# Look for evidence of successful uninstall steps
+set uninstall_steps_found 0
+
+expect {
+  "✔" {
+    # Count successful steps
+    incr uninstall_steps_found
+    exp_continue
+  }
+  "successfully uninstalled" {
+    puts $log_file "FINAL UNINSTALL TEST: PASS - Uninstall completed successfully"
+    set test_result "PASS"
+  }
+  "not found or already uninstalled" {
+    puts $log_file "FINAL UNINSTALL TEST: PASS - Application reported as already uninstalled"
+    set test_result "PASS"
+  }
+  timeout {
+    puts $log_file "FINAL UNINSTALL TEST: FAIL - Uninstall process timed out"
+    set test_result "FAIL"
+  }
+  eof {
+    # If we reach EOF but saw some uninstall steps, consider it a success
+    if {$uninstall_steps_found > 0} {
+      puts $log_file "FINAL UNINSTALL TEST: PASS - Uninstall process completed with $uninstall_steps_found successful steps"
+      set test_result "PASS"
+    } else {
+      puts $log_file "FINAL UNINSTALL TEST: FAIL - Uninstall process exited without showing progress"
+      set test_result "FAIL"
+    }
+  }
+}
+
+puts $log_file "Test result: $test_result"
+close $log_file
+
+# Write result to results file
+set results_file [open "test_results/test_final_uninstall_result.txt" w]
+puts $results_file $test_result
+close $results_file
+
+expect eof

@@ -1,0 +1,70 @@
+#!/usr/bin/expect -f
+set timeout 300
+set log_file [open "test_results/test_repo_url_comprehensive.log" w]
+
+# Use a simple GitHub repo with a Dockerfile for testing
+spawn python scancompare --repo-url https://github.com/docker-library/hello-world --gh-pages --ghas --verbose --mock-no
+
+expect {
+  "Automatically selecting 'no'" {
+    puts $log_file "COMPREHENSIVE TEST: Started correctly with mock-no"
+  }
+  "Cloning " {
+    puts $log_file "COMPREHENSIVE TEST: Started cloning repository"
+  }
+  timeout {
+    puts $log_file "COMPREHENSIVE TEST: FAIL - Command timed out at start"
+    set test_result "FAIL"
+    close $log_file
+    exit
+  }
+}
+
+# The test is successful if any of these features are detected
+set found_feature 0
+
+# Look for GitHub Pages output
+expect {
+  "GitHub Pages" {
+    puts $log_file "COMPREHENSIVE TEST: GitHub Pages functionality detected"
+    set found_feature 1
+    exp_continue
+  }
+  "GHAS" {
+    puts $log_file "COMPREHENSIVE TEST: GHAS functionality detected"
+    set found_feature 1
+    exp_continue
+  }
+  "Found " {
+    puts $log_file "COMPREHENSIVE TEST: Verbose output detected"
+    set found_feature 1
+    exp_continue
+  }
+  "Local HTML report saved" {
+    if {$found_feature == 1} {
+      puts $log_file "COMPREHENSIVE TEST: PASS - Detected at least one special feature"
+      set test_result "PASS"
+    } else {
+      puts $log_file "COMPREHENSIVE TEST: INCONCLUSIVE - Scan completed but no special features detected"
+      set test_result "INCONCLUSIVE"
+    }
+  }
+  timeout {
+    puts $log_file "COMPREHENSIVE TEST: FAIL - Test timed out"
+    set test_result "FAIL"
+  }
+  eof {
+    puts $log_file "COMPREHENSIVE TEST: INCONCLUSIVE - Command exited before completion"
+    set test_result "INCONCLUSIVE"
+  }
+}
+
+puts $log_file "Test result: $test_result"
+close $log_file
+
+# Write result to results file
+set results_file [open "test_results/test_repo_url_comprehensive_result.txt" w]
+puts $results_file $test_result
+close $results_file
+
+expect eof

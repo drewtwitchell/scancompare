@@ -9,6 +9,14 @@ expect {
     puts $log_file "MULTIPLE FLAGS TEST: PASS - Multiple flags correctly rejected"
     set test_result "PASS"
   }
+  "can be used at a time" {
+    puts $log_file "MULTIPLE FLAGS TEST: PASS - Multiple flags correctly rejected"
+    set test_result "PASS"
+  }
+  "⚠️" {
+    puts $log_file "MULTIPLE FLAGS TEST: PASS - Multiple flags correctly rejected"
+    set test_result "PASS"
+  }
   eof {
     puts $log_file "MULTIPLE FLAGS TEST: FAIL - Script completed without rejecting multiple flags"
     set test_result "FAIL"

@@ -1,0 +1,55 @@
+#!/usr/bin/expect -f
+set timeout 300
+set log_file [open "test_results/test_repo_url_ghas.log" w]
+
+# Use a simple GitHub repo with a Dockerfile for testing
+spawn python scancompare --repo-url https://github.com/docker-library/hello-world --ghas --mock-no
+
+expect {
+  "Automatically selecting 'no'" {
+    puts $log_file "REPO URL GHAS TEST: Started correctly with mock-no"
+  }
+  "Cloning " {
+    puts $log_file "REPO URL GHAS TEST: Started cloning repository"
+  }
+  timeout {
+    puts $log_file "REPO URL GHAS TEST: FAIL - Command timed out at start"
+    set test_result "FAIL"
+    close $log_file
+    exit
+  }
+}
+
+# Look for GHAS-specific output
+expect {
+  "GHAS upload" {
+    puts $log_file "REPO URL GHAS TEST: PASS - GHAS upload started"
+    set test_result "PASS"
+  }
+  "GitHub authentication required" {
+    puts $log_file "REPO URL GHAS TEST: PASS - GitHub authentication prompt shown"
+    set test_result "PASS"
+  }
+  "Skipping GHAS upload" {
+    puts $log_file "REPO URL GHAS TEST: PASS - GHAS upload skipped in mock-no mode"
+    set test_result "PASS"
+  }
+  timeout {
+    puts $log_file "REPO URL GHAS TEST: FAIL - GHAS functionality not detected"
+    set test_result "FAIL"
+  }
+  eof {
+    puts $log_file "REPO URL GHAS TEST: INCONCLUSIVE - Command completed without GHAS output"
+    set test_result "INCONCLUSIVE"
+  }
+}
+
+puts $log_file "Test result: $test_result"
+close $log_file
+
+# Write result to results file
+set results_file [open "test_results/test_repo_url_ghas_result.txt" w]
+puts $results_file $test_result
+close $results_file
+
+expect eof

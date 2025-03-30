@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+set timeout 30
+set log_file [open "test_results/test_version.log" w]
+
+spawn python scancompare --version
+
+expect {
+  "scancompare version" {
+    puts $log_file "VERSION TEST: PASS - Version info displayed correctly"
+    set test_result "PASS"
+  }
+  eof {
+    puts $log_file "VERSION TEST: FAIL - Version command completed without proper output"
+    set test_result "FAIL"
+  }
+  timeout {
+    puts $log_file "VERSION TEST: FAIL - Version command timed out"
+    set test_result "FAIL"
+  }
+}
+
+puts $log_file "Test result: $test_result"
+close $log_file
+
+# Write result to results file
+set results_file [open "test_results/test_version_result.txt" w]
+puts $results_file $test_result
+close $results_file
+
+expect eof

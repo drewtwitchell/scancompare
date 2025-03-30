@@ -1,0 +1,39 @@
+#!/usr/bin/expect -f
+set timeout 60
+set log_file [open "test_results/test_uninstall.log" w]
+
+# Testing the uninstall functionality but interrupting it before completion
+spawn python scancompare --uninstall
+
+# Check if uninstall process starts
+expect {
+  "Uninstalling scancompare" {
+    puts $log_file "UNINSTALL TEST: Uninstall process started correctly"
+    
+    # Now we need to interrupt the process before it completes
+    # Most command line tools will ask for confirmation before deleting files
+    # We'll send Ctrl+C to interrupt the process
+    send \003
+    
+    puts $log_file "UNINSTALL TEST: PASS - Uninstall function works, but was cancelled"
+    set test_result "PASS"
+  }
+  eof {
+    puts $log_file "UNINSTALL TEST: FAIL - Command exited without starting uninstall"
+    set test_result "FAIL"
+  }
+  timeout {
+    puts $log_file "UNINSTALL TEST: FAIL - Uninstall command timed out"
+    set test_result "FAIL"
+  }
+}
+
+puts $log_file "Test result: $test_result"
+close $log_file
+
+# Write result to results file
+set results_file [open "test_results/test_uninstall_result.txt" w]
+puts $results_file $test_result
+close $results_file
+
+expect eof

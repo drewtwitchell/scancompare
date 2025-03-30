@@ -1,0 +1,51 @@
+#!/usr/bin/expect -f
+set timeout 300
+set log_file [open "test_results/test_repo_url.log" w]
+
+# Use a simple GitHub repo with a Dockerfile for testing
+spawn python scancompare --repo-url https://github.com/docker-library/hello-world --mock-no
+
+expect {
+  "Automatically selecting 'no'" {
+    puts $log_file "REPO URL TEST: Started correctly with mock-no"
+  }
+  "Cloning " {
+    puts $log_file "REPO URL TEST: Started cloning repository"
+  }
+  timeout {
+    puts $log_file "REPO URL TEST: FAIL - Command timed out at start"
+    set test_result "FAIL"
+    close $log_file
+    exit
+  }
+}
+
+# Wait for scan completion
+expect {
+  "Local HTML report saved" {
+    puts $log_file "REPO URL TEST: PASS - Repository cloned and scanned successfully"
+    set test_result "PASS"
+  }
+  "No Dockerfile found" {
+    puts $log_file "REPO URL TEST: INCONCLUSIVE - No Dockerfile found in repo"
+    set test_result "INCONCLUSIVE"
+  }
+  timeout {
+    puts $log_file "REPO URL TEST: FAIL - Scan timed out"
+    set test_result "FAIL"
+  }
+  eof {
+    puts $log_file "REPO URL TEST: FAIL - Command exited before completion"
+    set test_result "FAIL"
+  }
+}
+
+puts $log_file "Test result: $test_result"
+close $log_file
+
+# Write result to results file
+set results_file [open "test_results/test_repo_url_result.txt" w]
+puts $results_file $test_result
+close $results_file
+
+expect eof
