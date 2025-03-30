@@ -36,17 +36,37 @@ SCRIPT_NAME = "scancompare"
 SCRIPT_URL = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
 VERSION = "1.0.0"
 
+# Constants for directory structure
+USER_ROOT = os.path.expanduser("~/ScanCompare")
+SCAN_REPORTS_DIR = os.path.join(USER_ROOT, "scan_reports")
+TEMP_DIR = os.path.join(USER_ROOT, "temp")
+BACKUP_DIR = os.path.join(USER_ROOT, "backups")
+GITHUB_PAGES_DIR = os.path.join(TEMP_DIR, "gh-pages")
+DOCKER_TEMP_DIR = os.path.join(TEMP_DIR, "docker")
+LOG_FILE = os.path.join(USER_ROOT, "scancompare.log")
+
 def handle_cli_args():
     parser = argparse.ArgumentParser(
-        description="Scan and compare Docker image vulnerabilities using Trivy and Grype."
+        description=(
+            "Scan and compare Docker image vulnerabilities using Trivy and Grype.\n\n"
+            "Supports scanning from local Docker images or GitHub repositories containing Dockerfiles.\n"
+            "Optional features:\n"
+            "  • Upload results to GitHub Advanced Security (GHAS)\n"
+            "  • Publish HTML report to GitHub Pages\n"
+        ),
+        formatter_class=argparse.RawTextHelpFormatter
     )
+
     parser.add_argument("image", nargs="?", help="Docker image to scan")
-    parser.add_argument("--repo-url", help="GitHub repo URL containing Dockerfile for image build")
-    parser.add_argument("--keep-data", action="store_true", help="Keep Docker image, cloned repo, HTML, SARIF, and JSON results")
+    parser.add_argument("--repo-url", help="GitHub repo URL containing Dockerfile for image build and scan")
+    parser.add_argument("--ghas", action="store_true", help="Upload scan results to GitHub Advanced Security (SARIF upload)")
+    parser.add_argument("--gh-pages", action="store_true", help="Publish HTML report to GitHub Pages (requires git & gh CLI)")
+    parser.add_argument("--keep-data", action="store_true", help="Keep all output and temp data (HTML, SARIF, JSON, image, repo)")
     parser.add_argument("--version", action="store_true", help="Show scancompare version")
     parser.add_argument("--update", action="store_true", help="Check and apply latest scancompare update")
-    parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
+    parser.add_argument("--verbose", action="store_true", help="Show detailed output (clone, build, scans)")
     parser.add_argument("--uninstall", action="store_true", help="Uninstall scancompare CLI")
+
     args = parser.parse_args()
     return args
 
@@ -60,6 +80,28 @@ def tool_progress(ACTION, TOOL_NAME):
 def tool_done():
     print(" \033[32m✔\033[0m")
 
+def ensure_directory_structure():
+    """Ensure all required directories exist"""
+    directories = [
+        USER_ROOT,
+        SCAN_REPORTS_DIR,
+        TEMP_DIR,
+        BACKUP_DIR,
+        GITHUB_PAGES_DIR,
+        DOCKER_TEMP_DIR
+    ]
+    
+    for directory in directories:
+        if not os.path.exists(directory):
+            os.makedirs(directory, exist_ok=True)
+            print(f"📁 Created directory: {directory}")
+    
+    # Initialize log file if it doesn't exist
+    if not os.path.exists(LOG_FILE):
+        with open(LOG_FILE, 'w') as f:
+            f.write(f"ScanCompare Log File created on {datetime.now().isoformat()}\n")
+            f.write("=" * 60 + "\n")
+
 def get_current_version():
     return VERSION
 
@@ -69,14 +111,10 @@ def check_latest_version(only_check=False):
         return
 
     try:
-        if only_check:
-            print("📦 scancompare version", get_current_version())
-            return
-
         print("🔄 Checking for updates...")
-        urlretrieve(SCRIPT_URL, get_script_path())
+        urlretrieve(SCRIPT_URL, get_script_path() + ".tmp")
 
-        with open(get_script_path(), 'r') as f:
+        with open(get_script_path() + ".tmp", 'r') as f:
             new_code = f.read()
             latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
             if not latest_match:
@@ -88,10 +126,18 @@ def check_latest_version(only_check=False):
             if latest == current:
                 print(f"📦 scancompare version {current}")
                 print("✅ You are running the latest version.")
+                os.remove(get_script_path() + ".tmp")
+                return
+
+            if only_check:
+                print(f"📦 scancompare version {current}")
+                print(f"ℹ️ New version {latest} is available. Run with --update to update.")
+                os.remove(get_script_path() + ".tmp")
                 return
 
             print(f"🔄 Updating scancompare from {current} to {latest}...")
             update_script(new_code)
+            os.remove(get_script_path() + ".tmp")
             print("♻️ Restarting with updated version...")
             script_path = get_script_path()
             os.execve(
@@ -102,9 +148,13 @@ def check_latest_version(only_check=False):
 
     except Exception as e:
         print(f"⚠️ Auto-update check failed: {e}")
+        try:
+            os.remove(get_script_path() + ".tmp")
+        except:
+            pass
         if only_check:
             print(f"📦 scancompare version {get_current_version()}")
-            sys.exit(0)
+            return
 
 def update_script(new_code):
     try:
@@ -182,15 +232,44 @@ def uninstall_scancompare():
             print(f"❌ Failed to remove virtual environment: {e}")
 
     # Removing scan_reports directory
-    reports_dir = Path("scan_reports")
-    if reports_dir.exists():
+    if Path(SCAN_REPORTS_DIR).exists():
         print("🗑️  Removing scan reports...", end=" ")
         try:
-            shutil.rmtree(reports_dir)
+            shutil.rmtree(SCAN_REPORTS_DIR)
             print("✔")
             paths_removed = True
         except Exception as e:
             print(f"❌ Failed to remove scan reports: {e}")
+
+    # Removing temp directory
+    if Path(TEMP_DIR).exists():
+        print("🗑️  Removing temp directory...", end=" ")
+        try:
+            shutil.rmtree(TEMP_DIR)
+            print("✔")
+            paths_removed = True
+        except Exception as e:
+            print(f"❌ Failed to remove temp directory: {e}")
+
+    # Removing backup directory
+    if Path(BACKUP_DIR).exists():
+        print("🗑️  Removing backup directory...", end=" ")
+        try:
+            shutil.rmtree(BACKUP_DIR)
+            print("✔")
+            paths_removed = True
+        except Exception as e:
+            print(f"❌ Failed to remove backup directory: {e}")
+
+    # Removing log file
+    if Path(LOG_FILE).exists():
+        print("🗑️  Removing log file...", end=" ")
+        try:
+            Path(LOG_FILE).unlink()
+            print("✔")
+            paths_removed = True
+        except Exception as e:
+            print(f"❌ Failed to remove log file: {e}")
 
     # Cleaning up shell config in profile files
     profile_files = [".zshrc", ".bashrc", ".profile", ".bash_profile", ".zprofile"]
@@ -217,6 +296,15 @@ def uninstall_scancompare():
                 print("🗑️  Removing empty lib directory... ✔")
         except Exception as e:
             print(f"❌ Failed to remove lib directory: {e}")
+
+    # Remove USER_ROOT if it's empty
+    if Path(USER_ROOT).exists() and Path(USER_ROOT).is_dir():
+        try:
+            if not any(Path(USER_ROOT).iterdir()):
+                Path(USER_ROOT).rmdir()
+                print("🗑️  Removing empty ScanCompare directory... ✔")
+        except Exception as e:
+            print(f"❌ Failed to remove ScanCompare directory: {e}")
 
     if paths_removed:
         print("\n✅ scancompare successfully uninstalled.")
@@ -257,6 +345,10 @@ def run_scan(tool, image, output_path, verbose=False):
         return False
 
     try:
+        # Ensure the directory exists for the output path
+        output_dir = os.path.dirname(output_path)
+        os.makedirs(output_dir, exist_ok=True)
+        
         if verbose:
             # For verbose mode, run without capturing output to show it in real-time
             result = subprocess.run(scan_command, check=True)
@@ -265,6 +357,7 @@ def run_scan(tool, image, output_path, verbose=False):
             result = subprocess.run(scan_command, check=True, capture_output=True, text=True)
 
         # Check if the output file was created and has content
+        output_path = Path(output_path) if not isinstance(output_path, Path) else output_path
         if not output_path.exists():
             print(f"\n⚠️ {tool} scan failed: output file not created")
             print(f"   Command: {' '.join(scan_command)}")
@@ -301,7 +394,7 @@ def run_scan(tool, image, output_path, verbose=False):
             print(f"   {e.stderr if e.stderr else str(e)}")
         print(f"\n   To debug, run: {' '.join(scan_command)}")
         return False
-
+    
 def normalize_cve_id(cve_id: str) -> str:
     """Normalize CVE ID to a standard format."""
     if not cve_id:
@@ -382,6 +475,10 @@ def find_similar_cves(cve_id: str, description: str, cve_map: Dict[str, Dict]) -
 def extract_cves_with_severity(file_path, verbose=False):
     """Extract CVEs with severity information from scan results."""
     try:
+        # Convert string path to Path object if it's not already
+        if not isinstance(file_path, Path):
+            file_path = Path(file_path)
+            
         with open(file_path) as f:
             data = json.load(f)
             if verbose:
@@ -496,7 +593,7 @@ def print_cves_by_severity(title, cve_map):
                 print(f"    - {cve}")
         print()  # Add newline after each severity group
 
-def display_summary(trivy_cves, grype_cves):
+def display_summary(trivy_cves, grype_cves, image=None, trivy_data=None, grype_data=None):
     """Display a summary of vulnerability findings from both scanners."""
     # Convert to sets of CVE IDs for comparison
     trivy_cve_ids = set(trivy_cves.keys())
@@ -509,8 +606,8 @@ def display_summary(trivy_cves, grype_cves):
     similar_cves = []
     for cve_id in trivy_cve_ids:
         if cve_id not in shared:
-            trivy_data = trivy_cves[cve_id]
-            similar = find_similar_cves(cve_id, trivy_data.get('description', ''), grype_cves)
+            trivy_data_item = trivy_cves[cve_id]
+            similar = find_similar_cves(cve_id, trivy_data_item.get('description', ''), grype_cves)
             if similar:
                 similar_cves.extend(similar)
 
@@ -522,57 +619,8 @@ def display_summary(trivy_cves, grype_cves):
 
     only_trivy = trivy_cve_ids - shared
     only_grype = grype_cve_ids - shared
-
-    # Check if both scans produced zero results
-    if not trivy_cve_ids and not grype_cve_ids:
-        print("\n⚠️ No vulnerabilities found by either scanner.")
-        print("\n📋 Analysis:")
-        print("   - Both scanners completed successfully")
-        print("   - Trivy analyzed 213 packages")
-        print("   - Grype completed its analysis")
-        print("\n🔍 Why no vulnerabilities were found:")
-        print("   - This is a minimal image based on Ubuntu 14.04")
-        print("   - Contains only basic system packages")
-        print("   - No additional software or dependencies installed")
-        print("   - Only includes a simple text file")
-        print("\n💡 Recommendations:")
-        print("   1. For more meaningful results, try scanning:")
-        print("      - A more complex application image (e.g., nginx:latest)")
-        print("      - An image with known vulnerabilities (e.g., node:14)")
-        print("      - A more complex Dockerfile that installs additional packages")
-        print("\n   2. Or modify the Dockerfile to:")
-        print("      - Install additional packages")
-        print("      - Use a more recent base image")
-        print("      - Add application dependencies")
-        print("\nℹ️  To scan a different image, run:")
-        print("   scancompare nginx:latest")
-        print("   # or")
-        print("   scancompare --repo-url https://github.com/docker-library/php")
-        sys.exit(0)  # Exit gracefully with success code
-
-    # Check if one scanner found vulnerabilities and the other didn't
-    if (trivy_cve_ids and not grype_cve_ids) or (not trivy_cve_ids and grype_cve_ids):
-        print("\n⚠️ Scanner Discrepancy Detected")
-        print("\n📋 Analysis:")
-        if trivy_cve_ids:
-            print(f"   - Trivy found {len(trivy_cve_ids)} vulnerabilities")
-            print("   - Grype found no vulnerabilities")
-        else:
-            print("   - Trivy found no vulnerabilities")
-            print(f"   - Grype found {len(grype_cve_ids)} vulnerabilities")
-
-        print("\n🔍 Possible Reasons:")
-        print("   - Different vulnerability databases")
-        print("   - Different scanning depths")
-        print("   - Different package detection methods")
-        print("   - False positives in one scanner")
-        print("\n💡 Recommendations:")
-        print("   1. Review the detailed scan results in the HTML report")
-        print("   2. Run the scan with --verbose flag for more details")
-        print("   3. Consider using both scanners for comprehensive coverage")
-        print("\nℹ️  To run with verbose output:")
-        print("   scancompare <image> --verbose")
-
+    
+    # Always print summary before checking conditions
     print("\n📊 Summary Report")
     print("----------------")
     print(" Tool  | Total | Only in Tool | Shared")
@@ -580,43 +628,179 @@ def display_summary(trivy_cves, grype_cves):
     print(f"Grype  | {len(grype_cve_ids):<5} | {len(only_grype):<12} | {len(shared)}")
     print(f"Trivy  | {len(trivy_cve_ids):<5} | {len(only_trivy):<12} | {len(shared)}\n")
 
+    # Check if both scans produced zero results
+    if not trivy_cve_ids and not grype_cve_ids:
+        print(f"\n⚠️ No vulnerabilities found in {image if image else 'the image'} by either scanner.")
+        print("\n📋 Analysis:")
+        print("   - Both scanners completed successfully")
+        
+        # Get actual package counts if data is available
+        trivy_packages_count = 0
+        grype_artifacts_count = 0
+        os_info = "unknown base"
+        
+        if trivy_data:
+            # Try to extract package counts from Trivy data
+            for result in trivy_data.get("Results", []):
+                if "Packages" in result:
+                    trivy_packages_count += len(result.get("Packages", []))
+                # Try to get OS info
+                if result.get("Type") == "os" and result.get("Target"):
+                    os_info = result.get("Target")
+        
+        if grype_data:
+            # Try to extract artifact counts from Grype data
+            if isinstance(grype_data, dict) and "matches" in grype_data:
+                artifacts = set()
+                for match in grype_data.get("matches", []):
+                    if match.get("artifact", {}).get("name"):
+                        artifacts.add(match.get("artifact", {}).get("name"))
+                grype_artifacts_count = len(artifacts)
+        
+        print(f"   - Trivy analyzed {trivy_packages_count} packages" if trivy_packages_count else "   - Trivy completed analysis")
+        print(f"   - Grype identified {grype_artifacts_count} artifacts" if grype_artifacts_count else "   - Grype completed analysis")
+        
+        print(f"\n🔍 Why no vulnerabilities were found in {os_info} image:")
+        print("   - This may be a minimal or hardened container image")
+        print("   - All packages may be up-to-date with no known vulnerabilities")
+        print("   - The image may have limited installed packages")
+        
+        print("\n💡 Recommendations:")
+        print("   1. For more meaningful results, try scanning:")
+        print("      - A more complex application image (e.g., wordpress:latest)")
+        print("      - An image with known vulnerabilities (e.g., node:14)")
+        print("      - A more complex Dockerfile that installs additional packages")
+        
+        print(f"\n   2. To scan with more detail, try verbose mode:")
+        print(f"      scancompare {image if image else '<image-name>'} --verbose")
+        
+        print("\nℹ️  To scan a different image, run:")
+        print("   scancompare nginx:latest")
+        print("   # or")
+        print("   scancompare --repo-url https://github.com/your-repo/your-dockerfile")
+        sys.exit(0)  # Exit gracefully with success code
+
+    # Check if one scanner found vulnerabilities and the other didn't
+    if (trivy_cve_ids and not grype_cve_ids) or (not trivy_cve_ids and grype_cve_ids):
+        print(f"\n⚠️ Scanner Discrepancy Detected for {image if image else 'the image'}")
+        print("\n📋 Analysis:")
+        if trivy_cve_ids:
+            print(f"   - Trivy found {len(trivy_cve_ids)} vulnerabilities")
+            print("   - Grype found no vulnerabilities")
+            
+            # Get severity distribution for Trivy findings
+            severity_counts = get_severity_distribution(trivy_cves)
+            severity_info = ", ".join([f"{count} {sev}" for sev, count in severity_counts.items()])
+            if severity_info:
+                print(f"   - Severity distribution: {severity_info}")
+        else:
+            print("   - Trivy found no vulnerabilities")
+            print(f"   - Grype found {len(grype_cve_ids)} vulnerabilities")
+            
+            # Get severity distribution for Grype findings
+            severity_counts = get_severity_distribution(grype_cves)
+            severity_info = ", ".join([f"{count} {sev}" for sev, count in severity_counts.items()])
+            if severity_info:
+                print(f"   - Severity distribution: {severity_info}")
+
+        # Try to determine image type for more specific advice
+        image_type = "container"
+        if image:
+            image_type = determine_image_type(image)
+
+        print(f"\n🔍 Possible Reasons for discrepancy with {image_type} image:")
+        print("   - Different vulnerability databases with varying update frequencies")
+        print("   - Different scanning depths and detection methodologies")
+        print(f"   - Different package recognition mechanisms for {image_type} images")
+        print("   - One scanner may have false positives or the other false negatives")
+        
+        print("\n💡 Recommendations:")
+        print(f"   1. Review the detailed scan results in the HTML report for {image if image else 'this image'}")
+        print(f"   2. Run the scan with --verbose flag for more details:")
+        print(f"      scancompare {image if image else '<image-name>'} --verbose")
+        print("   3. Consider using both scanners for comprehensive coverage")
+        print(f"   4. For {image_type} images, check scanner documentation for known limitations")
+    
+    # When both scanners find vulnerabilities (which seems to be your case)
+    elif trivy_cve_ids and grype_cve_ids:
+        # Add a new section for the case where both scanners find vulnerabilities
+        image_type = "container"
+        if image:
+            image_type = determine_image_type(image)
+        
+        trivy_severity = get_severity_distribution(trivy_cves)
+        grype_severity = get_severity_distribution(grype_cves)
+        
+        print(f"\n📋 Vulnerability Analysis for {image if image else 'the image'} ({image_type}):")
+        
+        # Print combined severity information
+        if trivy_severity or grype_severity:
+            print("\n🔴 Severity Breakdown:")
+            for severity in ["Critical", "High", "Medium", "Low", "Unknown"]:
+                trivy_count = trivy_severity.get(severity, 0)
+                grype_count = grype_severity.get(severity, 0)
+                max_count = max(trivy_count, grype_count)
+                
+                if max_count > 0:
+                    print(f"   - {severity}: {max_count} vulnerabilities")
+        
+        # Print agreement percentage
+        agreement = (len(shared) / len(trivy_cve_ids | grype_cve_ids)) * 100
+        print(f"\n🤝 Scanner Agreement: {agreement:.1f}% ({len(shared)} shared findings)")
+        
+        # Extract package info if available
+        if trivy_data:
+            os_info = "unknown base"
+            pkg_types = set()
+            for result in trivy_data.get("Results", []):
+                if result.get("Type"):
+                    pkg_types.add(result.get("Type"))
+                if result.get("Type") == "os" and result.get("Target"):
+                    os_info = result.get("Target")
+            
+            if os_info != "unknown base":
+                print(f"\n📦 Image OS: {os_info}")
+            
+            if pkg_types:
+                print(f"📦 Found packages: {', '.join(pkg_types)}")
+
     # Create dictionaries for shared CVEs with metadata from both scanners
     shared_cves = {}
     for cve in shared:
-        trivy_data = trivy_cves.get(cve, {})
-        grype_data = grype_cves.get(cve, {})
+        trivy_data_item = trivy_cves.get(cve, {})
+        grype_data_item = grype_cves.get(cve, {})
 
         # Calculate confidence score based on metadata matching
         confidence = 1.0
-        if trivy_data.get('description') and grype_data.get('description'):
+        if trivy_data_item.get('description') and grype_data_item.get('description'):
             confidence = calculate_description_similarity(
-                trivy_data['description'],
-                grype_data['description']
+                trivy_data_item['description'],
+                grype_data_item['description']
             )
 
         # Prefer Trivy's severity if available, otherwise use Grype's
-        severity = trivy_data.get("severity", grype_data.get("severity", "Unknown"))
+        severity = trivy_data_item.get("severity", grype_data_item.get("severity", "Unknown"))
         # Prefer Trivy's CVSS score if available, otherwise use Grype's
-        cvss = trivy_data.get("cvss", grype_data.get("cvss", "N/A"))
+        cvss = trivy_data_item.get("cvss", grype_data_item.get("cvss", "N/A"))
         # Combine package types
         types = set()
-        if trivy_data.get("type"):
-            types.add(trivy_data["type"])
-        if grype_data.get("type"):
-            types.add(grype_data["type"])
+        if trivy_data_item.get("type"):
+            types.add(trivy_data_item["type"])
+        if grype_data_item.get("type"):
+            types.add(grype_data_item["type"])
 
         # Combine references and remove duplicates
         references = set()
-        if trivy_data.get("references"):
-            references.update(trivy_data["references"])
-        if grype_data.get("references"):
-            references.update(grype_data["references"])
+        if trivy_data_item.get("references"):
+            references.update(trivy_data_item["references"])
+        if grype_data_item.get("references"):
+            references.update(grype_data_item["references"])
 
         # Use the most recent last_modified date
         last_modified = max(
             filter(None, [
-                trivy_data.get("last_modified"),
-                grype_data.get("last_modified")
+                trivy_data_item.get("last_modified"),
+                grype_data_item.get("last_modified")
             ]),
             default=None
         )
@@ -626,8 +810,8 @@ def display_summary(trivy_cves, grype_cves):
             "type": ", ".join(types) if types else "unknown",
             "cvss": cvss,
             "confidence": confidence,
-            "trivy_id": trivy_data.get("original_id", cve),
-            "grype_id": grype_data.get("original_id", cve),
+            "trivy_id": trivy_data_item.get("original_id", cve),
+            "grype_id": grype_data_item.get("original_id", cve),
             "references": sorted(list(references)),
             "last_modified": last_modified
         }
@@ -638,38 +822,40 @@ def display_summary(trivy_cves, grype_cves):
 
     return shared_cves, only_trivy_cves, only_grype_cves
 
-def get_upstream_url(repo_url):
-    # Extract the user and repo from the repo URL
-    parsed = urlparse(repo_url)
-    repo_path = parsed.path.strip("/")
-    if repo_path.endswith(".git"):
-        repo_path = repo_path[:-4]
+def get_severity_distribution(cves_dict):
+    """Get distribution of severities from a CVE dictionary."""
+    severity_counts = {}
+    for cve_id, data in cves_dict.items():
+        if isinstance(data, dict) and "severity" in data:
+            severity = data["severity"]
+            severity_counts[severity] = severity_counts.get(severity, 0) + 1
     
-    # Get the user and repo
-    user, repo = repo_path.split("/")[-2:]
-    
-    # Use GitHub API to fetch repo details
-    api_url = f"https://api.github.com/repos/{user}/{repo}"
-    response = requests.get(api_url)
-    
-    if response.status_code != 200:
-        print("⚠️ Failed to fetch repository details from GitHub.")
-        return None
-    
-    repo_data = response.json()
-    
-    # Check if it's a fork and get the upstream (parent) repo
-    if repo_data.get("fork", False):
-        upstream_user = repo_data["parent"]["owner"]["login"]
-        upstream_repo = repo_data["parent"]["name"]
-        upstream_url = f"https://github.com/{upstream_user}/{upstream_repo}"
-        return upstream_url
-    
-    # If not a fork, return the original repo URL
-    return f"https://github.com/{user}/{repo}"
+    # Sort by severity importance
+    severity_order = ["Critical", "High", "Medium", "Low", "Unknown"]
+    return {sev: severity_counts.get(sev, 0) for sev in severity_order if sev in severity_counts}
 
-import requests
-from urllib.parse import urlparse
+def determine_image_type(image):
+    """Determine the likely type of image from its name."""
+    image_name = image.lower()
+    
+    if ":" in image_name:
+        base_image = image_name.split(":")[0]
+    else:
+        base_image = image_name
+    
+    # Common base images
+    if any(name in base_image for name in ["nginx", "apache", "httpd"]):
+        return "web server"
+    elif any(name in base_image for name in ["mysql", "postgres", "mariadb", "mongo", "redis"]):
+        return "database"
+    elif any(name in base_image for name in ["node", "python", "ruby", "php", "java", "golang"]):
+        return "language runtime"
+    elif any(name in base_image for name in ["ubuntu", "debian", "alpine", "centos", "fedora"]):
+        return "operating system"
+    elif any(name in base_image for name in ["wordpress", "drupal", "joomla"]):
+        return "CMS"
+    else:
+        return "application"
 
 def get_upstream_url(repo_url):
     """
@@ -704,414 +890,6 @@ def get_upstream_url(repo_url):
 
     # If it's not a fork, return the original repo URL
     return f"https://github.com/{user}/{repo}"
-
-def publish_to_github_pages(report_path, image):
-    """Publish the HTML report to GitHub Pages, choosing 'docs/' or 'gh-pages' based on the repo."""
-    import os
-    from pathlib import Path
-    import shutil
-    import subprocess
-    from datetime import datetime
-    import zipfile
-
-    if not args.repo_url:
-        return None
-
-    # Get the upstream URL (or keep the current repo URL if not a fork)
-    upstream_url = get_upstream_url(args.repo_url)
-
-    # Handle fork vs. upstream choice
-    if upstream_url and upstream_url != args.repo_url:
-        print(f"⚠️ {args.repo_url} appears to be a fork of the repository: {upstream_url}")
-        user_choice = input(f"Do you want to publish to the upstream repository URL {upstream_url}? (y/n): ").strip().lower()
-
-        if user_choice == "y":
-            # Update the repo_url to the upstream URL
-            print(f"🔄 Changing to upstream repository URL: {upstream_url}")
-            args.repo_url = upstream_url
-        else:
-            print(f"🔄 Keeping the forked repository URL: {args.repo_url}")
-
-    else:
-        print(f"⚠️ You are using your forked repository URL: {args.repo_url}")
-
-    # Parse the user and repo from the updated repo URL
-    parsed = urlparse(args.repo_url)
-    repo_path = parsed.path.strip("/")
-    if repo_path.endswith(".git"):
-        repo_path = repo_path[:-4]
-    user, repo = repo_path.split("/")[-2:]
-
-    # Check if docs/ folder exists
-    use_docs_folder = Path("docs").exists()
-
-    # Decide target folder and branch
-    if use_docs_folder:
-        target_dir = Path("docs")
-        target_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
-    else:
-        target_dir = Path("gh-pages")
-        target_branch = "gh-pages"
-
-    target_dir.mkdir(exist_ok=True)
-
-    # Unique report filename
-    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-    report_filename = f"scan_report_{image.replace(':', '_')}_{timestamp}.html"
-    target_path = target_dir / report_filename
-    shutil.copy2(report_path, target_path)
-
-    # Create index.html redirecting to latest report
-    index_html = target_dir / "index.html"
-    index_html.write_text(f"""<html>
-<head><meta http-equiv='refresh' content='0; URL={report_filename}'></head>
-<body>
-<p>Redirecting to <a href='{report_filename}'>{report_filename}</a></p>
-</body>
-</html>""")
-
-    # Backup previous contents (limit to 3 backups)
-    backups_dir = Path("backups")
-    backups_dir.mkdir(exist_ok=True)
-    backup_filename = f"backup_{timestamp}.zip"
-    backup_path = backups_dir / backup_filename
-    with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for file in target_dir.glob("*.*"):
-            zipf.write(file, arcname=file.name)
-
-    # Cleanup backups over 3
-    backups = sorted(backups_dir.glob("backup_*.zip"), key=os.path.getmtime, reverse=True)
-    for old_backup in backups[3:]:
-        old_backup.unlink()
-
-    # Clean up previous contents in gh-pages (except index)
-    for file in target_dir.glob("*"):
-        if file.name != "index.html" and file.is_file():
-            file.unlink()
-
-    # Git setup
-    if not Path(".git").exists():
-        subprocess.run(["git", "init"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["git", "remote", "add", "origin", args.repo_url], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-    current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
-
-    if target_branch != current_branch:
-        subprocess.run(["git", "checkout", "-B", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-    # Stage and commit
-    tool_progress("📦", f"Adding {target_dir} contents to git")
-    subprocess.run(["git", "add", "-f", str(target_dir)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    try:
-        subprocess.run(["git", "commit", "-m", f"📊 Add scan report for {image}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except subprocess.CalledProcessError:
-        pass  # No changes to commit
-    subprocess.run(["git", "push", "-u", "origin", target_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    tool_done()
-
-    if target_branch != current_branch:
-        subprocess.run(["git", "checkout", current_branch], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-    # Return public report URL
-    base_url = f"https://{user}.github.io/{repo}"
-    return f"{base_url}/{report_filename}"
-
-def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only_grype, trivy_version, grype_version):
-    """Generate a detailed HTML report of vulnerability findings."""
-    def format_cves(cve_map):
-        grouped = group_by_severity(cve_map)
-        sections = ""
-        severity_colors = {
-            "Critical": "#d32f2f",
-            "High": "#f57c00",
-            "Medium": "#fbc02d",
-            "Low": "#388e3c",
-            "Unknown": "#757575"
-        }
-        for severity in sorted(
-            grouped.keys(),
-            key=lambda s: ["Critical", "High", "Medium", "Low", "Unknown"].index(s.capitalize())
-            if s.capitalize() in ["Critical", "High", "Medium", "Low", "Unknown"]
-            else 99,
-        ):
-            color = severity_colors.get(severity.capitalize(), "#444")
-            cves = grouped[severity]
-            sections += f"<button class='collapsible severity-block' data-severity='{severity.capitalize()}' style='color:{color}'>{severity} ({len(cves)})</button><div class='content'><ul>"
-            for cve in sorted(cves):
-                cve_meta = cve_map.get(cve, {})
-                if not isinstance(cve_meta, dict):
-                    cve_meta = {}
-                cve_link = f"https://nvd.nist.gov/vuln/detail/{cve}"
-                cvss_score = cve_meta.get("cvss", "N/A")
-                confidence = cve_meta.get("confidence", 1.0)
-                trivy_id = cve_meta.get("trivy_id", cve)
-                grype_id = cve_meta.get("grype_id", cve)
-                last_modified = cve_meta.get("last_modified")
-                references = cve_meta.get("references", [])
-
-                # Format CVSS score
-                if cvss_score != "N/A":
-                    try:
-                        cvss_score = f"{float(cvss_score):.1f}"
-                    except ValueError:
-                        pass
-
-                # Format last modified date
-                if last_modified:
-                    try:
-                        date = datetime.fromisoformat(last_modified.replace('Z', '+00:00'))
-                        last_modified = date.strftime('%Y-%m-%d')
-                    except ValueError:
-                        pass
-
-                # Add confidence indicator and similar CVE info
-                confidence_html = ""
-                if confidence < 1.0:
-                    confidence_color = "#f57c00" if confidence < 0.8 else "#388e3c"
-                    confidence_html = f"<span style='color: {confidence_color}'>(Confidence: {confidence:.2f})</span>"
-
-                similar_cve_html = ""
-                if trivy_id != grype_id:
-                    similar_cve_html = f"<br><small>Similar CVE IDs: Trivy={trivy_id}, Grype={grype_id}</small>"
-
-                # Add references
-                references_html = ""
-                if references:
-                    references_html = "<br><small>References:<br>"
-                    for ref in references:
-                        references_html += f"<a href='{ref}' target='_blank'>{ref}</a><br>"
-                    references_html += "</small>"
-
-                # Build the CVE entry
-                cve_entry = f'<li><a href="{cve_link}" target="_blank">{cve}</a>'
-                if cvss_score != "N/A":
-                    cve_entry += f" — CVSS: {cvss_score}"
-                if last_modified:
-                    cve_entry += f" [Last Modified: {last_modified}]"
-                cve_entry += f" {confidence_html}{similar_cve_html}{references_html}</li>"
-
-                sections += cve_entry
-            sections += "</ul></div>"
-        return sections or "<p>No CVEs found.</p>"
-
-    def format_and_group_by_type(cve_map):
-        os_related = {}
-        lang_related = {}
-        unknown = {}
-        for cve, meta in cve_map.items():
-            if not isinstance(meta, dict):
-                unknown[cve] = meta
-                continue
-            pkg_type = meta.get("pkg_type") or meta.get("type") or "unknown"
-            if pkg_type.lower() in ["os", "debian", "alpine", "rpm", "apk"]:
-                os_related[cve] = meta
-            elif pkg_type.lower() in ["python", "java", "nodejs", "golang"]:
-                lang_related[cve] = meta
-            else:
-                unknown[cve] = meta
-
-        result = ""
-        if os_related:
-            result += "<h3>🧹 OS Package CVEs</h3>" + format_cves(os_related)
-        if lang_related:
-            result += "<h3>📦 Language Package CVEs</h3>" + format_cves(lang_related)
-        if unknown:
-            result += (
-                "<h3>❓ Unclassified CVEs</h3>"
-                "<p><em>These CVEs couldn't be categorized as OS or language packages. This often includes:</em></p>"
-                "<ul><li>Uncommon sources or tools</li><li>Temporary CVE IDs (like TEMP-1234)</li><li>Missing or malformed metadata</li></ul>"
-                + format_cves(unknown)
-            )
-        return result
-
-    timestamp = datetime.now().strftime("%Y-%m-%d")
-    report_name = f"scan_report_{image.replace(':', '_')}_{timestamp}.html"
-    report_path = Path("scan_reports") / report_name
-
-    # Get the directory name from the image tag if it exists
-    dir_name = None
-    if "-" in image:
-        dir_name = image.split("-")[-2]  # Get the second-to-last part of the image tag
-
-    # Use the correct file paths based on whether we're scanning multiple Dockerfiles
-    if dir_name:
-        trivy_path = Path("scan_reports") / f"original_trivy_{dir_name}.json"
-        grype_path = Path("scan_reports") / f"original_grype_{dir_name}.json"
-    else:
-        trivy_path = Path("scan_reports") / "original_trivy.json"
-        grype_path = Path("scan_reports") / "original_grype.json"
-
-    try:
-        trivy_raw = html.escape(json.dumps(json.load(open(trivy_path)), indent=2))
-        grype_raw = html.escape(json.dumps(json.load(open(grype_path)), indent=2))
-    except FileNotFoundError as e:
-        print(f"⚠️ Could not find scan result files: {e}")
-        trivy_raw = "{}"
-        grype_raw = "{}"
-
-    shared_cves_detailed = {cve: trivy_cves.get(cve) if isinstance(trivy_cves.get(cve), dict) else grype_cves.get(cve) or {"type": "unknown"} for cve in shared}
-    trivy_unique_detailed = {cve: trivy_cves.get(cve) or {"type": "unknown"} for cve in only_trivy}
-    grype_unique_detailed = {cve: grype_cves.get(cve) or {"type": "unknown"} for cve in only_grype}
-
-    total_vulns = len(trivy_cves) + len(grype_cves) - len(shared)
-
-    template_dir = Path(__file__).parent
-    template_path = template_dir / "scan_template.html"
-
-    if not template_path.exists():
-        tool_progress("📄", "scan_template.html missing — restoring latest version...")
-        try:
-            urlretrieve(
-                "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html",
-                template_path
-            )
-            tool_done()
-            print(f"✅ scan_template.html downloaded to {template_path}")
-        except Exception as e:
-            print(f"❌ Failed to download template: {e}")
-            print("ℹ️ Creating a basic template...")
-            # Create a basic template as fallback
-            template_path.write_text("""<!DOCTYPE html>
-<html>
-<head>
-    <title>Vulnerability Scan Report</title>
-    <style>
-        body { font-family: -apple-system, system-ui, sans-serif; line-height: 1.5; max-width: 1200px; margin: 0 auto; padding: 20px; }
-        .severity-block { width: 100%; padding: 10px; margin: 5px 0; text-align: left; border: none; border-radius: 5px; cursor: pointer; }
-        .content { display: none; padding: 10px; background-color: #f9f9f9; border-radius: 5px; }
-        .active { display: block; }
-        .collapsible:after { content: '+'; float: right; font-weight: bold; }
-        .active:after { content: '-'; }
-        .severity-Critical { background-color: #ffebee; }
-        .severity-High { background-color: #fff3e0; }
-        .severity-Medium { background-color: #fff8e1; }
-        .severity-Low { background-color: #e8f5e9; }
-        .severity-Unknown { background-color: #f5f5f5; }
-    </style>
-</head>
-<body>
-    <h1>Vulnerability Scan Report</h1>
-    <h2>Image: {{ image }}</h2>
-    <p>Generated on: {{ scan_date }}</p>
-    <p>Total vulnerabilities: {{ total_vulns }}</p>
-    <p>Shared vulnerabilities: {{ shared_count }}</p>
-    <p>Trivy unique: {{ trivy_count }}</p>
-    <p>Grype unique: {{ grype_count }}</p>
-
-    <h2>Shared Vulnerabilities</h2>
-    {{ shared_section }}
-
-    <h2>Trivy Unique Vulnerabilities</h2>
-    {{ trivy_section }}
-
-    <h2>Grype Unique Vulnerabilities</h2>
-    {{ grype_section }}
-
-    <script>
-        var coll = document.getElementsByClassName("collapsible");
-        for (var i = 0; i < coll.length; i++) {
-            coll[i].addEventListener("click", function() {
-                this.classList.toggle("active");
-                var content = this.nextElementSibling;
-                if (content.style.display === "block") {
-                    content.style.display = "none";
-                } else {
-                    content.style.display = "block";
-                }
-            });
-        }
-    </script>
-</body>
-</html>""")
-            tool_done()
-            print(f"✅ Created basic template at {template_path}")
-
-    env = Environment(loader=FileSystemLoader(template_dir))
-    template = env.get_template("scan_template.html")
-
-    # Get GHAS link if available
-    ghas_link = None
-    if args.repo_url:
-        repo = get_repo_from_url(args.repo_url)
-        ghas_link = f"https://github.com/{repo}/security/code-scanning"
-
-    rendered = template.render(
-        image=image,
-        trivy_version=trivy_version,
-        grype_version=grype_version,
-        total_vulns=total_vulns,
-        shared_count=len(shared),
-        trivy_count=len(only_trivy),
-        grype_count=len(only_grype),
-        shared_section=format_and_group_by_type(shared_cves_detailed),
-        trivy_section=format_and_group_by_type(trivy_unique_detailed),
-        grype_section=format_and_group_by_type(grype_unique_detailed),
-        trivy_raw=trivy_raw,
-        grype_raw=grype_raw,
-        scan_date=timestamp,
-        ghas_link=ghas_link
-    )
-
-    report_path.write_text(rendered)
-    tool_progress("📄", "Generating report")
-    tool_done()
-
-    # Try to publish to GitHub Pages
-    pages_url = publish_to_github_pages(report_path, image)
-
-    if pages_url:
-        print(f"\n✅ Report published to GitHub Pages:")
-        print(f"   \033[4;36m🔗 {pages_url}\033[0m")
-        print("\nℹ️ It may take a second for GitHub to render the page. If you see a 404 error, please try again later. If the issue persists, visit:")
-        print("   https://help.github.com/pages/")
-
-        # Ask if user wants to open both in browser
-        if args.repo_url:
-            print(f"✅ SARIF uploaded to GHAS:")
-            print(f"   \033[4;36m🔗 {ghas_link}\033[0m")
-
-            open_html = input("\n📁 Open both the GitHub Pages report and GHAS security code scanning results in browser? (y/n): ").strip().lower()
-            if open_html == "y":
-                webbrowser.open(pages_url)
-                webbrowser.open(ghas_link)
-
-        # Ask if user wants to open GitHub Pages report
-        open_html = input("📁 Open report in browser? (y/n): ").strip().lower()
-        if open_html == "y":
-            webbrowser.open(pages_url)
-    else:
-        print(f"\n✅ Local HTML report saved: {report_path}")
-
-    # Only show local file option if GitHub Pages publishing fails
-    open_html = input("📁 Open local HTML report in browser? (y/n): ").strip().lower()
-    if open_html == "y":
-        webbrowser.open(f"file://{report_path.absolute()}")
-
-def explain_exit(msg):
-    print(f"⚠️ {msg}")
-    sys.exit(1)
-
-def validate_image_exists(image):
-    try:
-        # Try checking locally first
-        local_result = subprocess.run(["docker", "image", "inspect", image], capture_output=True)
-        if local_result.returncode == 0:
-            return True
-
-        # If not found locally, try to pull the image
-        print(f"🔄 Image not found locally. Attempting to pull {image}...")
-        pull_result = subprocess.run(["docker", "pull", image], capture_output=True)
-        if pull_result.returncode == 0:
-            return True
-
-        return False
-
-    except FileNotFoundError:
-        print("❌ Docker is not installed or not in your PATH.")
-        return False
-    except Exception as e:
-        print(f"⚠️ Unexpected error while validating image: {e}")
-        return False
 
 def get_repo_from_url(repo_url):
     match = re.match(r"https?://github.com/([^/]+/[^/]+)(?:\\.git)?", repo_url)
@@ -1174,10 +952,449 @@ def ensure_gh_authenticated():
         print(f"❌ Failed to validate GitHub auth: {e}")
         sys.exit(1)
 
-def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, temp_dir, verbose=False):
+def resolve_fork(repo, action_label="upload", remember_choice=False):
+    """
+    Handles forked GitHub repos and lets the user choose upstream or fork.
+    Preserves fork choice temporarily for multi-step flows, unless repo context changes.
+    """
+    import os
+    import json
+    from urllib.parse import urlparse
+
+    os.makedirs(TEMP_DIR, exist_ok=True)
+    CHOICE_FILE = os.path.join(TEMP_DIR, "fork_choice.json")
+
+    repo_url = f"https://github.com/{repo}"
+    upstream_url = get_upstream_url(repo_url)
+
+    # If upstream URL is missing or the same, skip fork logic entirely
+    if not upstream_url or upstream_url == repo_url:
+        if os.path.exists(CHOICE_FILE):
+            try:
+                os.remove(CHOICE_FILE)
+            except Exception:
+                pass
+        return repo_url, get_repo_from_url(repo_url)
+
+    # Load previous choice if it exists
+    previous_choice = None
+    if os.path.exists(CHOICE_FILE):
+        try:
+            with open(CHOICE_FILE, "r") as f:
+                data = json.load(f)
+                previous_choice = data.get("repo_url")
+        except Exception:
+            previous_choice = None
+
+    # If choice already matches current resolved URL, reuse it
+    if previous_choice == repo_url or previous_choice == upstream_url:
+        print(f"\n⚠️ The repository you selected appears to be a fork:\n")
+        print(f"  Forked repo:\n    {repo_url}")
+        print(f"\n  Upstream repo:\n    {upstream_url}")
+        if previous_choice == upstream_url:
+            print(f"\nℹ️ Using previously selected upstream URL from earlier in this run.\n")
+        else:
+            print(f"\nℹ️ Using previously selected fork URL from earlier in this run.\n")
+        return previous_choice, get_repo_from_url(previous_choice)
+
+    # Prompt user for fork decision
+    print(f"\n⚠️ The repository you selected appears to be a fork:\n")
+    print(f"  Forked repo:\n    {repo_url}")
+    print(f"\n  Upstream repo:\n    {upstream_url}")
+    choice = input(f"\nDo you want to {action_label} to the upstream repository instead? (y/n): ").strip().lower()
+
+    if choice == "y":
+        print(f"🔄 Changing to upstream repository URL:\n{upstream_url}")
+        final_url = upstream_url
+    else:
+        print(f"🔄 Keeping the forked repository URL:\n{repo_url}")
+        final_url = repo_url
+
+    # Save selected choice temporarily
+    try:
+        with open(CHOICE_FILE, "w") as f:
+            json.dump({"repo_url": final_url}, f)
+    except Exception:
+        pass
+
+    return final_url, get_repo_from_url(final_url)
+
+def publish_to_github_pages(report_path, image, repo_url, remember_choice=False):
+    import os
+    from pathlib import Path
+    import shutil
+    import subprocess
+    from datetime import datetime
+    from urllib.parse import urlparse
+
+    if not repo_url:
+        return None
+
+    repo_obj = get_repo_from_url(repo_url)
+    repo_url, repo = resolve_fork(repo_obj, action_label="publish", remember_choice=remember_choice)
+
+    parsed = urlparse(repo_url)
+    repo_path = parsed.path.strip("/")
+    if repo_path.endswith(".git"):
+        repo_path = repo_path[:-4]
+    user, repo = repo_path.split("/")[-2:]
+
+    # Clone the repo to a temporary directory
+    repo_clone_dir = os.path.join(TEMP_DIR, f"gh-pages-{repo}")
+    
+    # Remove existing clone if it exists
+    if os.path.exists(repo_clone_dir):
+        try:
+            shutil.rmtree(repo_clone_dir)
+        except Exception as e:
+            print(f"⚠️ Failed to clean up existing directory: {e}")
+    
+    # Clone the repository for GitHub Pages publishing
+    try:
+        tool_progress("📤", f"Preparing GitHub Pages for {repo}")
+        subprocess.run(["git", "clone", repo_url, repo_clone_dir], 
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        tool_done()
+    except Exception as e:
+        print(f"⚠️ Failed to prepare repository: {e}")
+        return None
+
+    # Prepare the report path and content
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    report_filename = f"scan_report_{image.replace(':', '_')}_{timestamp}.html"
+    
+    # Check if we should use docs/ or gh-pages branch
+    docs_dir = os.path.join(repo_clone_dir, "docs")
+    use_docs = os.path.exists(docs_dir)
+    
+    if use_docs:
+        target_dir = docs_dir
+        branch = "main"  # Usually docs/ is on main branch
+    else:
+        target_dir = os.path.join(repo_clone_dir, "gh-pages")
+        os.makedirs(target_dir, exist_ok=True)
+        branch = "gh-pages"
+
+    # Copy report to target directory
+    target_path = os.path.join(target_dir, report_filename)
+    shutil.copy2(report_path, target_path)
+    
+    # Create an index.html that redirects to the latest report
+    index_html = os.path.join(target_dir, "index.html")
+    with open(index_html, 'w') as f:
+        f.write(f"""<html>
+<head><meta http-equiv='refresh' content='0; URL={report_filename}'></head>
+<body>
+<p>Redirecting to <a href='{report_filename}'>{report_filename}</a></p>
+</body>
+</html>""")
+
+    # Set up Git and push changes
+    try:
+        current_dir = os.getcwd()
+        os.chdir(repo_clone_dir)
+        
+        # More robust branch handling
+        if not use_docs:
+            # Try to handle gh-pages branch with better error handling
+            try:
+                # First, fetch all branches to make sure we have the latest info
+                subprocess.run(["git", "fetch", "origin"], 
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                # Check if branch exists remotely
+                remote_exists = subprocess.run(
+                    ["git", "ls-remote", "--heads", "origin", "gh-pages"],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                ).stdout.strip() != ""
+                
+                if remote_exists:
+                    print("📄 Setting up GitHub Pages branch...")
+                    # Create a new local branch that tracks the remote
+                    subprocess.run(["git", "branch", "-D", "gh-pages"], 
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run(["git", "checkout", "-b", "gh-pages", "--no-track"], 
+                                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run(["git", "reset", "--hard", "origin/gh-pages"], 
+                                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    print("📄 Creating new GitHub Pages branch...")
+                    subprocess.run(["git", "checkout", "--orphan", "gh-pages"], 
+                                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    # Remove all existing files in this new branch
+                    for item in os.listdir(repo_clone_dir):
+                        if item != ".git" and item != "gh-pages":
+                            path = os.path.join(repo_clone_dir, item)
+                            if os.path.isdir(path):
+                                shutil.rmtree(path)
+                            else:
+                                os.remove(path)
+            except Exception as e:
+                print(f"⚠️ Error setting up gh-pages branch, falling back to docs folder: {e}")
+                # Fall back to using the main branch and docs folder
+                subprocess.run(["git", "checkout", "main"], 
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                os.makedirs(os.path.join(repo_clone_dir, "docs"), exist_ok=True)
+                target_dir = os.path.join(repo_clone_dir, "docs")
+                branch = "main"
+                use_docs = True
+        
+        # Add files
+        if use_docs:
+            subprocess.run(["git", "add", "docs"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            # In gh-pages branch, all files are at the root
+            subprocess.run(["git", "add", "."], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+        # Commit
+        tool_progress("📤", "Publishing report to GitHub Pages")
+        try:
+            subprocess.run(
+                ["git", "commit", "-m", f"📊 Add security scan report for {image}"],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        except subprocess.CalledProcessError:
+            print("⚠️ No changes to commit")
+            os.chdir(current_dir)
+            return None
+            
+        # Push (with force to handle any conflicts)
+        try:
+            subprocess.run(
+                ["git", "push", "-u", "origin", branch, "--force"],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            tool_done()
+        except subprocess.CalledProcessError as e:
+            print(f"⚠️ Failed to push to GitHub Pages: {e}")
+            os.chdir(current_dir)
+            return None
+            
+        os.chdir(current_dir)
+        
+    except Exception as e:
+        print(f"⚠️ GitHub Pages publishing failed: {e}")
+        if current_dir != os.getcwd():
+            os.chdir(current_dir)
+        return None
+        
+    # Clean up
+    if not args.keep_data:
+        try:
+            shutil.rmtree(repo_clone_dir)
+        except Exception as e:
+            print(f"⚠️ Failed to clean up: {e}")
+            
+    # Return the GitHub Pages URL
+    pages_url = f"https://{user}.github.io/{repo}/{report_filename}"
+    return pages_url
+
+def generate_html_report(image, trivy_cves, grype_cves, shared, only_trivy, only_grype, trivy_version, grype_version):
+    """Generate a detailed HTML report of vulnerability findings."""
+    from jinja2 import Environment, FileSystemLoader
+    from pathlib import Path
+    import html
+    import json
+    from datetime import datetime
+    from urllib.request import urlretrieve
+
+    def format_cves(cve_map):
+        grouped = group_by_severity(cve_map)
+        sections = ""
+        severity_colors = {
+            "Critical": "#d32f2f",
+            "High": "#f57c00",
+            "Medium": "#fbc02d",
+            "Low": "#388e3c",
+            "Unknown": "#757575"
+        }
+        for severity in sorted(
+            grouped.keys(),
+            key=lambda s: ["Critical", "High", "Medium", "Low", "Unknown"].index(s.capitalize())
+            if s.capitalize() in ["Critical", "High", "Medium", "Low", "Unknown"]
+            else 99,
+        ):
+            color = severity_colors.get(severity.capitalize(), "#444")
+            cves = grouped[severity]
+            sections += f"<button class='collapsible severity-block' data-severity='{severity.capitalize()}' style='color:{color}'>{severity} ({len(cves)})</button><div class='content'><ul>"
+            for cve in sorted(cves):
+                cve_meta = cve_map.get(cve, {})
+                if not isinstance(cve_meta, dict):
+                    cve_meta = {}
+                cve_link = f"https://nvd.nist.gov/vuln/detail/{cve}"
+                cvss_score = cve_meta.get("cvss", "N/A")
+                confidence = cve_meta.get("confidence", 1.0)
+                trivy_id = cve_meta.get("trivy_id", cve)
+                grype_id = cve_meta.get("grype_id", cve)
+                last_modified = cve_meta.get("last_modified")
+                references = cve_meta.get("references", [])
+
+                if cvss_score != "N/A":
+                    try:
+                        cvss_score = f"{float(cvss_score):.1f}"
+                    except ValueError:
+                        pass
+
+                if last_modified:
+                    try:
+                        date = datetime.fromisoformat(last_modified.replace('Z', '+00:00'))
+                        last_modified = date.strftime('%Y-%m-%d')
+                    except ValueError:
+                        pass
+
+                confidence_html = ""
+                if confidence < 1.0:
+                    confidence_color = "#f57c00" if confidence < 0.8 else "#388e3c"
+                    confidence_html = f"<span style='color: {confidence_color}'>(Confidence: {confidence:.2f})</span>"
+
+                similar_cve_html = ""
+                if trivy_id != grype_id:
+                    similar_cve_html = f"<br><small>Similar CVE IDs: Trivy={trivy_id}, Grype={grype_id}</small>"
+
+                references_html = ""
+                if references:
+                    references_html = "<br><small>References:<br>"
+                    for ref in references:
+                        references_html += f"<a href='{ref}' target='_blank'>{ref}</a><br>"
+                    references_html += "</small>"
+
+                cve_entry = f'<li><a href="{cve_link}" target="_blank">{cve}</a>'
+                if cvss_score != "N/A":
+                    cve_entry += f" — CVSS: {cvss_score}"
+                if last_modified:
+                    cve_entry += f" [Last Modified: {last_modified}]"
+                cve_entry += f" {confidence_html}{similar_cve_html}{references_html}</li>"
+
+                sections += cve_entry
+            sections += "</ul></div>"
+        return sections or "<p>No CVEs found.</p>"
+
+    def format_and_group_by_type(cve_map):
+        os_related, lang_related, unknown = {}, {}, {}
+        for cve, meta in cve_map.items():
+            if not isinstance(meta, dict):
+                unknown[cve] = meta
+                continue
+            pkg_type = meta.get("pkg_type") or meta.get("type") or "unknown"
+            if pkg_type.lower() in ["os", "debian", "alpine", "rpm", "apk"]:
+                os_related[cve] = meta
+            elif pkg_type.lower() in ["python", "java", "nodejs", "golang"]:
+                lang_related[cve] = meta
+            else:
+                unknown[cve] = meta
+
+        result = ""
+        if os_related:
+            result += "<h3>🧹 OS Package CVEs</h3>" + format_cves(os_related)
+        if lang_related:
+            result += "<h3>📦 Language Package CVEs</h3>" + format_cves(lang_related)
+        if unknown:
+            result += (
+                "<h3>❓ Unclassified CVEs</h3>"
+                "<p><em>These CVEs couldn't be categorized as OS or language packages. This often includes:</em></p>"
+                "<ul><li>Uncommon sources or tools</li><li>Temporary CVE IDs (like TEMP-1234)</li><li>Missing or malformed metadata</li></ul>"
+                + format_cves(unknown)
+            )
+        return result
+
+    timestamp = datetime.now().strftime("%Y-%m-%d")
+    report_name = f"scan_report_{image.replace(':', '_')}_{timestamp}.html"
+    report_path = Path(SCAN_REPORTS_DIR) / report_name
+
+    # Extract just the repository name from the image tag
+    repo_name = None
+    if "-" in image:
+        # Get just the repository name without any other parts
+        repo_name = image.split("-")[0]
+        
+    if args.verbose:
+        print(f"🔍 Generate HTML report - Using repo name: '{repo_name}'")
+
+    # Important: We need to use the exact same file paths as in the main function
+    if repo_name and not ":" in image:  # For Docker images built from a repo
+        trivy_path = Path(SCAN_REPORTS_DIR) / f"original_trivy_{repo_name}.json"
+        grype_path = Path(SCAN_REPORTS_DIR) / f"original_grype_{repo_name}.json"
+        if args.verbose:
+            print(f"🔍 Looking for scan files at: {trivy_path}")
+    else:  # For directly scanned images
+        trivy_path = Path(SCAN_REPORTS_DIR) / "original_trivy.json"
+        grype_path = Path(SCAN_REPORTS_DIR) / "original_grype.json"
+        if args.verbose:
+            print(f"🔍 Using default scan file paths")
+
+    # Try to load the scan data, with better error handling
+    try:
+        with open(trivy_path, 'r') as f:
+            trivy_raw = html.escape(json.dumps(json.load(f), indent=2))
+        with open(grype_path, 'r') as f:
+            grype_raw = html.escape(json.dumps(json.load(f), indent=2))
+    except FileNotFoundError as e:
+        # This is the critical error we want to avoid, so let's be more graceful
+        if args.verbose:
+            print(f"⚠️ Could not find scan result files: {e}")
+        trivy_raw = "{}"
+        grype_raw = "{}"
+    except json.JSONDecodeError as e:
+        if args.verbose:
+            print(f"⚠️ Invalid JSON in scan result files: {e}")
+        trivy_raw = "{}"
+        grype_raw = "{}"
+
+    shared_cves_detailed = {cve: trivy_cves.get(cve) if isinstance(trivy_cves.get(cve), dict) else grype_cves.get(cve) or {"type": "unknown"} for cve in shared}
+    trivy_unique_detailed = {cve: trivy_cves.get(cve) or {"type": "unknown"} for cve in only_trivy}
+    grype_unique_detailed = {cve: grype_cves.get(cve) or {"type": "unknown"} for cve in only_grype}
+    total_vulns = len(trivy_cves) + len(grype_cves) - len(shared)
+
+    template_dir = Path(__file__).parent
+    template_path = template_dir / "scan_template.html"
+
+    if not template_path.exists():
+        tool_progress("📄", "scan_template.html missing — restoring latest version...")
+        try:
+            urlretrieve(
+                "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html",
+                template_path
+            )
+            tool_done()
+            print(f"✅ scan_template.html downloaded to {template_path}")
+        except Exception as e:
+            print(f"❌ Failed to download template: {e}")
+            print("ℹ️ Creating a basic template...")
+            template_path.write_text("<html><body><h1>Vulnerability Report</h1><p>{{ image }}</p></body></html>")
+            tool_done()
+
+    env = Environment(loader=FileSystemLoader(template_dir))
+    template = env.get_template("scan_template.html")
+
+    rendered = template.render(
+        image=image,
+        trivy_version=trivy_version,
+        grype_version=grype_version,
+        total_vulns=total_vulns,
+        shared_count=len(shared),
+        trivy_count=len(only_trivy),
+        grype_count=len(only_grype),
+        shared_section=format_and_group_by_type(shared_cves_detailed),
+        trivy_section=format_and_group_by_type(trivy_unique_detailed),
+        grype_section=format_and_group_by_type(grype_unique_detailed),
+        trivy_raw=trivy_raw,
+        grype_raw=grype_raw,
+        scan_date=timestamp,
+        ghas_link=None  # Only shown if you inject it later
+    )
+
+    report_path.write_text(rendered)
+    tool_progress("📄", "Generating report")
+    tool_done()
+    
+    return report_path
+
+def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, temp_dir, repo_url=None, verbose=False):
     from pathlib import Path
     import json, base64, tempfile, subprocess, gzip
     from datetime import datetime, timezone
+
+    repo_url, repo = resolve_fork(repo, action_label="upload", remember_choice=True)
 
     def is_valid_sarif(sarif_path):
         try:
@@ -1189,7 +1406,6 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
 
     def check_repo_access(repo):
         try:
-            # Check if we can access the repository
             result = subprocess.run(
                 ["gh", "api", f"repos/{repo}"],
                 capture_output=True,
@@ -1214,8 +1430,7 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
             except subprocess.CalledProcessError:
                 return None
 
-        # Check if we're in a git repository
-        if not Path(temp_dir) / ".git" / "config":
+        if not (Path(temp_dir) / ".git").exists():
             print(f"⚠️ Not in a git repository. Skipping {tool_name} SARIF upload.")
             return False
 
@@ -1223,7 +1438,7 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
         ref = run_git(["git", "symbolic-ref", "-q", "HEAD"]) or "refs/heads/main"
 
         if commit_sha.startswith("fatal") or len(commit_sha) != 40:
-            print(f"⚠️ Unable to retrieve a valid commit SHA from repo. Skipping {tool_name} SARIF upload.")
+            print(f"⚠️ Unable to retrieve a valid commit SHA. Skipping {tool_name} SARIF upload.")
             return False
 
         if not ref.startswith("refs/"):
@@ -1269,7 +1484,6 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
                     print("\n   To fix this, run:")
                     print("   gh auth refresh -h github.com -s security_events,admin:repo_hook")
                     print("\n   Or visit: https://github.com/settings/tokens")
-                    print("\n   to create a new token with the required scopes.")
                     return "insufficient_scope"
                 elif "not found" in error_msg.lower():
                     print(f"⚠️ Repository {repo} not found or not accessible.")
@@ -1281,13 +1495,10 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
             print(f"⚠️ Failed to upload {tool_name} SARIF: {e.stderr.strip() if e.stderr else str(e)}")
             return False
 
-    # First check if we can access the repository
     if not check_repo_access(repo):
         return
 
-    scan_dir = Path("scan_reports")
-    scan_dir.mkdir(exist_ok=True)
-
+    scan_dir = Path(SCAN_REPORTS_DIR)
     grype_sarif_path = scan_dir / "ghas_upload_grype.sarif"
     trivy_sarif_path = scan_dir / "ghas_upload_trivy.sarif"
     diff_sarif_path = scan_dir / "ghas_diff.sarif"
@@ -1343,15 +1554,147 @@ def upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype
             uploads.append("diff (trivy vs grype)")
         tool_done()
 
+    success = False
     if uploads:
         print(f"\n✅ Uploaded SARIF to GHAS: {', '.join(uploads)}")
         gh_link = f"https://github.com/{repo}/security/code-scanning"
-        print(f"\033[4;36m🔗 View code scanning results on GHAS: {gh_link}\033[0m\n")
+        success = True
     elif not permission_error:
         print("\n⚠️ No SARIF files were uploaded to GHAS.")
+    
+    return repo_url, repo, success
 
+def explain_exit(msg):
+    print(f"⚠️ {msg}")
+    sys.exit(1)
+
+def validate_image_exists(image):
+    try:
+        # Try checking locally first
+        local_result = subprocess.run(["docker", "image", "inspect", image], capture_output=True)
+        if local_result.returncode == 0:
+            return True
+
+        # If not found locally, try to pull the image
+        print(f"🔄 Image not found locally. Attempting to pull {image}...")
+        pull_result = subprocess.run(["docker", "pull", image], capture_output=True)
+        if pull_result.returncode == 0:
+            return True
+
+        return False
+
+    except FileNotFoundError:
+        print("❌ Docker is not installed or not in your PATH.")
+        return False
+    except Exception as e:
+        print(f"⚠️ Unexpected error while validating image: {e}")
+        return False
+
+def handle_post_scan_prompts(image_tag, html_path, repo_url=None, trivy_path=None, grype_path=None, shared=None, only_trivy=None, only_grype=None, temp_dir=None, scanned_from_repo=False):
+    import webbrowser
+    from urllib.parse import urlparse
+    from pathlib import Path
+
+    uploaded_ghas = False
+    uploaded_pages = False
+    ghas_url = None
+    pages_url = None
+    chosen_repo_url = repo_url
+
+    urls_to_open = {
+        "local": f"file://{Path(html_path).absolute()}"
+    }
+
+    repo = get_repo_from_url(repo_url) if repo_url else None
+
+    if repo and scanned_from_repo and not (args.ghas or args.gh_pages):
+        print("\n📋 GitHub Repository Integration Options")
+        print("Since you've scanned using a GitHub repository, you can publish your results:")
+
+        upload_options = input("Would you like to upload results to GitHub? (n = no, g = GHAS only, p = Pages only, b = both): ").strip().lower()
+
+        if upload_options in ("g", "b"):
+            ensure_gh_authenticated()
+            chosen_repo_url, modified_repo, success = upload_to_ghas(
+                image_tag, trivy_path, grype_path, shared, only_trivy,
+                only_grype, repo, temp_dir or ".", repo_url=repo_url,
+                verbose=args.verbose
+            )
+            if success:
+                uploaded_ghas = True
+                ghas_url = f"https://github.com/{modified_repo}/security/code-scanning"
+                urls_to_open["ghas"] = ghas_url
+
+        if upload_options in ("p", "b"):
+            pages_url = publish_to_github_pages(html_path, image_tag, chosen_repo_url, remember_choice=uploaded_ghas)
+            if pages_url:
+                uploaded_pages = True
+                urls_to_open["pages"] = pages_url
+
+    else:
+        if repo:
+            if args.ghas:
+                ensure_gh_authenticated()
+                chosen_repo_url, modified_repo, success = upload_to_ghas(
+                    image_tag, trivy_path, grype_path, shared, only_trivy,
+                    only_grype, repo, temp_dir or ".", repo_url=repo_url,
+                    verbose=args.verbose
+                )
+                if success:
+                    uploaded_ghas = True
+                    ghas_url = f"https://github.com/{modified_repo}/security/code-scanning"
+                    urls_to_open["ghas"] = ghas_url
+
+            if args.gh_pages:
+                pages_url = publish_to_github_pages(html_path, image_tag, chosen_repo_url, remember_choice=uploaded_ghas)
+                if pages_url:
+                    uploaded_pages = True
+                    urls_to_open["pages"] = pages_url
+
+    # Output all URLs (make them 100% clickable)
+    if uploaded_ghas or uploaded_pages:
+        print("\n✅ Publishing complete!")
+        if uploaded_ghas:
+            print("🔗 GHAS results:")
+            print(ghas_url)
+        if uploaded_pages:
+            print("🔗 GitHub Pages report:")
+            print(pages_url)
+
+            parsed = urlparse(pages_url)
+            path_parts = parsed.path.strip("/").split("/")
+            if len(path_parts) >= 1:
+                repo_root = f"{parsed.scheme}://{parsed.netloc}/{path_parts[0]}"
+                index_fallback_url = f"{repo_root}/index.html"
+                print("\n⚠️ GitHub Pages may take a minute or two to render your report.")
+                print("   If it doesn’t load immediately, try visiting the root index.html directly:")
+                print("   " + index_fallback_url)
+                print("   Need help? GitHub Pages docs:")
+                print("   https://docs.github.com/en/pages")
+
+    # Choose the appropriate prompt
+    if uploaded_ghas and uploaded_pages:
+        prompt = "\n🖥️ Open GitHub-hosted reports in browser? (GHAS + GitHub Pages) (y/n): "
+    elif uploaded_ghas:
+        prompt = "\n🖥️ Open GHAS results and local HTML report in browser? (y/n): "
+    elif uploaded_pages:
+        prompt = "\n🖥️ Open GitHub Pages report in browser? (y/n): "
+    else:
+        prompt = "\n🖥️ Open local HTML report in browser? (y/n): "
+
+    open_reports = input(prompt).strip().lower()
+    if open_reports == "y":
+        if not uploaded_pages:
+            webbrowser.open(urls_to_open["local"])
+        if "ghas" in urls_to_open:
+            webbrowser.open(urls_to_open["ghas"])
+        if "pages" in urls_to_open:
+            webbrowser.open(urls_to_open["pages"])
 def main():
-    global args  # Use the global args variable
+    global args
+    global cloned_repo_dir
+
+    ensure_directory_structure()
 
     if args.uninstall:
         uninstall_scancompare()
@@ -1368,32 +1711,25 @@ def main():
         check_latest_version(only_check=True)
 
     if not args.image and not args.repo_url:
-        print("Usage: scancompare <image> [--repo-url <repo>, --keep-data, --verbose, --version, --update, --uninstall]")
-        print("\nFlags:")
-        print("  --repo-url <url>   Build and scan a Docker image from a GitHub repo containing a Dockerfile")
-        print("  --keep-data        Keep all output and temporary data (HTML, SARIF, JSON, image, cloned repo)")
-        print("  --verbose          Show detailed output (git clone, docker build, scan logs)")
-        print("  --version          Show scancompare version")
-        print("  --update           Check and apply latest scancompare update")
-        print("  --uninstall        Uninstall scancompare CLI")
+        print("Usage: scancompare <image> [--repo-url <repo>, --ghas, --gh-pages, --keep-data, --verbose, --version, --update, --uninstall]")
         sys.exit(1)
 
     if args.image and not validate_image_exists(args.image):
         explain_exit(f"Docker image '{args.image}' could not be found locally or remotely.")
 
-    scan_dir = Path("scan_reports")
-    scan_dir.mkdir(exist_ok=True)
-    summary_log = scan_dir / "scan_summary.log"
     summary_lines = ["\n" + "="*40, f"Scan started: {datetime.now().isoformat()}"]
+    summary_lines.append(f"🔢 scancompare version: {get_current_version()}")
 
     temp_dir = None
     image_tag = None
-    scancompare_version = get_current_version()
-    summary_lines.append(f"🔢 scancompare version: {scancompare_version}")
 
     try:
-        if args.repo_url:
-            temp_dir = tempfile.mkdtemp()
+        if args.repo_url and not args.image:
+            repo_name = args.repo_url.split('/')[-1].replace('.git', '')
+            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            short_timestamp = timestamp[-6:]
+            temp_dir = os.path.join(DOCKER_TEMP_DIR, f"{repo_name}_{timestamp}")
+            os.makedirs(temp_dir, exist_ok=True)
             print(f"📁 Created temporary directory: {temp_dir}")
 
             tool_progress("📥", f"Cloning {args.repo_url}")
@@ -1403,6 +1739,8 @@ def main():
             else:
                 subprocess.run(git_clone_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             tool_done()
+
+            cloned_repo_dir = temp_dir
 
             dockerfile_paths = []
             for root, _, files in os.walk(temp_dir):
@@ -1416,15 +1754,11 @@ def main():
                     shutil.rmtree(temp_dir)
                 sys.exit(1)
 
-            repo_name = args.repo_url.split('/')[-1].replace('.git', '')
-            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-
             built_images = []
             for dockerfile_path in dockerfile_paths:
                 try:
                     dockerfile_dir = os.path.dirname(dockerfile_path)
-                    dir_name = os.path.basename(dockerfile_dir)
-                    image_tag = f"{repo_name}-{dir_name}-{timestamp}"
+                    image_tag = f"{repo_name}-{short_timestamp}"
 
                     tool_progress("🐳", f"Building Docker image '{image_tag}'")
                     docker_build_cmd = ["docker", "build", "-t", image_tag, dockerfile_dir]
@@ -1438,8 +1772,8 @@ def main():
                     print(f"🛡️ Scanning image: {image_tag}")
                     summary_lines.append(f"🛡️ Scanning built image: {image_tag}")
 
-                    trivy_path = scan_dir / f"original_trivy_{dir_name}.json"
-                    grype_path = scan_dir / f"original_grype_{dir_name}.json"
+                    trivy_path = os.path.join(SCAN_REPORTS_DIR, f"original_trivy_{repo_name}.json")
+                    grype_path = os.path.join(SCAN_REPORTS_DIR, f"original_grype_{repo_name}.json")
 
                     tool_progress("🔹", "Running Trivy scan")
                     if not run_scan("trivy", image_tag, trivy_path, verbose=args.verbose):
@@ -1456,38 +1790,61 @@ def main():
                     trivy_data = extract_cves_with_severity(trivy_path, verbose=args.verbose)
                     grype_data = extract_cves_with_severity(grype_path, verbose=args.verbose)
 
-                    shared, only_trivy, only_grype = display_summary(trivy_data, grype_data)
+                    try:
+                        with open(trivy_path, 'r') as f:
+                            raw_trivy_data = json.load(f)
+                        with open(grype_path, 'r') as f:
+                            raw_grype_data = json.load(f)
+                    except (json.JSONDecodeError, FileNotFoundError) as e:
+                        raw_trivy_data = None
+                        raw_grype_data = None
+                        if args.verbose:
+                            print(f"⚠️ Could not load raw scan data: {e}")
+
+                    shared, only_trivy, only_grype = display_summary(
+                        trivy_data, grype_data, image=image_tag,
+                        trivy_data=raw_trivy_data, grype_data=raw_grype_data
+                    )
 
                     print_cves_by_severity(f"Unique to Grype ({image_tag})", {c: grype_data[c] for c in only_grype})
                     print_cves_by_severity(f"Unique to Trivy ({image_tag})", {c: trivy_data[c] for c in only_trivy})
                     print_cves_by_severity(f"Shared CVEs ({image_tag})", {c: trivy_data.get(c, grype_data.get(c, 'Unknown')) for c in shared})
 
-                    generate_html_report(image_tag, trivy_data, grype_data, shared, only_trivy, only_grype,
-                                         get_version("trivy"), get_version("grype"))
+                    html_path = generate_html_report(image_tag, trivy_data, grype_data, shared, only_trivy, only_grype,
+                                                  get_version("trivy"), get_version("grype"))
+                    print(f"\n✅ Local HTML report saved: {html_path}")
 
-                    # SARIF upload logic
-                    if args.repo_url:
-                        repo = get_repo_from_url(args.repo_url)
-                        ensure_gh_authenticated()
-                        upload_to_ghas(image_tag, trivy_path, grype_path, shared, only_trivy, only_grype, repo, temp_dir, verbose=args.verbose)
+                    handle_post_scan_prompts(
+                        image_tag=image_tag,
+                        html_path=html_path,
+                        repo_url=args.repo_url,
+                        trivy_path=trivy_path,
+                        grype_path=grype_path,
+                        shared=shared,
+                        only_trivy=only_trivy,
+                        only_grype=only_grype,
+                        temp_dir=temp_dir,
+                        scanned_from_repo=True
+                    )
 
-                except subprocess.CalledProcessError as e:
-                    print(f"⚠️ Error processing {dockerfile_path}: {e}")
-                    continue
+                except Exception as e:
+                    print(f"⚠️ Unexpected error: {e}")
+                    if args.verbose:
+                        import traceback
+                        traceback.print_exc()
 
             if not built_images:
                 print("❌ No images were successfully built and scanned.")
                 if not args.keep_data:
                     shutil.rmtree(temp_dir)
                 sys.exit(1)
-
         else:
             image = args.image
             print(f"🛡️ Scanning image: {image}")
             summary_lines.append(f"🛡️ Scanning image: {image}")
 
-            trivy_path = scan_dir / "original_trivy.json"
-            grype_path = scan_dir / "original_grype.json"
+            trivy_path = os.path.join(SCAN_REPORTS_DIR, "original_trivy.json")
+            grype_path = os.path.join(SCAN_REPORTS_DIR, "original_grype.json")
 
             tool_progress("🔹", "Running Trivy scan")
             if not run_scan("trivy", image, trivy_path, verbose=args.verbose):
@@ -1502,21 +1859,42 @@ def main():
             trivy_data = extract_cves_with_severity(trivy_path, verbose=args.verbose)
             grype_data = extract_cves_with_severity(grype_path, verbose=args.verbose)
 
-            shared, only_trivy, only_grype = display_summary(trivy_data, grype_data)
+            try:
+                with open(trivy_path, 'r') as f:
+                    raw_trivy_data = json.load(f)
+                with open(grype_path, 'r') as f:
+                    raw_grype_data = json.load(f)
+            except (json.JSONDecodeError, FileNotFoundError) as e:
+                raw_trivy_data = None
+                raw_grype_data = None
+                if args.verbose:
+                    print(f"⚠️ Could not load raw scan data: {e}")
+
+            shared, only_trivy, only_grype = display_summary(
+                trivy_data, grype_data, image=image,
+                trivy_data=raw_trivy_data, grype_data=raw_grype_data
+            )
 
             print_cves_by_severity("Unique to Grype", {c: grype_data[c] for c in only_grype})
             print_cves_by_severity("Unique to Trivy", {c: trivy_data[c] for c in only_trivy})
-            print_cves_by_severity("Shared CVEs", {c: trivy_data.get(c, grype_data.get(c, "Unknown")) for c in shared})
+            print_cves_by_severity("Shared CVEs", {c: trivy_data.get(c, grype_data.get(c, 'Unknown')) for c in shared})
 
-            generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype,
-                                 get_version("trivy"), get_version("grype"))
+            html_path = generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype,
+                                          get_version("trivy"), get_version("grype"))
+            print(f"\n✅ Local HTML report saved: {html_path}")
 
-            # SARIF upload for single image if --repo-url is supplied
-            if args.repo_url:
-                repo = get_repo_from_url(args.repo_url)
-                ensure_gh_authenticated()
-                upload_to_ghas(image, trivy_path, grype_path, shared, only_trivy, only_grype, repo, ".", verbose=args.verbose)
-
+            handle_post_scan_prompts(
+                image_tag=image,
+                html_path=html_path,
+                repo_url=args.repo_url,
+                trivy_path=trivy_path,
+                grype_path=grype_path,
+                shared=shared,
+                only_trivy=only_trivy,
+                only_grype=only_grype,
+                temp_dir=temp_dir,
+                scanned_from_repo=bool(args.repo_url)
+            )
     finally:
         if temp_dir and not args.keep_data:
             try:
@@ -1525,8 +1903,8 @@ def main():
                 print(f"⚠️ Failed to clean up temporary directory: {e}")
 
     summary_lines.extend([f"Scan completed: {datetime.now().isoformat()}", "="*40 + "\n"])
-    summary_log.write_text("\n".join(summary_lines))
+    with open(LOG_FILE, 'a') as f:
+        f.write("\n".join(summary_lines))
 
 if __name__ == "__main__":
     main()
-
