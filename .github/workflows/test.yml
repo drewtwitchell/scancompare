@@ -1,0 +1,95 @@
+name: Test scancompare on Release Branches
+
+on:
+  push:
+    branches:
+      - 'release-*'  # This triggers the workflow only on release branches (e.g., release-1.1.0)
+  pull_request:
+    branches:
+      - 'release-*'  # This triggers the workflow on pull requests to release branches
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      docker:
+        image: docker:19.03.12
+        options: --privileged # Ensure Docker can run in the GitHub Actions runner
+
+    steps:
+      # Checkout the repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Set up Python environment
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.8'
+
+      # Install dependencies using install.sh
+      - name: Run install.sh to set up the environment
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh)
+
+      # Set up Docker (this is required to run docker commands)
+      - name: Set up Docker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker.io
+          sudo systemctl start docker
+          sudo systemctl enable docker
+          
+      # Test scanning a GitHub repository with Dockerfile (auto-answer prompts using --auto)
+      - name: Test scancompare with GitHub repo URL and Docker build
+        run: |
+          echo "Testing scancompare with GitHub repo URL and Docker build..."
+          python scancompare --repo-url https://github.com/docker-library/hello-world --auto
+
+      # Test upload to GitHub Advanced Security (GHAS) with --auto flag
+      - name: Test upload to GHAS
+        run: |
+          echo "Testing scancompare with GHAS upload..."
+          python scancompare --repo-url https://github.com/docker-library/hello-world --ghas --auto
+
+      # Test publishing report to GitHub Pages with --auto flag
+      - name: Test publish to GitHub Pages
+        run: |
+          echo "Testing scancompare with GitHub Pages..."
+          python scancompare --repo-url https://github.com/docker-library/hello-world --gh-pages --auto
+
+      # Test verbose mode with --auto flag
+      - name: Test scancompare in verbose mode
+        run: |
+          echo "Testing scancompare with verbose mode..."
+          python scancompare --repo-url https://github.com/docker-library/hello-world --verbose --auto
+
+      # Test version check with --auto flag
+      - name: Test scancompare version
+        run: |
+          echo "Testing scancompare version..."
+          python scancompare --version --auto
+
+      # Test update functionality with --auto flag
+      - name: Test scancompare update
+        run: |
+          echo "Testing scancompare update..."
+          python scancompare --update --auto
+
+      # Test uninstall functionality with --auto flag
+      - name: Test scancompare uninstall
+        run: |
+          echo "Testing scancompare uninstall..."
+          python scancompare --uninstall --auto
+
+      # Check for failed tests and stop the build if any test fails
+      - name: Check for failed tests
+        run: |
+          if [[ $? -ne 0 ]]; then
+            echo "Some tests failed! Exiting the build."
+            exit 1
+          fi
+          
+    # This job runs on any failure to ensure the build fails
+    fail-fast: true
