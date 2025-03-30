@@ -271,6 +271,14 @@ export PATH="$INSTALL_BIN:\$PATH"
 EOF
 
 printf "✅ scancompare v%s installed successfully\n" "$VERSION"
-printf "🎉 Run this to use scancompare immediately:\n"
-printf "   source \"$USER_ROOT/activate_scancompare.sh\"\n"
-printf "🔁 The next time you open a terminal, scancompare will be automatically available\n"
+
+if [ -d "/usr/local/bin" ]; then
+  sudo ln -sf "$INSTALL_BIN/scancompare" /usr/local/bin/scancompare
+  printf "✅ Created symlink in /usr/local/bin for immediate access\n"
+else
+  # If /usr/local/bin doesn't exist, print instructions for using the full path
+  printf "⚠️ To use scancompare immediately, run with full path: $INSTALL_BIN/scancompare\n"
+  printf "   Or add to your PATH: export PATH=\"$INSTALL_BIN:\$PATH\"\n"
+fi
+
+printf "🎉 You can now run: $SCRIPT_NAME <image-name>\n"
