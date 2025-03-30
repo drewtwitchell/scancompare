@@ -102,11 +102,11 @@ def get_current_version():
 
 def check_latest_version(only_check=False):
     already_updated = os.environ.get("SCANCOMPARE_UPDATED") == "1"
-    if already_updated and not only_check:
+    if already_updated:
         return
 
     try:
-        print("🔄 Checking for updates...")
+        # Silent check for updates - don't print anything
         urlretrieve(SCRIPT_URL, get_script_path() + ".tmp")
 
         with open(get_script_path() + ".tmp", 'r') as f:
@@ -119,17 +119,11 @@ def check_latest_version(only_check=False):
             current = get_current_version()
 
             if latest == current:
-                print(f"📦 scancompare version {current}")
-                print("✅ You are running the latest version.")
+                # No need to update, silently return
                 os.remove(get_script_path() + ".tmp")
                 return
 
-            if only_check:
-                print(f"📦 scancompare version {current}")
-                print(f"ℹ️ New version {latest} is available. Run with --update to update.")
-                os.remove(get_script_path() + ".tmp")
-                return
-
+            # Always update automatically, regardless of only_check
             print(f"🔄 Updating scancompare from {current} to {latest}...")
             update_script(new_code)
             os.remove(get_script_path() + ".tmp")
@@ -142,14 +136,12 @@ def check_latest_version(only_check=False):
             )
 
     except Exception as e:
-        print(f"⚠️ Auto-update check failed: {e}")
+        # Silent failure, don't output anything
         try:
             os.remove(get_script_path() + ".tmp")
         except:
             pass
-        if only_check:
-            print(f"📦 scancompare version {get_current_version()}")
-            return
+        return
 
 def update_script(new_code):
     try:
@@ -169,7 +161,7 @@ def update_script(new_code):
         os.replace(temp_path, script_path)
 
         # Always fetch latest scan_template.html
-        tool_progress("updates"," Getting latest scan_template.html")
+        tool_progress("Getting","latest scan_template.html")
         template_url = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html"
         try:
             urlretrieve(template_url, template_path)
@@ -229,7 +221,7 @@ def uninstall_scancompare():
             except Exception as e:
                 print(f"❌ Failed to remove {path}: {e}")
 
-    # Remove symlink just in case
+    
     if wrapper_path.is_symlink():
         try:
             wrapper_path.unlink()
@@ -238,7 +230,7 @@ def uninstall_scancompare():
         except Exception as e:
             print(f"❌ Failed to remove symlink: {e}")
 
-    # Remove virtual environment
+    
     if venv_path.exists() and venv_path.is_dir():
         print("🧹 Removing virtual environment...", end=" ")
         try:
@@ -248,7 +240,7 @@ def uninstall_scancompare():
         except Exception as e:
             print(f"❌ Failed to remove virtual environment: {e}")
 
-    # Remove scan_reports, temp, backup directories
+    
     for path in [SCAN_REPORTS_DIR, TEMP_DIR, BACKUP_DIR]:
         if path.exists() and path.is_dir():
             print(f"🗑️  Removing {path.name} directory...", end=" ")
@@ -259,7 +251,7 @@ def uninstall_scancompare():
             except Exception as e:
                 print(f"❌ Failed to remove {path.name}: {e}")
 
-    # Remove log file
+    
     if LOG_FILE.exists():
         print("🗑️  Removing log file...", end=" ")
         try:
@@ -269,7 +261,7 @@ def uninstall_scancompare():
         except Exception as e:
             print(f"❌ Failed to remove log file: {e}")
 
-    # Clean shell profiles
+    
     profile_files = [".zshrc", ".bashrc", ".profile", ".bash_profile", ".zprofile"]
     for profile in profile_files:
         full_path = Path.home() / profile
@@ -286,7 +278,7 @@ def uninstall_scancompare():
             except Exception as e:
                 print(f"❌ Failed to clean up {profile}: {e}")
 
-    # Remove INSTALL_BIN, INSTALL_LIB, MAIN_DIR if empty
+    
     for path in [INSTALL_BIN, INSTALL_LIB, MAIN_DIR]:
         if path.exists() and path.is_dir():
             try:
@@ -296,7 +288,7 @@ def uninstall_scancompare():
             except Exception as e:
                 print(f"❌ Failed to remove {path.name} directory: {e}")
 
-    # Remove USER_ROOT if empty
+    
     if USER_ROOT.exists() and USER_ROOT.is_dir():
         try:
             if not any(USER_ROOT.iterdir()):
