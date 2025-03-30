@@ -151,8 +151,10 @@ def check_latest_version(only_check=False):
             os.remove(tmp_path)
             return
 
-        # Only show if it's an explicit --update
-        if not only_check:
+        # Always notify when a new version is available, even during normal runs
+        if only_check:
+            print(f"🔄 New version available: {current} → {latest}")
+        else:
             print(f"🔄 Updating scancompare from {current} → {latest}...")
 
         update_script(new_code)
@@ -1825,6 +1827,9 @@ def main():
     if args.version:
         print(f"📦 scancompare version {get_current_version()}")
         return
+
+    if args.image or args.repo_url:
+        check_latest_version(only_check=True)
 
     # If neither image nor repo URL is provided, show usage and exit
     if not args.image and not args.repo_url:
