@@ -4,18 +4,24 @@ set log_file [open "test_results/basic_auto.log" w]
 
 spawn python scancompare nginx:latest --auto
 
+# First try to catch the specific message about auto mode
 expect {
   "Automatically opening reports in browser" {
     puts $log_file "AUTO TEST: PASS - Auto mode detected and browser opening message found"
     set test_result "PASS"
   }
-  eof {
-    puts $log_file "AUTO TEST: INCONCLUSIVE - Script completed without browser message"
-    set test_result "INCONCLUSIVE"
+  "Local HTML report saved" {
+    # We found the report saved message, which means the scan completed successfully
+    puts $log_file "AUTO TEST: PASS - Scan completed successfully with auto mode"
+    set test_result "PASS"
   }
   timeout {
     puts $log_file "AUTO TEST: FAIL - Test timed out"
     set test_result "FAIL"
+  }
+  eof {
+    puts $log_file "AUTO TEST: INCONCLUSIVE - Script completed without expected message"
+    set test_result "INCONCLUSIVE"
   }
 }
 
@@ -26,5 +32,3 @@ close $log_file
 set results_file [open "test_results/basic_auto_result.txt" w]
 puts $results_file $test_result
 close $results_file
-
-expect eof

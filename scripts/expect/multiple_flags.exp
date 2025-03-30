@@ -2,6 +2,9 @@
 set timeout 300
 set log_file [open "test_results/multiple_flags.log" w]
 
+# Set default test result in case of unexpected exit
+set test_result "FAIL"
+
 spawn python scancompare nginx:latest --auto --mock-yes
 
 expect {
@@ -17,12 +20,12 @@ expect {
     puts $log_file "MULTIPLE FLAGS TEST: PASS - Multiple flags correctly rejected"
     set test_result "PASS"
   }
-  eof {
-    puts $log_file "MULTIPLE FLAGS TEST: FAIL - Script completed without rejecting multiple flags"
-    set test_result "FAIL"
-  }
   timeout {
     puts $log_file "MULTIPLE FLAGS TEST: FAIL - Test timed out"
+    set test_result "FAIL"
+  }
+  eof {
+    puts $log_file "MULTIPLE FLAGS TEST: FAIL - Script completed without rejecting multiple flags"
     set test_result "FAIL"
   }
 }
@@ -34,5 +37,3 @@ close $log_file
 set results_file [open "test_results/multiple_flags_result.txt" w]
 puts $results_file $test_result
 close $results_file
-
-expect eof

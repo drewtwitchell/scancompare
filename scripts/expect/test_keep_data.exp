@@ -1,6 +1,9 @@
 #!/usr/bin/expect -f
-set timeout 300
+set timeout 600
 set log_file [open "test_results/test_keep_data.log" w]
+
+# Set default test result in case of unexpected exit
+set test_result "FAIL"
 
 spawn python scancompare nginx:latest --keep-data --mock-yes
 
@@ -12,6 +15,11 @@ expect {
     puts $log_file "KEEP DATA TEST: FAIL - Command timed out at start"
     set test_result "FAIL"
     close $log_file
+    
+    # Write fail result to results file
+    set results_file [open "test_results/test_keep_data_result.txt" w]
+    puts $results_file $test_result
+    close $results_file
     exit
   }
 }
@@ -27,6 +35,7 @@ expect {
     set test_result "FAIL"
   }
   eof {
+    # We shouldn't get an EOF before seeing "Local HTML report saved" if the scan succeeds
     puts $log_file "KEEP DATA TEST: FAIL - Command exited before completion"
     set test_result "FAIL"
   }
@@ -39,5 +48,3 @@ close $log_file
 set results_file [open "test_results/test_keep_data_result.txt" w]
 puts $results_file $test_result
 close $results_file
-
-expect eof

@@ -2,6 +2,9 @@
 set timeout 120
 set log_file [open "test_results/test_final_uninstall.log" w]
 
+# Set default test result in case of unexpected exit
+set test_result "FAIL"
+
 # This is meant to be the LAST test in the workflow
 spawn python scancompare --uninstall
 
@@ -13,6 +16,11 @@ expect {
     puts $log_file "FINAL UNINSTALL TEST: FAIL - Uninstall command timed out at start"
     set test_result "FAIL"
     close $log_file
+    
+    # Write fail result to results file
+    set results_file [open "test_results/test_final_uninstall_result.txt" w]
+    puts $results_file $test_result
+    close $results_file
     exit
   }
 }
@@ -57,5 +65,3 @@ close $log_file
 set results_file [open "test_results/test_final_uninstall_result.txt" w]
 puts $results_file $test_result
 close $results_file
-
-expect eof

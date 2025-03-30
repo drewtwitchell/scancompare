@@ -2,6 +2,9 @@
 set timeout 60
 set log_file [open "test_results/test_update.log" w]
 
+# Set default test result in case of unexpected exit
+set test_result "FAIL"
+
 spawn python scancompare --update
 
 expect {
@@ -31,5 +34,3 @@ close $log_file
 set results_file [open "test_results/test_update_result.txt" w]
 puts $results_file $test_result
 close $results_file
-
-expect eof
