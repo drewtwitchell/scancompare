@@ -7,6 +7,7 @@ import json
 import subprocess
 from datetime import datetime, timezone
 from urllib.request import Request, urlopen, urlretrieve
+from urllib.parse import urlparse
 from pathlib import Path
 import webbrowser
 import shutil
@@ -22,6 +23,8 @@ from io import BytesIO
 from jinja2 import Environment, FileSystemLoader
 import difflib
 from typing import Dict, List, Set, Tuple, Optional
+import sys
+import webbrowser
 
 # Check if 'requests' is installed
 try:
@@ -66,6 +69,9 @@ def handle_cli_args():
     parser.add_argument("--update", action="store_true", help="Check and apply latest scancompare update")
     parser.add_argument("--verbose", action="store_true", help="Show detailed output (clone, build, scans)")
     parser.add_argument("--uninstall", action="store_true", help="Uninstall scancompare CLI")
+    parser.add_argument("--auto", action="store_true", help="Automatically answer all prompts")
+    parser.add_argument("--mock-yes", action="store_true", help="Automatically answer yes prompts")
+    parser.add_argument("--mock-no", action="store_true", help="Automatically answer no prompts")
 
     args = parser.parse_args()
     return args
@@ -1585,6 +1591,7 @@ def handle_post_scan_prompts(image_tag, html_path, repo_url=None, trivy_path=Non
     import webbrowser
     from urllib.parse import urlparse
     from pathlib import Path
+    import sys
 
     uploaded_ghas = False
     uploaded_pages = False
@@ -1598,11 +1605,30 @@ def handle_post_scan_prompts(image_tag, html_path, repo_url=None, trivy_path=Non
 
     repo = get_repo_from_url(repo_url) if repo_url else None
 
-    if repo and scanned_from_repo and not (args.ghas or args.gh_pages):
-        print("\n📋 GitHub Repository Integration Options")
-        print("Since you've scanned using a GitHub repository, you can publish your results:")
+    # Non-interactive mode check for --auto argument
+    non_interactive = '--auto' in sys.argv
+    mock_yes = '--mock-yes' in sys.argv
+    mock_no = '--mock-no' in sys.argv
 
-        upload_options = input("Would you like to upload results to GitHub? (n = no, g = GHAS only, p = Pages only, b = both): ").strip().lower()
+    if repo and scanned_from_repo and not (args.ghas or args.gh_pages):
+        if non_interactive:
+            # Automatically select both GHAS and GitHub Pages uploads in non-interactive mode
+            print("\n📋 Automatically uploading results to both GHAS and GitHub Pages.")
+            upload_options = "b"
+        else:
+            print("\n📋 GitHub Repository Integration Options")
+            print("Since you've scanned using a GitHub repository, you can publish your results:")
+
+            if mock_yes:
+                # Automatically respond "yes" to all prompts
+                print("Automatically answering 'yes' to the upload prompt.")
+                upload_options = "b"
+            elif mock_no:
+                # Automatically respond "no" to all prompts
+                print("Automatically answering 'no' to the upload prompt.")
+                upload_options = "n"
+            else:
+                upload_options = input("Would you like to upload results to GitHub? (n = no, g = GHAS only, p = Pages only, b = both): ").strip().lower()
 
         if upload_options in ("g", "b"):
             ensure_gh_authenticated()
@@ -1663,24 +1689,42 @@ def handle_post_scan_prompts(image_tag, html_path, repo_url=None, trivy_path=Non
                 print("   Need help? GitHub Pages docs:")
                 print("   https://docs.github.com/en/pages")
 
-    # Choose the appropriate prompt
-    if uploaded_ghas and uploaded_pages:
-        prompt = "\n🖥️ Open GitHub-hosted reports in browser? (GHAS + GitHub Pages) (y/n): "
-    elif uploaded_ghas:
-        prompt = "\n🖥️ Open GHAS results and local HTML report in browser? (y/n): "
-    elif uploaded_pages:
-        prompt = "\n🖥️ Open GitHub Pages report in browser? (y/n): "
-    else:
-        prompt = "\n🖥️ Open local HTML report in browser? (y/n): "
-
-    open_reports = input(prompt).strip().lower()
-    if open_reports == "y":
+    # If in non-interactive mode, automatically open all URLs (GHAS, Pages, local HTML)
+    if non_interactive:
+        print("\n🖥️ Automatically opening the reports in the browser...")
         if not uploaded_pages:
             webbrowser.open(urls_to_open["local"])
         if "ghas" in urls_to_open:
             webbrowser.open(urls_to_open["ghas"])
         if "pages" in urls_to_open:
             webbrowser.open(urls_to_open["pages"])
+
+    else:
+        # Choose the appropriate prompt if not in non-interactive mode
+        if uploaded_ghas and uploaded_pages:
+            prompt = "\n🖥️ Open GitHub-hosted reports in browser? (GHAS + GitHub Pages) (y/n): "
+        elif uploaded_ghas:
+            prompt = "\n🖥️ Open GHAS results and local HTML report in browser? (y/n): "
+        elif uploaded_pages:
+            prompt = "\n🖥️ Open GitHub Pages report in browser? (y/n): "
+        else:
+            prompt = "\n🖥️ Open local HTML report in browser? (y/n): "
+
+        if mock_yes:
+            open_reports = "y"
+        elif mock_no:
+            open_reports = "n"
+        else:
+            open_reports = input(prompt).strip().lower()
+
+        if open_reports == "y":
+            if not uploaded_pages:
+                webbrowser.open(urls_to_open["local"])
+            if "ghas" in urls_to_open:
+                webbrowser.open(urls_to_open["ghas"])
+            if "pages" in urls_to_open:
+                webbrowser.open(urls_to_open["pages"])
+
 def main():
     global args
     global cloned_repo_dir
