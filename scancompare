@@ -1030,6 +1030,8 @@ def resolve_fork(repo, action_label="upload", remember_choice=True, cache_key="f
             previous_choice = None
 
     if previous_choice:
+        if remember_choice:
+            print(f"\nℹ️ Using previously selected repository for {action_label}: {previous_choice}")
         return previous_choice, get_repo_from_url(previous_choice)
 
     automation_mode = get_automation_mode(args)
