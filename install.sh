@@ -12,6 +12,7 @@ DEFAULT_SCRIPT_SOURCE="https://raw.githubusercontent.com/drewtwitchell/scancompa
 # Try to extract GitHub user and repo from local .git if available
 if git remote get-url origin &> /dev/null; then
   REMOTE_URL=$(git remote get-url origin)
+  # Fixed sed pattern for macOS compatibility
   GITHUB_USER=$(echo "$REMOTE_URL" | sed -E 's|.*github.com[:\/]([^\/]*)/.*|\1|')
   GITHUB_REPO=$(echo "$REMOTE_URL" | sed -E 's|.*/([^\/]*)(\.git)?$|\1|')
 else
@@ -19,6 +20,19 @@ else
   SCRIPT_SOURCE="${SCRIPT_SOURCE:-$DEFAULT_SCRIPT_SOURCE}"
   GITHUB_USER=$(echo "$SCRIPT_SOURCE" | cut -d'/' -f4)
   GITHUB_REPO=$(echo "$SCRIPT_SOURCE" | cut -d'/' -f5)
+fi
+
+# Fallback to defaults if extraction fails
+if [[ -z "$GITHUB_USER" ]]; then
+  # Fallback to default user if extraction fails
+  GITHUB_USER="drewtwitchell"
+  [[ $VERBOSE -eq 1 ]] && echo "Failed to extract GitHub user from git remote, using default: $GITHUB_USER"
+fi
+
+if [[ -z "$GITHUB_REPO" ]]; then
+  # Fallback to default repo if extraction fails
+  GITHUB_REPO="scancompare"
+  [[ $VERBOSE -eq 1 ]] && echo "Failed to extract GitHub repo from git remote, using default: $GITHUB_REPO"
 fi
 
 USER_ROOT="$HOME/ScanCompare"
@@ -97,15 +111,17 @@ install_python_and_tools() {
   source "$VENV_DIR/bin/activate"
 
   if ! python -c "import jinja2" &> /dev/null; then
+    tool_progress "⚙️ Installing" "jinja2 package"
     pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location || {
-      printf "❌ Failed to install jinja2."; exit 1;
+      printf " ❌ Failed to install jinja2."; exit 1;
     }
+    tool_done
   fi
 
   if ! command -v trivy &> /dev/null; then
     tool_progress "⚙️ Installing" "Trivy..."
     curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
-      printf "❌ Failed to install Trivy."; exit 1;
+      printf " ❌ Failed to install Trivy."; exit 1;
     }
     tool_done
   fi
@@ -113,7 +129,7 @@ install_python_and_tools() {
   if ! command -v grype &> /dev/null; then
     tool_progress "⚙️ Installing" "Grype..."
     curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b "$INSTALL_BIN" &> /dev/null || {
-      printf "❌ Failed to install Grype."; exit 1;
+      printf " ❌ Failed to install Grype."; exit 1;
     }
     tool_done
   fi
@@ -124,7 +140,7 @@ printf "🛠️  Starting scancompare installation...\n"
 
 if [[ -f "$PYTHON_SCRIPT" && "$FORCE_REINSTALL" -eq 0 ]]; then
   printf "🔍 scancompare is already installed. Checking for updates and verifying dependencies...\n"
-  if scancompare --update > /dev/null 2>&1; then
+  if "$WRAPPER_SCRIPT" --update > /dev/null 2>&1; then
     CURRENT_VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
     printf "✅ All tools verified and updated.\n"
     exit 0
@@ -137,18 +153,52 @@ printf "📦 Installing required tools: python3, trivy, grype...\n"
 install_python_and_tools
 
 printf "📦 Downloading and Installing scancompare script version...\n"
-curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" &> /dev/null
+# Create necessary directories
+mkdir -p "$INSTALL_BIN" "$INSTALL_LIB" "$SCANREPORTS_DIR" "$TEMP_DIR"
+
+# Download the script with better error handling
+if ! curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" 2>/dev/null; then
+  printf "❌ Failed to download scancompare script from %s\n" "$SCRIPT_URL"
+  printf "⚠️ Check your network connection or if the repository exists.\n"
+  exit 1
+fi
+
+# Check if we got an actual script file
+if [[ ! -s "$PYTHON_SCRIPT" ]]; then
+  printf "❌ Downloaded file is empty. Repository may be private or URL is incorrect.\n"
+  exit 1
+fi
+
+# Check if the script contains expected content
+if ! grep -q "scancompare version" "$PYTHON_SCRIPT"; then
+  printf "❌ Downloaded script does not appear to be valid.\n"
+  printf "   Content: $(head -n 3 "$PYTHON_SCRIPT")\n"
+  exit 1
+fi
 
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
 tool_progress "⚙️ Installing version:" "$VERSION"
 tool_done
 
 if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
-  sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null || sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
+  # Handle different sed versions (macOS vs GNU)
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null
+  else
+    sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
+  fi
 fi
 chmod +x "$PYTHON_SCRIPT"
 
-if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c \"$PYTHON_SCRIPT\" \"$WRAPPER_SCRIPT\")" -eq 0 ]]; then
+# Download the template file
+TEMPLATE_INSTALL_PATH="$INSTALL_LIB/scan_template.html"
+if ! curl -fsSL "$TEMPLATE_URL" -o "$TEMPLATE_INSTALL_PATH" 2>/dev/null; then
+  printf "⚠️ Failed to download template file. Will be downloaded on first run.\n"
+else
+  printf "📄 Template file downloaded to %s\n" "$TEMPLATE_INSTALL_PATH"
+fi
+
+if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c \"$PYTHON_SCRIPT\" \"$WRAPPER_SCRIPT\" 2>/dev/null || echo 0)" -eq 0 ]]; then
   mkdir -p "$INSTALL_BIN"
   cat <<EOF > "$WRAPPER_SCRIPT"
 #!/bin/bash
@@ -163,6 +213,17 @@ fi
 # Ensure the PATH setup is correct
 if ! command -v scancompare &> /dev/null; then
   printf "⚠️ scancompare was installed but isn't available in this shell session.\n"
+  
+  # Add bin directory to PATH in shell profiles
+  for PROFILE in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+    if [[ -f "$PROFILE" ]]; then
+      if ! grep -q "PATH=\"$INSTALL_BIN:\$PATH\"" "$PROFILE"; then
+        printf "\n# Added by scancompare installer\nexport PATH=\"$INSTALL_BIN:\$PATH\"\n" >> "$PROFILE"
+        printf "➡️  Added PATH to %s\n" "$PROFILE"
+      fi
+    fi
+  done
+  
   printf "➡️  Try running: export PATH=\"$INSTALL_BIN:\$PATH\"\n"
   printf "   or close and reopen your terminal.\n"
 else
