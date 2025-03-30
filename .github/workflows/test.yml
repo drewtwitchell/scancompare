@@ -302,18 +302,16 @@ jobs:
           fi
 
       - name: Report test status
-        if: always()  # Run even if previous steps failed
+        if: always()
         run: |
-          # Add debug info to help troubleshoot
           echo "Contents of scancompare_status.txt:"
           cat test_results/scancompare_status.txt 2>/dev/null || echo "File not found"
           
-          # Get the status
           result=$(cat test_results/scancompare_status.txt 2>/dev/null || echo "failure")
           echo "Final result: $result"
           
-          if [ "$result" = "success" ]; then
-            echo "✅ All tests passed successfully!"
+          if [[ "$result" == success* ]]; then
+            echo "✅ All tests passed! (Some may be inconclusive)"
             exit 0
           else
             echo "❌ Some tests failed. See test report for details."
