@@ -486,12 +486,28 @@ jobs:
             echo "result=failure" >> $GITHUB_ENV
           fi
 
-      # Upload test results as artifact
-      - name: Upload test results
-        uses: actions/upload-artifact@v3
-        with:
-          name: scancompare-test-results
-          path: test_results/
+      # Save test results to file that will be saved as an artifact in GitHub Actions
+      - name: Save test results
+        run: |
+          # Create a directory to store test results
+          mkdir -p $GITHUB_WORKSPACE/test-artifacts
+          
+          # Copy all test results to the artifact directory
+          cp -r test_results/* $GITHUB_WORKSPACE/test-artifacts/
+          
+          # Indicate this is the test-artifact directory
+          echo "Test artifacts are stored in $GITHUB_WORKSPACE/test-artifacts" > $GITHUB_WORKSPACE/test-artifacts/README.txt
+          
+          # Make all files readable
+          chmod -R a+r $GITHUB_WORKSPACE/test-artifacts
+          
+          # Indicate where artifacts can be found
+          echo "Artifact Directory: $GITHUB_WORKSPACE/test-artifacts" | tee -a $GITHUB_STEP_SUMMARY
+
+      # Output test report to GitHub step summary
+      - name: Output test summary
+        run: |
+          cat test_results/report.md >> $GITHUB_STEP_SUMMARY
           
       # Exit with appropriate status
       - name: Report test status
