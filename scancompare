@@ -1817,6 +1817,9 @@ def main():
     else:
         check_latest_version(only_check=True)
 
+    # ✅ Print version info even during normal flow
+    print(f"📦 scancompare version {get_current_version()} (latest)")
+
     # Now continue with directory setup and command handling
     ensure_directory_structure()
 
@@ -1825,8 +1828,7 @@ def main():
         return
 
     if args.version:
-        print(f"📦 scancompare version {get_current_version()}")
-        return
+        return  # Version info already printed
 
     # If neither image nor repo URL is provided, show usage and exit
     if not args.image and not args.repo_url:
@@ -1933,7 +1935,7 @@ def main():
                     print_cves_by_severity(f"Shared CVEs ({image_tag})", {c: trivy_data.get(c, grype_data.get(c, 'Unknown')) for c in shared})
 
                     html_path = generate_html_report(image_tag, trivy_data, grype_data, shared, only_trivy, only_grype,
-                                                  get_version("trivy"), get_version("grype"))
+                                                    get_version("trivy"), get_version("grype"))
                     print(f"\n✅ Local HTML report saved: {html_path}")
 
                     handle_post_scan_prompts(
@@ -2002,7 +2004,7 @@ def main():
             print_cves_by_severity("Shared CVEs", {c: trivy_data.get(c, grype_data.get(c, 'Unknown')) for c in shared})
 
             html_path = generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype,
-                                          get_version("trivy"), get_version("grype"))
+                                            get_version("trivy"), get_version("grype"))
             print(f"\n✅ Local HTML report saved: {html_path}")
 
             handle_post_scan_prompts(
