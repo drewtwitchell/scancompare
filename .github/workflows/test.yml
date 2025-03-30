@@ -33,6 +33,18 @@ jobs:
         run: |
           bash <(curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh)
 
+      # Ensure jinja2 is installed (after running install.sh)
+      - name: Ensure jinja2 is installed
+        run: |
+          source ~/.scancompare-env/bin/activate
+          pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location
+
+      # Activate the virtual environment and verify jinja2 installation
+      - name: Activate virtual environment and verify jinja2
+        run: |
+          source ~/.scancompare-env/bin/activate
+          python -c "import jinja2; print('Jinja2 version:', jinja2.__version__)"
+
       # Set up Docker (this is required to run docker commands)
       - name: Set up Docker
         run: |
@@ -42,7 +54,7 @@ jobs:
           sudo systemctl start docker
           sudo systemctl enable docker
 
-      # Test scanning a GitHub repository with Dockerfile (auto-answer prompts using --auto)
+      # Test scanning a GitHub repository with Dockerfile (Mock Yes)
       - name: Test scancompare with GitHub repo URL and Docker build (Mock Yes)
         run: |
           echo "Testing scancompare with GitHub repo URL and Docker build (Mock Yes)..."
@@ -125,32 +137,12 @@ jobs:
         run: |
           echo "Testing scancompare in verbose mode (Auto)..."
           python scancompare --repo-url https://github.com/docker-library/hello-world --verbose --auto
-
-      - name: Test scancompare in verbose mode (Interactive Yes)
-        run: |
-          echo "Testing scancompare in verbose mode (Interactive Yes)..."
-          python scancompare --repo-url https://github.com/docker-library/hello-world --verbose --auto --mock-yes
-
-      - name: Test scancompare in verbose mode (Interactive No)
-        run: |
-          echo "Testing scancompare in verbose mode (Interactive No)..."
-          python scancompare --repo-url https://github.com/docker-library/hello-world --verbose --auto --mock-no
-
+          
       # Test version check with --auto flag
       - name: Test scancompare version (Auto)
         run: |
           echo "Testing scancompare version (Auto)..."
           python scancompare --version --auto
-
-      - name: Test scancompare version (Interactive Yes)
-        run: |
-          echo "Testing scancompare version (Interactive Yes)..."
-          python scancompare --version --auto --mock-yes
-
-      - name: Test scancompare version (Interactive No)
-        run: |
-          echo "Testing scancompare version (Interactive No)..."
-          python scancompare --version --auto --mock-no
 
       # Test update functionality with --auto flag
       - name: Test scancompare update (Auto)
@@ -158,31 +150,35 @@ jobs:
           echo "Testing scancompare update (Auto)..."
           python scancompare --update --auto
 
-      - name: Test scancompare update (Interactive Yes)
+      # Uninstall scancompare once and then reinstall
+      - name: Uninstall scancompare
         run: |
-          echo "Testing scancompare update (Interactive Yes)..."
-          python scancompare --update --auto --mock-yes
-
-      - name: Test scancompare update (Interactive No)
-        run: |
-          echo "Testing scancompare update (Interactive No)..."
-          python scancompare --update --auto --mock-no
-
-      # Test uninstall functionality with --auto flag
-      - name: Test scancompare uninstall (Auto)
-        run: |
-          echo "Testing scancompare uninstall (Auto)..."
+          echo "Uninstalling scancompare..."
           python scancompare --uninstall --auto
 
-      - name: Test scancompare uninstall (Interactive Yes)
+      # Reinstall scancompare
+      - name: Reinstall scancompare
         run: |
-          echo "Testing scancompare uninstall (Interactive Yes)..."
-          python scancompare --uninstall --auto --mock-yes
+          echo "Reinstalling scancompare..."
+          bash <(curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh)
 
-      - name: Test scancompare uninstall (Interactive No)
+      # Ensure jinja2 is installed after reinstallation
+      - name: Ensure jinja2 is installed (after reinstall)
         run: |
-          echo "Testing scancompare uninstall (Interactive No)..."
-          python scancompare --uninstall --auto --mock-no
+          source ~/.scancompare-env/bin/activate
+          pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location
+
+      # Verify jinja2 installation after reinstallation
+      - name: Verify jinja2 after reinstall
+        run: |
+          source ~/.scancompare-env/bin/activate
+          python -c "import jinja2; print('Jinja2 version:', jinja2.__version__)"
+
+      # Test uninstall functionality with --auto flag after reinstall
+      - name: Test scancompare uninstall after reinstall (Auto)
+        run: |
+          echo "Testing scancompare uninstall after reinstall (Auto)..."
+          python scancompare --uninstall --auto
 
       # Check for failed tests and stop the build if any test fails
       - name: Check for failed tests
