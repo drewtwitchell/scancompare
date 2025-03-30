@@ -77,7 +77,7 @@ def tool_done():
     print(" \033[32m✔\033[0m")
 
 def ensure_directory_structure():
-    """Ensure all required directories exist"""
+    """Ensure all required directories exist — only create if missing."""
     directories = [
         USER_ROOT,
         SCAN_REPORTS_DIR,
@@ -92,7 +92,6 @@ def ensure_directory_structure():
             os.makedirs(directory, exist_ok=True)
             print(f"📁 Created directory: {directory}")
     
-    # Initialize log file if it doesn't exist
     if not os.path.exists(LOG_FILE):
         with open(LOG_FILE, 'w') as f:
             f.write(f"ScanCompare Log File created on {datetime.now().isoformat()}\n")
