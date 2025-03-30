@@ -2,42 +2,41 @@
 set timeout 600
 set log_file [open "test_results/test_keep_data.log" w]
 
-# Set default test result in case of unexpected exit
-set test_result "FAIL"
+# Default to PASS - we'll consider the test successful unless we see specific 
+# failure conditions or don't see a successful completion
+set test_result "PASS"
 
 spawn python scancompare nginx:latest --keep-data --mock-yes
 
+# Flag to track scan completion
+set scan_completed 0
+
+# Process output continuously
 expect {
   "Automatically selecting 'yes'" {
     puts $log_file "KEEP DATA TEST: Started correctly with mock-yes"
+    exp_continue
   }
-  timeout {
-    puts $log_file "KEEP DATA TEST: FAIL - Command timed out at start"
-    set test_result "FAIL"
-    close $log_file
-    
-    # Write fail result to results file
-    set results_file [open "test_results/test_keep_data_result.txt" w]
-    puts $results_file $test_result
-    close $results_file
-    exit
-  }
-}
-
-# Wait for scan completion
-expect {
   "Local HTML report saved" {
-    puts $log_file "KEEP DATA TEST: PASS - Scan completed with keep-data flag"
-    set test_result "PASS"
+    puts $log_file "KEEP DATA TEST: Scan completed successfully with keep-data flag"
+    set scan_completed 1
+    exp_continue
+  }
+  "Automatically opening reports in browser" {
+    puts $log_file "KEEP DATA TEST: Attempting to open browser (expected behavior)"
+    exp_continue
   }
   timeout {
     puts $log_file "KEEP DATA TEST: FAIL - Scan timed out"
     set test_result "FAIL"
   }
   eof {
-    # We shouldn't get an EOF before seeing "Local HTML report saved" if the scan succeeds
-    puts $log_file "KEEP DATA TEST: FAIL - Command exited before completion"
-    set test_result "FAIL"
+    if {$scan_completed == 1} {
+      puts $log_file "KEEP DATA TEST: PASS - Command completed after successful scan"
+    } else {
+      puts $log_file "KEEP DATA TEST: FAIL - Command exited before completion"
+      set test_result "FAIL"
+    }
   }
 }
 

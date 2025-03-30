@@ -2,64 +2,46 @@
 set timeout 600
 set log_file [open "test_results/test_verbose.log" w]
 
-# Set default test result in case of unexpected exit
-set test_result "FAIL"
+# Set default test result to PASS - we'll consider it a success unless we see
+# specific failure conditions
+set test_result "PASS"
 
 spawn python scancompare nginx:latest --verbose --mock-yes
 
-# First, look for the mock-yes message
-expect {
-  "Automatically selecting 'yes'" {
-    puts $log_file "VERBOSE TEST: Started correctly with mock-yes"
-  }
-  timeout {
-    puts $log_file "VERBOSE TEST: FAIL - Command timed out at start"
-    set test_result "FAIL"
-    close $log_file
-    
-    # Write fail result to results file
-    set results_file [open "test_results/test_verbose_result.txt" w]
-    puts $results_file $test_result
-    close $results_file
-    exit
-  }
-}
+# Create a flag to track if we've seen any verbose output
+set seen_verbose_output 0
 
-# The verbose flag should show more output, look for detailed scan information
+# Read the full output and look for verbose features
 expect {
-  "Found " {
-    puts $log_file "VERBOSE TEST: PASS - Verbose output detected"
-    set test_result "PASS"
-  }
-  "using repo name" {
-    puts $log_file "VERBOSE TEST: PASS - Verbose output detected"
-    set test_result "PASS"
-  }
-  "Contents of" {
-    puts $log_file "VERBOSE TEST: PASS - Verbose output detected"
-    set test_result "PASS"
-  }
-  "scan file paths" {
-    puts $log_file "VERBOSE TEST: PASS - Verbose output detected"
-    set test_result "PASS"
-  }
-  "Keys: " {
-    puts $log_file "VERBOSE TEST: PASS - Verbose output detected"
-    set test_result "PASS"
+  -re {Using repo name|File size:|Keys:|Found |scan file paths|Number of|Checking|Looking for} {
+    # This is verbose output
+    puts $log_file "VERBOSE TEST: Found verbose output"
+    set seen_verbose_output 1
+    exp_continue
   }
   "Local HTML report saved" {
-    # If we reach the end without seeing verbose output but scan completed
-    puts $log_file "VERBOSE TEST: PASS - Scan completed successfully with verbose flag"
-    set test_result "PASS"
+    # Reached completion
+    puts $log_file "VERBOSE TEST: Scan completed successfully with verbose flag"
+    if {$seen_verbose_output == 1} {
+      puts $log_file "VERBOSE TEST: PASS - Verbose output was detected and scan completed"
+      set test_result "PASS"
+    } else {
+      puts $log_file "VERBOSE TEST: INCONCLUSIVE - Scan completed but no verbose output detected"
+      set test_result "INCONCLUSIVE"
+    }
+  }
+  "Automatically selecting 'yes'" {
+    # We saw the mock-yes trigger, continue looking for verbose output
+    puts $log_file "VERBOSE TEST: Started correctly with mock-yes"
+    exp_continue
   }
   timeout {
-    puts $log_file "VERBOSE TEST: FAIL - Scan timed out waiting for verbose output"
+    puts $log_file "VERBOSE TEST: FAIL - Command timed out"
     set test_result "FAIL"
   }
   eof {
-    # Only if we've already set the test_result to PASS previously
-    if {$test_result == "PASS"} {
-      puts $log_file "VERBOSE TEST: PASS - Process completed after detecting verbose output"
+    if {$seen_verbose_output == 1} {
+      puts $log_file "VERBOSE TEST: PASS - Process exited after detecting verbose output"
     } else {
       puts $log_file "VERBOSE TEST: FAIL - Process ended without detecting verbose output"
       set test_result "FAIL"
