@@ -87,12 +87,34 @@ jobs:
       # Test simple direct python calls to verify arguments work
       - name: Test argument parsing
         id: parser
+        env:
+          # Set this to prevent the script from trying to update itself
+          SCANCOMPARE_UPDATED: "1"
         run: |
+          # Make a directory for test results if it doesn't exist
+          mkdir -p test_results
+          
           # Make the test parser script executable
           chmod +x scripts/test_parser.py
           
-          # Run the test script
-          python scripts/test_parser.py || echo "Argument parser tests failed"
+          # Print directory structure for debugging
+          echo "Current directory: $(pwd)"
+          echo "Script location check:"
+          ls -la scripts/
+          
+          # Run the test script with explicit python interpreter
+          python3 scripts/test_parser.py || (echo "Argument parser tests failed" && touch test_results/parser_results.md)
+          
+          # Check if the results file was created
+          if [ ! -f "test_results/parser_results.md" ]; then
+            # Create a simple results file with failure message
+            echo "| Test Case | Status | Details |" > test_results/parser_results.md
+            echo "|-----------|--------|---------|" >> test_results/parser_results.md
+            echo "| Parser Test | ❌ FAIL | Test script failed to run correctly |" >> test_results/parser_results.md
+            echo "" >> test_results/parser_results.md
+            echo "## Summary" >> test_results/parser_results.md
+            echo "Passed 0 out of 1 tests" >> test_results/parser_results.md
+          fi
           
           # Append parser test results to main report
           cat test_results/parser_results.md >> test_results/report.md
@@ -205,11 +227,31 @@ jobs:
       # Generate a summary of all test results
       - name: Generate test summary
         run: |
-          # Count results
-          TOTAL_TESTS=$(grep -c "^|" test_results/report.md | awk '{print $1-2}')
-          PASSED_TESTS=$(grep -c "✅ PASS" test_results/report.md)
-          INCONCLUSIVE_TESTS=$(grep -c "⚠️ INCONCLUSIVE" test_results/report.md)
+          # Make sure report file exists
+          if [ ! -f "test_results/report.md" ]; then
+            echo "Error: test_results/report.md not found"
+            exit 1
+          fi
+          
+          # Debug - show content of report file
+          echo "Contents of report.md:"
+          cat test_results/report.md
+          
+          # Count results safely with default values if grep fails
+          TOTAL_TESTS=$(grep -c "^|" test_results/report.md || echo 0)
+          # Subtract header rows (usually 2)
+          TOTAL_TESTS=$((TOTAL_TESTS > 2 ? TOTAL_TESTS - 2 : 0))
+          
+          PASSED_TESTS=$(grep -c "✅ PASS" test_results/report.md || echo 0)
+          INCONCLUSIVE_TESTS=$(grep -c "⚠️ INCONCLUSIVE" test_results/report.md || echo 0)
+          # Calculate failed tests safely
           FAILED_TESTS=$((TOTAL_TESTS - PASSED_TESTS - INCONCLUSIVE_TESTS))
+          
+          # Print counts for debugging
+          echo "Total tests: $TOTAL_TESTS"
+          echo "Passed tests: $PASSED_TESTS"
+          echo "Inconclusive tests: $INCONCLUSIVE_TESTS"
+          echo "Failed tests: $FAILED_TESTS"
           
           # Add summary to report
           echo "" >> test_results/report.md
@@ -220,18 +262,20 @@ jobs:
           echo "- Inconclusive: $INCONCLUSIVE_TESTS" >> test_results/report.md
           echo "- Failed: $FAILED_TESTS" >> test_results/report.md
           
+          # Safely handle failed tests section
           if [ $FAILED_TESTS -gt 0 ]; then
             echo "" >> test_results/report.md
             echo "### Failed Tests" >> test_results/report.md
             echo "" >> test_results/report.md
-            grep "❌ FAIL" test_results/report.md >> test_results/report.md
+            grep "❌ FAIL" test_results/report.md >> test_results/report.md || echo "- Error listing failed tests" >> test_results/report.md
           fi
           
+          # Safely handle inconclusive tests section
           if [ $INCONCLUSIVE_TESTS -gt 0 ]; then
             echo "" >> test_results/report.md
             echo "### Inconclusive Tests" >> test_results/report.md
             echo "" >> test_results/report.md
-            grep "⚠️ INCONCLUSIVE" test_results/report.md >> test_results/report.md
+            grep "⚠️ INCONCLUSIVE" test_results/report.md >> test_results/report.md || echo "- Error listing inconclusive tests" >> test_results/report.md
           fi
           
           echo "" >> test_results/report.md
