@@ -1812,14 +1812,6 @@ def main():
     # Capture the command-line arguments
     args = handle_cli_args()
 
-    # Clear fork choice cache unless user explicitly sets --ghas or --gh-pages
-    if not (args.ghas or args.gh_pages):
-        for key in ["fork-choice"]:
-            try:
-                os.remove(os.path.join(TEMP_DIR, f"{key}.json"))
-            except Exception:
-                pass
-
     # ✅ Always check for updates *before* anything else
     if args.update:
         check_latest_version(only_check=False)
