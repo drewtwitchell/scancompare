@@ -22,14 +22,12 @@ jobs:
         with:
           python-version: '3.8'
 
-      # Install dependencies directly
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y expect
           pip install jinja2 requests
 
-      # Install Trivy and Grype
       - name: Install Trivy and Grype
         run: |
           # Install Trivy
@@ -46,7 +44,6 @@ jobs:
           sudo sh get-docker.sh
           sudo systemctl start docker
 
-      # Create necessary directories that the script expects
       - name: Set up directory structure
         run: |
           mkdir -p ~/ScanCompare/scan_reports
@@ -58,7 +55,6 @@ jobs:
           # Create test results directory
           mkdir -p test_results
 
-      # Create the test results file
       - name: Initialize test report
         run: |
           echo '# Scancompare Automation Flags Test Results' > test_results/report.md
@@ -66,7 +62,6 @@ jobs:
           echo '| Test Case | Status | Details |' >> test_results/report.md
           echo '|-----------|--------|---------|' >> test_results/report.md
 
-      # Verify scancompare has automation flags
       - name: Verify scancompare script
         id: verify
         run: |
@@ -84,30 +79,21 @@ jobs:
             exit 1
           fi
 
-      # Test simple direct python calls to verify arguments work
       - name: Test argument parsing
         id: parser
         env:
-          # Set this to prevent the script from trying to update itself
           SCANCOMPARE_UPDATED: "1"
         run: |
-          # Make a directory for test results if it doesn't exist
           mkdir -p test_results
-          
-          # Make the test parser script executable
           chmod +x scripts/test_parser.py
           
-          # Print directory structure for debugging
           echo "Current directory: $(pwd)"
           echo "Script location check:"
           ls -la scripts/
           
-          # Run the test script with explicit python interpreter
           python3 scripts/test_parser.py || (echo "Argument parser tests failed" && touch test_results/parser_results.md)
           
-          # Check if the results file was created
           if [ ! -f "test_results/parser_results.md" ]; then
-            # Create a simple results file with failure message
             echo "| Test Case | Status | Details |" > test_results/parser_results.md
             echo "|-----------|--------|---------|" >> test_results/parser_results.md
             echo "| Parser Test | ❌ FAIL | Test script failed to run correctly |" >> test_results/parser_results.md
@@ -116,38 +102,28 @@ jobs:
             echo "Passed 0 out of 1 tests" >> test_results/parser_results.md
           fi
           
-          # Append parser test results to main report
           cat test_results/parser_results.md >> test_results/report.md
 
-      # For actual script testing, we'll use expect scripts for interactive prompts
       - name: Run expect scripts for automated testing
         id: expect
         run: |
           echo "Running automated tests..."
           
-          # Create test_scripts directory
           mkdir -p test_scripts
-          
-          # Copy expect scripts from repository to test_scripts
           cp scripts/expect/*.exp test_scripts/
-          
-          # Make all scripts executable
           chmod +x test_scripts/*.exp
           
-          # Run all expect scripts and record results
           for script in test_scripts/*.exp; do
             echo "Running test: $(basename $script)"
             $script || echo "Test execution error: $(basename $script)"
           done
           
-          # Add results to main report
           echo "" >> test_results/report.md
           echo "## Interactive Test Results" >> test_results/report.md
           echo "" >> test_results/report.md
           echo "| Test Case | Status | Details |" >> test_results/report.md
           echo "|-----------|--------|---------|" >> test_results/report.md
           
-          # Process auto mode test
           if [ -f "test_results/basic_auto_result.txt" ]; then
             result=$(cat test_results/basic_auto_result.txt)
             if [ "$result" == "PASS" ]; then
@@ -161,7 +137,6 @@ jobs:
             echo "| Auto Mode Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
           fi
           
-          # Process mock-yes mode test
           if [ -f "test_results/basic_yes_result.txt" ]; then
             result=$(cat test_results/basic_yes_result.txt)
             if [ "$result" == "PASS" ]; then
@@ -175,7 +150,6 @@ jobs:
             echo "| Mock-Yes Mode Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
           fi
           
-          # Process mock-no mode test
           if [ -f "test_results/basic_no_result.txt" ]; then
             result=$(cat test_results/basic_no_result.txt)
             if [ "$result" == "PASS" ]; then
@@ -189,7 +163,6 @@ jobs:
             echo "| Mock-No Mode Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
           fi
           
-          # Process multiple flags test
           if [ -f "test_results/multiple_flags_result.txt" ]; then
             result=$(cat test_results/multiple_flags_result.txt)
             if [ "$result" == "PASS" ]; then
@@ -200,8 +173,7 @@ jobs:
           else
             echo "| Multiple Flags Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
           fi
-          
-      # Test utility commands
+
       - name: Test utility commands
         id: utilities
         run: |
@@ -210,59 +182,36 @@ jobs:
           echo "| Test Case | Status | Details |" >> test_results/report.md
           echo "|-----------|--------|---------|" >> test_results/report.md
           
-          # Test version command
           if python scancompare --version > test_results/version.log 2>&1; then
             echo "| Version Command | ✅ PASS | Successfully displayed version |" >> test_results/report.md
           else
             echo "| Version Command | ❌ FAIL | Failed to display version |" >> test_results/report.md
           fi
           
-          # Test version with auto flag
           if python scancompare --version --auto > test_results/version_auto.log 2>&1; then
             echo "| Version + Auto | ✅ PASS | Successfully handled version with auto flag |" >> test_results/report.md
           else
             echo "| Version + Auto | ❌ FAIL | Failed to handle version with auto flag |" >> test_results/report.md
           fi
-          
-      # Generate a summary of all test results
+
       - name: Generate test summary
         run: |
-          # Make sure report file exists
           if [ ! -f "test_results/report.md" ]; then
             echo "Error: test_results/report.md not found"
             exit 1
           fi
           
-          # Debug - show content of report file
           echo "Contents of report.md:"
           cat test_results/report.md
           
-          # Count table rows and subtract headers
           TOTAL_ROWS=$(grep -c "^|" test_results/report.md || echo 0)
-          # Count header rows (lines with ---|---| pattern)
           HEADER_ROWS=$(grep -c "^|---" test_results/report.md || echo 0)
-          # Calculate actual test rows
           TOTAL_TESTS=$((TOTAL_ROWS - HEADER_ROWS))
-          
-          # Count passed and inconclusive tests
           PASSED_TESTS=$(grep -c "✅ PASS" test_results/report.md || echo 0)
           INCONCLUSIVE_TESTS=$(grep -c "⚠️ INCONCLUSIVE" test_results/report.md || echo 0)
-          
-          # Calculate failed tests properly
           FAILED_TESTS=$((TOTAL_TESTS - PASSED_TESTS - INCONCLUSIVE_TESTS))
-          if [ $FAILED_TESTS -lt 0 ]; then
-            FAILED_TESTS=0
-          fi
+          if [ $FAILED_TESTS -lt 0 ]; then FAILED_TESTS=0; fi
           
-          # Print counts for debugging
-          echo "Total rows: $TOTAL_ROWS"
-          echo "Header rows: $HEADER_ROWS"
-          echo "Total tests: $TOTAL_TESTS"
-          echo "Passed tests: $PASSED_TESTS"
-          echo "Inconclusive tests: $INCONCLUSIVE_TESTS"
-          echo "Failed tests: $FAILED_TESTS"
-          
-          # Add summary to report
           echo "" >> test_results/report.md
           echo "## Test Summary" >> test_results/report.md
           echo "" >> test_results/report.md
@@ -271,7 +220,6 @@ jobs:
           echo "- Inconclusive: $INCONCLUSIVE_TESTS" >> test_results/report.md
           echo "- Failed: $FAILED_TESTS" >> test_results/report.md
           
-          # Safely handle failed tests section
           if [ $FAILED_TESTS -gt 0 ]; then
             echo "" >> test_results/report.md
             echo "### Failed Tests" >> test_results/report.md
@@ -279,7 +227,6 @@ jobs:
             grep "❌ FAIL" test_results/report.md >> test_results/report.md || echo "- Error listing failed tests" >> test_results/report.md
           fi
           
-          # Safely handle inconclusive tests section
           if [ $INCONCLUSIVE_TESTS -gt 0 ]; then
             echo "" >> test_results/report.md
             echo "### Inconclusive Tests" >> test_results/report.md
@@ -292,37 +239,25 @@ jobs:
           echo "" >> test_results/report.md
           echo "Detailed logs for each test are available in the test_results directory." >> test_results/report.md
           
-          # Properly set success status if all tests passed
-          if [ $FAILED_TESTS -eq 0 ]; then
+          FAIL_COUNT=$(grep -c "❌ FAIL" test_results/report.md || echo 0)
+          if [ $FAIL_COUNT -eq 0 ]; then
             echo "result=success" >> $GITHUB_ENV
           else
             echo "result=failure" >> $GITHUB_ENV
           fi
 
-      # Save test results to file that will be saved as an artifact in GitHub Actions
       - name: Save test results
         run: |
-          # Create a directory to store test results
           mkdir -p $GITHUB_WORKSPACE/test-artifacts
-          
-          # Copy all test results to the artifact directory
           cp -r test_results/* $GITHUB_WORKSPACE/test-artifacts/
-          
-          # Indicate this is the test-artifact directory
           echo "Test artifacts are stored in $GITHUB_WORKSPACE/test-artifacts" > $GITHUB_WORKSPACE/test-artifacts/README.txt
-          
-          # Make all files readable
           chmod -R a+r $GITHUB_WORKSPACE/test-artifacts
-          
-          # Indicate where artifacts can be found
           echo "Artifact Directory: $GITHUB_WORKSPACE/test-artifacts" | tee -a $GITHUB_STEP_SUMMARY
 
-      # Output test report to GitHub step summary
       - name: Output test summary
         run: |
           cat test_results/report.md >> $GITHUB_STEP_SUMMARY
-          
-      # Exit with appropriate status
+
       - name: Report test status
         run: |
           if [[ "${{ env.result }}" == "success" ]]; then
