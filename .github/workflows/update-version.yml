@@ -1,4 +1,4 @@
-name: Update version on merge
+name: Update version on merge to main
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   release-version:
-    if: github.ref_name == 'main' && contains(github.event.head_commit.message, 'release-')
+    if: startsWith(github.event.head_commit.message, 'release-')
     runs-on: ubuntu-latest
 
     steps:
@@ -17,12 +17,10 @@ jobs:
           persist-credentials: true
 
       - name: Extract version from commit message
-        id: extract
         run: |
           echo "🔍 Extracting version from commit message..."
           VERSION=$(echo "${{ github.event.head_commit.message }}" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "::set-output name=version::$VERSION"
 
       - name: Update version in scancompare
         run: |
@@ -30,22 +28,22 @@ jobs:
           sed -i "s/^# scancompare version .*/# scancompare version $VERSION/" scancompare
           sed -i "s/^VERSION = .*/VERSION = \"$VERSION\"/" scancompare
 
-      - name: Commit and push version bump
+      - name: Install Ruby + GitHub Changelog Generator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev build-essential
+          gem install github_changelog_generator
+
+      - name: Generate CHANGELOG.md
+        run: |
+          github_changelog_generator drewtwitchell/scancompare \
+            --token "${{ secrets.GITHUB_TOKEN }}" \
+            --future-release $VERSION
+
+      - name: Commit and push version bump + changelog
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scancompare
-          git commit -m "🔖 Bump version to $VERSION"
+          git add scancompare CHANGELOG.md
+          git commit -m "🔖 Bump version to $VERSION and update CHANGELOG"
           git push
-
-      - name: Create Git Tag
-        run: |
-          git tag "v$VERSION"
-          git push origin "v$VERSION"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ steps.extract.outputs.version }}
-          name: v${{ steps.extract.outputs.version }}
-          generate_release_notes: true
