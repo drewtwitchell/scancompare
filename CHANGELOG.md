@@ -52,4 +52,4 @@
 - Fixed blank HTML uploads when no scan data was available.
 - Fixed duplicate backups not being timestamped correctly.
 - Fixed issue with the uninstall working correctly
-- Fixed issue with auto updater
+- Fixed issue with release
