@@ -3,52 +3,64 @@ set timeout 300
 set log_file [open "test_results/test_repo_url_ghas.log" w]
 
 # Set default test result
-set test_result "PASS"  # Changed to default to PASS for mock-no mode
+set test_result "INCONCLUSIVE"  # Start with INCONCLUSIVE
+puts $log_file "REPO URL GHAS TEST: Starting test with default result INCONCLUSIVE"
 
 # Use the specific GitHub repo with a Dockerfile for testing
+puts $log_file "REPO URL GHAS TEST: Spawning command: scancompare --repo-url https://github.com/drewtwitchell/dockerfile-test --ghas --mock-no"
 spawn python scancompare --repo-url https://github.com/drewtwitchell/dockerfile-test --ghas --mock-no
 
 # Process output continuously looking for various indicators of progress
 expect {
   "Automatically selecting 'no'" {
-    puts $log_file "REPO URL GHAS TEST: Started correctly with mock-no"
+    puts $log_file "REPO URL GHAS TEST: Detected 'Automatically selecting no'"
     exp_continue
   }
   "Cloning " {
-    puts $log_file "REPO URL GHAS TEST: Started cloning repository"
+    puts $log_file "REPO URL GHAS TEST: Detected 'Cloning' - repository clone started"
     exp_continue
   }
   "GHAS" {
-    puts $log_file "REPO URL GHAS TEST: PASS - GHAS functionality detected"
+    puts $log_file "REPO URL GHAS TEST: Detected 'GHAS' - GHAS functionality found"
     set test_result "PASS"
+    puts $log_file "REPO URL GHAS TEST: Setting result to PASS due to GHAS detection"
     exp_continue
   }
   "GitHub Advanced Security" {
-    puts $log_file "REPO URL GHAS TEST: PASS - GHAS detected"
+    puts $log_file "REPO URL GHAS TEST: Detected 'GitHub Advanced Security'"
     set test_result "PASS"
+    puts $log_file "REPO URL GHAS TEST: Setting result to PASS due to GitHub Advanced Security detection"
     exp_continue
   }
   "Skipping GHAS upload" {
-    puts $log_file "REPO URL GHAS TEST: PASS - GHAS upload skipped in mock-no mode"
+    puts $log_file "REPO URL GHAS TEST: Detected 'Skipping GHAS upload' - this is expected with --mock-no"
     set test_result "PASS"
+    puts $log_file "REPO URL GHAS TEST: Setting result to PASS due to skipping GHAS upload in mock-no mode"
     exp_continue
   }
   "Local HTML report saved" {
-    puts $log_file "REPO URL GHAS TEST: Report generation completed successfully"
-    set test_result "PASS"
+    puts $log_file "REPO URL GHAS TEST: Detected 'Local HTML report saved' - scan completed successfully"
+    # If we still have INCONCLUSIVE at this point, check if we're in mock-no mode
+    if {$test_result == "INCONCLUSIVE"} {
+      # This is a key decision point - should we PASS if we got to this point with mock-no?
+      puts $log_file "REPO URL GHAS TEST: Report generated but no GHAS-specific output detected"
+    }
     exp_continue
   }
   timeout {
-    puts $log_file "REPO URL GHAS TEST: INCONCLUSIVE - Command timed out"
-    set test_result "INCONCLUSIVE"
+    puts $log_file "REPO URL GHAS TEST: Timeout occurred after $timeout seconds"
+    puts $log_file "REPO URL GHAS TEST: Result remains $test_result"
   }
   eof {
-    # Even if we didn't see specific GHAS output, in mock-no mode this is fine
-    puts $log_file "REPO URL GHAS TEST: Process completed"
+    puts $log_file "REPO URL GHAS TEST: End of file (process terminated)"
+    puts $log_file "REPO URL GHAS TEST: Final result is $test_result"
+    if {$test_result == "INCONCLUSIVE"} {
+      puts $log_file "REPO URL GHAS TEST: Process completed without detecting any GHAS-specific output"
+    }
   }
 }
 
-puts $log_file "Test result: $test_result"
+puts $log_file "REPO URL GHAS TEST: Test completed with result: $test_result"
 close $log_file
 
 # Write result to results file
