@@ -32,10 +32,10 @@ jobs:
           sed -i "s/^# scancompare version .*/# scancompare version $VERSION/" scancompare
           sed -i "s/^VERSION = .*/VERSION = \"$VERSION\"/" scancompare
 
+      # Removed Ruby + GitHub Changelog Generator steps since you're doing it manually
+
       - name: Commit and push version bump
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add scancompare
           git commit -m "🔖 Bump version to $VERSION"
-          git push
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/drewtwitchell/scancompare.git HEAD:main
