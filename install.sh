@@ -12,8 +12,8 @@ DEFAULT_SCRIPT_SOURCE="https://raw.githubusercontent.com/drewtwitchell/scancompa
 # Try to extract GitHub user and repo from local .git if available
 if git remote get-url origin &> /dev/null; then
   REMOTE_URL=$(git remote get-url origin)
-  GITHUB_USER=$(echo "$REMOTE_URL" | sed 's|.*github.com[:/]\([^/]*\)/.*|\1|')
-  GITHUB_REPO=$(echo "$REMOTE_URL" | sed 's|.*/\([^/]*\)\.git$|\1|')
+  GITHUB_USER=$(echo "$REMOTE_URL" | sed -E 's|.*github.com[:/](.*?)/.*|\1|')
+  GITHUB_REPO=$(echo "$REMOTE_URL" | sed -E 's|.*/(.*?)(\.git)?$|\1|')
 else
   # Fallback to extracting from default URL
   SCRIPT_SOURCE="${SCRIPT_SOURCE:-$DEFAULT_SCRIPT_SOURCE}"
@@ -143,13 +143,8 @@ VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }'
 tool_progress "⚙️ Installing version:" "$VERSION"
 tool_done
 
-# Fix for macOS and Linux compatibility with sed
 if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null || sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
-  else
-    sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
-  fi
+  sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null || sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
 fi
 chmod +x "$PYTHON_SCRIPT"
 

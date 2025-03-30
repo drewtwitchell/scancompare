@@ -66,8 +66,6 @@ def handle_cli_args():
     parser.add_argument("--update", action="store_true", help="Check and apply latest scancompare update")
     parser.add_argument("--verbose", action="store_true", help="Show detailed output (clone, build, scans)")
     parser.add_argument("--uninstall", action="store_true", help="Uninstall scancompare CLI")
-    
-    parser.add_argument("--help", action="help", help="Show this message and exit")  # Explicit help
 
     args = parser.parse_args()
     return args
