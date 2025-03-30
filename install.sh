@@ -143,8 +143,13 @@ VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }'
 tool_progress "⚙️ Installing version:" "$VERSION"
 tool_done
 
+# Fix for macOS and Linux compatibility with sed
 if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
-  sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null || sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null || sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
+  else
+    sed -i '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT"
+  fi
 fi
 chmod +x "$PYTHON_SCRIPT"
 
