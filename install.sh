@@ -6,15 +6,27 @@ VERBOSE=0
 FORCE_REINSTALL=0
 [[ "$1" == "--force-reinstall" ]] && FORCE_REINSTALL=1 && shift
 
-# Default GitHub repo source
+# Default GitHub repo source - canonical source of truth
 DEFAULT_SCRIPT_SOURCE="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
+
+# First set the defaults as fallback
+DEFAULT_GITHUB_USER="drewtwitchell"
+DEFAULT_GITHUB_REPO="scancompare"
 
 # Try to extract GitHub user and repo from local .git if available
 if git remote get-url origin &> /dev/null; then
   REMOTE_URL=$(git remote get-url origin)
-  # Extract user with different pattern for compatibility
-  GITHUB_USER=$(echo "$REMOTE_URL" | sed -E 's|.*github.com[:/]([^/]*)/.*|\1|')
-  GITHUB_REPO=$(echo "$REMOTE_URL" | sed -E 's|.*/([^/.]*)(.git)?$|\1|')
+  # Fixed sed pattern for macOS compatibility
+  GITHUB_USER=$(echo "$REMOTE_URL" | sed -E 's|.*github.com[:\/]([^\/]*)/.*|\1|')
+  GITHUB_REPO=$(echo "$REMOTE_URL" | sed -E 's|.*/([^\/\.]*)(\.git)?$|\1|')
+  
+  # Verify that the extracted repo exists and contains our script
+  TEST_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/scancompare"
+  if ! curl -fsL -I "$TEST_URL" &> /dev/null; then
+    [[ $VERBOSE -eq 1 ]] && echo "Repository $GITHUB_USER/$GITHUB_REPO doesn't contain scancompare, using defaults"
+    GITHUB_USER="$DEFAULT_GITHUB_USER"
+    GITHUB_REPO="$DEFAULT_GITHUB_REPO"
+  fi
 else
   # Fallback to extracting from default URL
   SCRIPT_SOURCE="${SCRIPT_SOURCE:-$DEFAULT_SCRIPT_SOURCE}"
@@ -24,12 +36,12 @@ fi
 
 # Fallback to defaults if extraction fails
 if [[ -z "$GITHUB_USER" ]]; then
-  GITHUB_USER="drewtwitchell"
+  GITHUB_USER="$DEFAULT_GITHUB_USER"
   [[ $VERBOSE -eq 1 ]] && echo "Failed to extract GitHub user, using default: $GITHUB_USER"
 fi
 
 if [[ -z "$GITHUB_REPO" ]]; then
-  GITHUB_REPO="scancompare"
+  GITHUB_REPO="$DEFAULT_GITHUB_REPO"
   [[ $VERBOSE -eq 1 ]] && echo "Failed to extract GitHub repo, using default: $GITHUB_REPO"
 fi
 
@@ -46,6 +58,15 @@ PYTHON_SCRIPT="$INSTALL_LIB/$SCRIPT_NAME"
 WRAPPER_SCRIPT="$INSTALL_BIN/$SCRIPT_NAME"
 ENV_GUARD_FILE="$USER_ROOT/env.shexport"
 VENV_DIR="$INSTALL_LIB/venv"
+
+# Verify script availability - if it fails, fall back to defaults
+if ! curl -fsL -I "$SCRIPT_URL" &> /dev/null; then
+  [[ $VERBOSE -eq 1 ]] && echo "Script not found at $SCRIPT_URL, falling back to defaults"
+  GITHUB_USER="$DEFAULT_GITHUB_USER"
+  GITHUB_REPO="$DEFAULT_GITHUB_REPO"
+  SCRIPT_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/scancompare"
+  TEMPLATE_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/scan_template.html"
+fi
 
 log() {
   if [[ "$VERBOSE" -eq 1 ]]; then
@@ -159,13 +180,32 @@ mkdir -p "$INSTALL_BIN" "$INSTALL_LIB" "$SCANREPORTS_DIR" "$TEMP_DIR"
 # Download the script with better error handling
 if ! curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" 2>/dev/null; then
   printf "❌ Failed to download scancompare script from %s\n" "$SCRIPT_URL"
-  printf "⚠️ Check your network connection or if the repository exists.\n"
-  exit 1
+  printf "⚠️ Trying default repository instead...\n"
+  
+  # Fallback to the canonical repository
+  SCRIPT_URL="https://raw.githubusercontent.com/${DEFAULT_GITHUB_USER}/${DEFAULT_GITHUB_REPO}/main/scancompare"
+  if ! curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" 2>/dev/null; then
+    printf "❌ Failed to download scancompare script from default repository too.\n"
+    printf "⚠️ Check your network connection or if the repository exists.\n"
+    exit 1
+  fi
+  
+  # Update other variables to use the default repo
+  GITHUB_USER="$DEFAULT_GITHUB_USER"
+  GITHUB_REPO="$DEFAULT_GITHUB_REPO"
+  TEMPLATE_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/scan_template.html"
 fi
 
 # Check if we got an actual script file
 if [[ ! -s "$PYTHON_SCRIPT" ]]; then
   printf "❌ Downloaded file is empty. Repository may be private or URL is incorrect.\n"
+  exit 1
+fi
+
+# Check if the script contains expected content
+if ! grep -q "scancompare version" "$PYTHON_SCRIPT"; then
+  printf "❌ Downloaded script does not appear to be valid.\n"
+  printf "   Content: $(head -n 3 "$PYTHON_SCRIPT")\n"
   exit 1
 fi
 
