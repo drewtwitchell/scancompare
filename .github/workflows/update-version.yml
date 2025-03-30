@@ -4,10 +4,11 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'  # This will trigger on tags like v1.1.0, v2.0.0, etc.
 
 jobs:
   release-version:
-    if: startsWith(github.event.head_commit.message, 'release-')
     runs-on: ubuntu-latest
 
     steps:
@@ -16,10 +17,13 @@ jobs:
         with:
           persist-credentials: true
 
-      - name: Extract version from commit message
+      - name: Extract version from commit message or tag
         run: |
-          echo "🔍 Extracting version from commit message..."
-          VERSION=$(echo "${{ github.event.head_commit.message }}" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION=$(echo "${{ github.event.head_commit.message }}" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Update version in scancompare
