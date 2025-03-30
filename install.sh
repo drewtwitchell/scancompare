@@ -14,7 +14,7 @@ if git remote get-url origin &> /dev/null; then
   REMOTE_URL=$(git remote get-url origin)
   # Fixed sed pattern for macOS compatibility
   GITHUB_USER=$(echo "$REMOTE_URL" | sed -E 's|.*github.com[:\/]([^\/]*)/.*|\1|')
-  GITHUB_REPO=$(echo "$REMOTE_URL" | sed -E 's|.*/([^\/\.]*)(\.git)?$|\1|')
+  GITHUB_REPO=$(echo "$REMOTE_URL" | sed -E 's|.*/([^\/.]*)(\.git)?$|\1|')
 else
   # Fallback to extracting from default URL
   SCRIPT_SOURCE="${SCRIPT_SOURCE:-$DEFAULT_SCRIPT_SOURCE}"
@@ -35,7 +35,6 @@ fi
 
 # Verify we're using the correct repository for scancompare
 if [[ "$GITHUB_REPO" != "scancompare" && "$GITHUB_USER" == "drewtwitchell" ]]; then
-  # If we're in a drewtwitchell repo but not the scancompare repo, use the right repo
   GITHUB_REPO="scancompare"
   [[ $VERBOSE -eq 1 ]] && echo "Switching to the scancompare repository"
 fi
@@ -46,6 +45,10 @@ INSTALL_BIN="$MAIN_DIR/bin"
 INSTALL_LIB="$MAIN_DIR/lib"
 SCANREPORTS_DIR="$USER_ROOT/scan_reports"
 TEMP_DIR="$USER_ROOT/temp"
+GH_PAGES_DIR="$TEMP_DIR/gh-pages"
+DOCKER_TEMP_DIR="$TEMP_DIR/docker"
+BACKUP_DIR="$USER_ROOT/backups"
+LOG_FILE="$USER_ROOT/scancompare.log"
 SCRIPT_NAME="scancompare"
 SCRIPT_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/scancompare"
 TEMPLATE_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/scan_template.html"
@@ -71,27 +74,14 @@ tool_done() {
   printf " \033[32m✔\033[0m\n"
 }
 
-# Immediately update PATH in current session and make it permanently available
 update_path() {
-  # For current session
   export PATH="$LOCAL_BIN:$PATH"
-  
-  # Detect the shell to update the correct profile
   CURRENT_SHELL=$(basename "$SHELL")
-  
-  # Adding to appropriate profile files
   case "$CURRENT_SHELL" in
-    bash)
-      PROFILE_FILES=("$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile")
-      ;;
-    zsh)
-      PROFILE_FILES=("$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.profile")
-      ;;
-    *)
-      PROFILE_FILES=("$HOME/.profile")
-      ;;
+    bash) PROFILE_FILES=("$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile") ;;
+    zsh) PROFILE_FILES=("$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.profile") ;;
+    *) PROFILE_FILES=("$HOME/.profile") ;;
   esac
-  
   for PROFILE in "${PROFILE_FILES[@]}"; do
     if [[ -f "$PROFILE" ]]; then
       if ! grep -q "PATH=\"$LOCAL_BIN:\$PATH\"" "$PROFILE"; then
@@ -137,7 +127,6 @@ install_python_and_tools() {
     fi
   fi
 
-  # Install Python venv silently
   if [[ ! -d "$VENV_DIR" ]]; then
     python3 -m venv "$VENV_DIR" &> /dev/null || {
       echo "❌ Failed to create virtual environment"; exit 1;
@@ -146,7 +135,6 @@ install_python_and_tools() {
 
   source "$VENV_DIR/bin/activate"
 
-  # Install jinja2 silently
   if ! python -c "import jinja2" &> /dev/null; then
     pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location &> /dev/null || {
       printf "❌ Failed to install jinja2."; exit 1;
@@ -170,7 +158,6 @@ install_python_and_tools() {
   fi
 }
 
-# Starting installation
 printf "🛠️  Starting scancompare installation...\n"
 
 if [[ -f "$PYTHON_SCRIPT" && "$FORCE_REINSTALL" -eq 0 ]]; then
@@ -184,21 +171,21 @@ if [[ -f "$PYTHON_SCRIPT" && "$FORCE_REINSTALL" -eq 0 ]]; then
   fi
 fi
 
-# Starting both steps with one progress indicator each
 tool_progress "📦 Installing" "required tools..."
 install_python_and_tools
 tool_done
 
 tool_progress "📦 Installing" "scancompare script..."
-# Create necessary directories
-mkdir -p "$INSTALL_BIN" "$INSTALL_LIB" "$SCANREPORTS_DIR" "$TEMP_DIR" "$LOCAL_BIN"
+mkdir -p "$INSTALL_BIN" "$INSTALL_LIB" "$SCANREPORTS_DIR" "$TEMP_DIR" "$DOCKER_TEMP_DIR" "$GH_PAGES_DIR" "$BACKUP_DIR" "$LOCAL_BIN"
 
-# Try to download from detected repo first
+if [[ ! -f "$LOG_FILE" ]]; then
+  echo "ScanCompare Log File created on $(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$LOG_FILE"
+  echo "============================================================" >> "$LOG_FILE"
+fi
+
 if ! curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" 2>/dev/null; then
-  # If fails, fall back to canonical repo
   SCRIPT_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
   TEMPLATE_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html"
-  
   if ! curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" 2>/dev/null; then
     printf "\n❌ Failed to download scancompare script from canonical repository.\n"
     printf "⚠️ Check your network connection or if the repository exists.\n"
@@ -206,7 +193,6 @@ if ! curl -fsSL "$SCRIPT_URL" -o "$PYTHON_SCRIPT" 2>/dev/null; then
   fi
 fi
 
-# Check if we got a valid script file
 if [[ ! -s "$PYTHON_SCRIPT" ]]; then
   printf "\n❌ Downloaded file is empty. Repository may be private or URL is incorrect.\n"
   exit 1
@@ -216,7 +202,6 @@ tool_done
 VERSION=$(grep -E '^# scancompare version' "$PYTHON_SCRIPT" | awk '{ print $4 }')
 
 if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
-  # Handle different sed versions (macOS vs GNU)
   if [[ "$OSTYPE" == "darwin"* ]]; then
     sed -i '' '1s|^.*$|#!/usr/bin/env python3|' "$PYTHON_SCRIPT" 2>/dev/null
   else
@@ -225,10 +210,8 @@ if ! grep -q "^#!/usr/bin/env python3" "$PYTHON_SCRIPT"; then
 fi
 chmod +x "$PYTHON_SCRIPT"
 
-# Download the template file silently
 curl -fsSL "$TEMPLATE_URL" -o "$INSTALL_LIB/scan_template.html" 2>/dev/null
 
-# Create/update wrapper script
 if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c \"$PYTHON_SCRIPT\" \"$WRAPPER_SCRIPT\" 2>/dev/null || echo 0)" -eq 0 ]]; then
   mkdir -p "$INSTALL_BIN"
   cat <<EOF > "$WRAPPER_SCRIPT"
@@ -239,17 +222,11 @@ EOF
   chmod +x "$WRAPPER_SCRIPT"
 fi
 
-# Create symlink in ~/.local/bin
 ln -sf "$WRAPPER_SCRIPT" "$LOCAL_BIN/scancompare"
 chmod +x "$LOCAL_BIN/scancompare"
 
-# Update PATH in current session and permanently
 update_path
 
-# Ensure the ScanCompare root folder structure
-mkdir -p "$SCANREPORTS_DIR" "$TEMP_DIR" "$INSTALL_LIB"
-
-# Make it immediately available
 export PATH="$LOCAL_BIN:$PATH"
 
 printf "✅ scancompare v%s installed successfully\n" "$VERSION"
