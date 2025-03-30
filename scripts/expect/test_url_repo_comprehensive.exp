@@ -3,7 +3,7 @@ set timeout 300
 set log_file [open "test_results/test_repo_url_comprehensive.log" w]
 
 # Use a simple GitHub repo with a Dockerfile for testing
-spawn python scancompare --repo-url https://github.com/docker-library/hello-world --gh-pages --ghas --verbose --mock-no
+spawn python scancompare --repo-url https://github.com/drewtwitchell/dockerfile-test --gh-pages --ghas --verbose --mock-no
 
 expect {
   "Automatically selecting 'no'" {
