@@ -190,6 +190,3 @@ jobs:
             echo "Some tests failed! Exiting the build."
             exit 1
           fi
-          
-    # This job runs on any failure to ensure the build fails
-    fail-fast: true
