@@ -1,4 +1,4 @@
-name: Bump Version on Release Commit
+name: Update version on merge
 
 on:
   push:
@@ -6,25 +6,27 @@ on:
       - main
 
 jobs:
-  bump-version:
-    if: startsWith(github.event.head_commit.message, 'release-')
+  release-version:
+    if: github.ref_name == 'main' && contains(github.event.head_commit.message, 'release-')
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: Extract version from commit message
-        id: extract_version
+        id: extract
         run: |
           echo "🔍 Extracting version from commit message..."
           VERSION=$(echo "${{ github.event.head_commit.message }}" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "::set-output name=version::$VERSION"
 
       - name: Update version in scancompare
         run: |
-          echo "🔧 Updating scancompare to version $VERSION"
+          echo "🔧 Updating version to $VERSION"
           sed -i "s/^# scancompare version .*/# scancompare version $VERSION/" scancompare
           sed -i "s/^VERSION = .*/VERSION = \"$VERSION\"/" scancompare
 
@@ -32,5 +34,18 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "🔖 Bump scancompare version to $VERSION"
+          git add scancompare
+          git commit -m "🔖 Bump version to $VERSION"
           git push
+
+      - name: Create Git Tag
+        run: |
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.extract.outputs.version }}
+          name: v${{ steps.extract.outputs.version }}
+          generate_release_notes: true
