@@ -50,5 +50,5 @@
 
 - Fixed issue where `--help` triggered a scan instead of showing help.
 - Fixed blank HTML uploads when no scan data was available.
-- Fixed errors with `jq` when parsing missing or invalid files.
 - Fixed duplicate backups not being timestamped correctly.
+- Fixed issue with the uninstall working correctly
