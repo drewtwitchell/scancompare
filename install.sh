@@ -6,17 +6,33 @@ VERBOSE=0
 FORCE_REINSTALL=0
 [[ "$1" == "--force-reinstall" ]] && FORCE_REINSTALL=1 && shift
 
-INSTALL_BIN="$HOME/.local/bin"
-INSTALL_LIB="$HOME/.local/lib/scancompare"
+# Default GitHub repo source
+DEFAULT_SCRIPT_SOURCE="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
+
+# Try to extract GitHub user and repo from local .git if available
+if git remote get-url origin &> /dev/null; then
+  REMOTE_URL=$(git remote get-url origin)
+  GITHUB_USER=$(echo "$REMOTE_URL" | sed -E 's|.*github.com[:/](.*?)/.*|\1|')
+  GITHUB_REPO=$(echo "$REMOTE_URL" | sed -E 's|.*/(.*?)(\.git)?$|\1|')
+else
+  # Fallback to extracting from default URL
+  SCRIPT_SOURCE="${SCRIPT_SOURCE:-$DEFAULT_SCRIPT_SOURCE}"
+  GITHUB_USER=$(echo "$SCRIPT_SOURCE" | cut -d'/' -f4)
+  GITHUB_REPO=$(echo "$SCRIPT_SOURCE" | cut -d'/' -f5)
+fi
+
 USER_ROOT="$HOME/ScanCompare"
+MAIN_DIR="$USER_ROOT/main"
+INSTALL_BIN="$MAIN_DIR/bin"
+INSTALL_LIB="$MAIN_DIR/lib"
 SCANREPORTS_DIR="$USER_ROOT/scan_reports"
 TEMP_DIR="$USER_ROOT/temp"
 SCRIPT_NAME="scancompare"
-SCRIPT_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare"
-TEMPLATE_URL="https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html"
+SCRIPT_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/scancompare"
+TEMPLATE_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/scan_template.html"
 PYTHON_SCRIPT="$INSTALL_LIB/$SCRIPT_NAME"
 WRAPPER_SCRIPT="$INSTALL_BIN/$SCRIPT_NAME"
-ENV_GUARD_FILE="$HOME/.config/scancompare/env.shexport"
+ENV_GUARD_FILE="$USER_ROOT/env.shexport"
 VENV_DIR="$INSTALL_LIB/venv"
 
 log() {
@@ -41,7 +57,7 @@ install_python_and_tools() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
       tool_progress "🍺 Installing" "Homebrew"
       NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &> /dev/null || {
-        printf "⚠️ Failed to install Homebrew. Falling back to manual installation methods.\n"
+        printf "⚠️ Failed to install Homebrew. Falling back to other installation methods.\n"
       }
       tool_done
     fi
@@ -81,11 +97,9 @@ install_python_and_tools() {
   source "$VENV_DIR/bin/activate"
 
   if ! python -c "import jinja2" &> /dev/null; then
-    tool_progress "⚙️ Installing" "jinja2..."
     pip install jinja2 --quiet --disable-pip-version-check --no-warn-script-location || {
       printf "❌ Failed to install jinja2."; exit 1;
     }
-    tool_done
   fi
 
   if ! command -v trivy &> /dev/null; then
@@ -119,7 +133,7 @@ if [[ -f "$PYTHON_SCRIPT" && "$FORCE_REINSTALL" -eq 0 ]]; then
   fi
 fi
 
-printf "📦 Installing required tools: python3, jinja2, trivy, grype...\n"
+printf "📦 Installing required tools: python3, trivy, grype...\n"
 install_python_and_tools
 
 printf "📦 Downloading and Installing scancompare script version...\n"
@@ -135,6 +149,7 @@ fi
 chmod +x "$PYTHON_SCRIPT"
 
 if [[ ! -f "$WRAPPER_SCRIPT" || "$(grep -c \"$PYTHON_SCRIPT\" \"$WRAPPER_SCRIPT\")" -eq 0 ]]; then
+  mkdir -p "$INSTALL_BIN"
   cat <<EOF > "$WRAPPER_SCRIPT"
 #!/bin/bash
 source "$VENV_DIR/bin/activate"
@@ -148,16 +163,14 @@ fi
 # Ensure the PATH setup is correct
 if ! command -v scancompare &> /dev/null; then
   printf "⚠️ scancompare was installed but isn't available in this shell session.\n"
-  printf "➡️  Try running: export PATH=\"\$HOME/.local/bin:\$PATH\"\n"
+  printf "➡️  Try running: export PATH=\"$INSTALL_BIN:\$PATH\"\n"
   printf "   or close and reopen your terminal.\n"
 else
   printf "✅ $INSTALL_BIN is in your PATH\n"
 fi
 
 # Ensure the ScanCompare root folder structure
-if [[ ! -d "$USER_ROOT" ]]; then
-  mkdir -p "$SCANREPORTS_DIR" "$TEMP_DIR"
-  echo "Created ScanCompare directory structure at $USER_ROOT"
-fi
+mkdir -p "$SCANREPORTS_DIR" "$TEMP_DIR" "$INSTALL_LIB"
+echo "Created ScanCompare directory structure at $USER_ROOT"
 
 printf "🎉 You can now run: $SCRIPT_NAME <image-name>\n"
