@@ -237,17 +237,26 @@ jobs:
           echo "Contents of report.md:"
           cat test_results/report.md
           
-          # Count results safely with default values if grep fails
-          TOTAL_TESTS=$(grep -c "^|" test_results/report.md || echo 0)
-          # Subtract header rows (usually 2)
-          TOTAL_TESTS=$((TOTAL_TESTS > 2 ? TOTAL_TESTS - 2 : 0))
+          # Count table rows and subtract headers
+          TOTAL_ROWS=$(grep -c "^|" test_results/report.md || echo 0)
+          # Count header rows (lines with ---|---| pattern)
+          HEADER_ROWS=$(grep -c "^|---" test_results/report.md || echo 0)
+          # Calculate actual test rows
+          TOTAL_TESTS=$((TOTAL_ROWS - HEADER_ROWS))
           
+          # Count passed and inconclusive tests
           PASSED_TESTS=$(grep -c "✅ PASS" test_results/report.md || echo 0)
           INCONCLUSIVE_TESTS=$(grep -c "⚠️ INCONCLUSIVE" test_results/report.md || echo 0)
-          # Calculate failed tests safely
+          
+          # Calculate failed tests properly
           FAILED_TESTS=$((TOTAL_TESTS - PASSED_TESTS - INCONCLUSIVE_TESTS))
+          if [ $FAILED_TESTS -lt 0 ]; then
+            FAILED_TESTS=0
+          fi
           
           # Print counts for debugging
+          echo "Total rows: $TOTAL_ROWS"
+          echo "Header rows: $HEADER_ROWS"
           echo "Total tests: $TOTAL_TESTS"
           echo "Passed tests: $PASSED_TESTS"
           echo "Inconclusive tests: $INCONCLUSIVE_TESTS"
@@ -283,7 +292,7 @@ jobs:
           echo "" >> test_results/report.md
           echo "Detailed logs for each test are available in the test_results directory." >> test_results/report.md
           
-          # Save success/failure status for final exit
+          # Properly set success status if all tests passed
           if [ $FAILED_TESTS -eq 0 ]; then
             echo "result=success" >> $GITHUB_ENV
           else
