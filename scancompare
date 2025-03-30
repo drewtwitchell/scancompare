@@ -1029,9 +1029,14 @@ def resolve_fork(repo, action_label="upload", remember_choice=True, cache_key="f
         except Exception:
             previous_choice = None
 
-    if previous_choice:
+    if isinstance(previous_choice, str) and previous_choice.startswith("https://github.com/"):
         print(f"\n📌 Using previously selected repository for {action_label}: {previous_choice}")
         return previous_choice, get_repo_from_url(previous_choice)
+    else:
+        try:
+            os.remove(CHOICE_FILE)
+        except Exception:
+            pass
 
     automation_mode = get_automation_mode(args)
 
