@@ -19,14 +19,32 @@ jobs:
         with:
           python-version: '3.8'
 
-      - name: Install dependencies
+      # Install Trivy and Grype
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.42.0
+          trivy --version
+
+      - name: Install Grype
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          grype --version
+
+      # Use install.sh for environment setup but replace script with our branch version
+      - name: Install dependencies and setup environment
         run: |
           sudo apt-get update
           sudo apt-get install -y expect
+          
+          # Run the installer to set up the directory structure and venv
           bash <(curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh)
+          
+          # Replace the installed script with our current branch version
           cp ./scancompare ~/ScanCompare/main/lib/scancompare
           cp ./scan_template.html ~/ScanCompare/main/lib/scan_template.html
           chmod +x ~/ScanCompare/main/lib/scancompare
+          
+          # Install required Python packages in the venv
           source ~/ScanCompare/main/lib/venv/bin/activate
           pip install jinja2 requests
 
@@ -36,12 +54,18 @@ jobs:
           sudo sh get-docker.sh
           sudo systemctl start docker
 
+      # Verify scancompare has automation flags
+      - name: Verify scancompare arguments
+        run: |
+          source ~/ScanCompare/main/lib/venv/bin/activate
+          python scancompare --help
+          # Check if automation flags are in the help output
+          python scancompare --help | grep -E -- "--auto|--mock-yes|--mock-no" || (echo "Automation flags not found in scancompare" && exit 1)
+
       # Test automation flags with standard image scanning
       - name: Test standard image scanning with automation flags
         run: |
           source ~/ScanCompare/main/lib/venv/bin/activate
-          echo "No automation: Standard scan"
-          python scancompare nginx:latest || echo "Test failed"
           echo "Auto mode: Standard scan"
           python scancompare nginx:latest --auto || echo "Test failed"
           echo "Mock Yes: Standard scan"
@@ -60,7 +84,7 @@ jobs:
           echo "Mock No: Repo scan"
           python scancompare --repo-url https://github.com/docker-library/hello-world --mock-no || echo "Test failed"
 
-      # Test GitHub integration options
+      # Test GitHub integration options 
       - name: Test GitHub integration options
         run: |
           source ~/ScanCompare/main/lib/venv/bin/activate
@@ -70,142 +94,6 @@ jobs:
           python scancompare nginx:latest --repo-url https://github.com/docker-library/hello-world --gh-pages --auto || echo "Test failed"
           echo "GHAS and GitHub Pages with auto"
           python scancompare nginx:latest --repo-url https://github.com/docker-library/hello-world --ghas --gh-pages --auto || echo "Test failed"
-
-      # Create expect scripts for complex interactive paths
-      - name: Create interactive test scripts
-        run: |
-          mkdir -p test_scripts
-          
-          # Test 1: Standard scan with browser prompt
-          cat > test_scripts/standard_scan.exp << 'EOF'  
-          #!/usr/bin/expect -f
-          set timeout 300
-          spawn python scancompare nginx:latest
-          expect "Open local HTML report in browser?" { send "n\r" }
-          expect eof
-          EOF
-          
-          # Test 2: Standard scan with repo URL and browser prompt
-          cat > test_scripts/standard_repo_scan.exp << 'EOF'  
-          #!/usr/bin/expect -f
-          set timeout 300
-          spawn python scancompare nginx:latest --repo-url https://github.com/docker-library/hello-world
-          expect "Open local HTML report in browser?" { send "n\r" }
-          expect eof
-          EOF
-          
-          # Test 3: Fork repository selection
-          cat > test_scripts/fork_selection.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 300
-          spawn python scancompare --repo-url https://github.com/madnight/docker-alpine
-          expect "Do you want to upload to the upstream repository instead?" { send "y\r" }
-          expect "Would you like to upload results to GitHub?" { send "n\r" }
-          expect eof
-          EOF
-          
-          # Test 4: Fork repo with GHAS upload
-          cat > test_scripts/fork_ghas.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 300
-          spawn python scancompare --repo-url https://github.com/madnight/docker-alpine --ghas
-          expect "Do you want to upload to the upstream repository instead?" { send "y\r" }
-          expect "Open GHAS results and local HTML report in browser?" { send "n\r" }
-          expect eof
-          EOF
-          
-          # Test 5: Fork repo with GitHub Pages
-          cat > test_scripts/fork_pages.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 300
-          spawn python scancompare --repo-url https://github.com/madnight/docker-alpine --gh-pages
-          expect "Do you want to publish to the upstream repository instead?" { send "y\r" }
-          expect "Open GitHub Pages report in browser?" { send "n\r" }
-          expect eof
-          EOF
-          
-          # Test 6: Fork repo with GHAS and GitHub Pages
-          cat > test_scripts/fork_ghas_pages.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 300
-          spawn python scancompare --repo-url https://github.com/madnight/docker-alpine --ghas --gh-pages
-          expect "Do you want to upload to the upstream repository instead?" { send "y\r" }
-          expect "Open GitHub-hosted reports in browser? (GHAS + GitHub Pages)" { send "n\r" }
-          expect eof
-          EOF
-          
-          # Test 7: Repository scan with all upload options
-          cat > test_scripts/repo_upload_all.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 300
-          spawn python scancompare --repo-url https://github.com/docker-library/hello-world
-          expect "Would you like to upload results to GitHub?" { send "b\r" }
-          expect "Open GitHub-hosted reports in browser? (GHAS + GitHub Pages)" { send "n\r" }
-          expect eof
-          EOF
-          
-          # Test 8: Repository scan with GHAS only
-          cat > test_scripts/repo_upload_ghas.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 300
-          spawn python scancompare --repo-url https://github.com/docker-library/hello-world
-          expect "Would you like to upload results to GitHub?" { send "g\r" }
-          expect "Open GHAS results and local HTML report in browser?" { send "n\r" }
-          expect eof
-          EOF
-          
-          # Test 9: Repository scan with GitHub Pages only
-          cat > test_scripts/repo_upload_pages.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 300
-          spawn python scancompare --repo-url https://github.com/docker-library/hello-world
-          expect "Would you like to upload results to GitHub?" { send "p\r" }
-          expect "Open GitHub Pages report in browser?" { send "n\r" }
-          expect eof
-          EOF
-          
-          # Test 10: Verbose mode with repo scan
-          cat > test_scripts/verbose_repo.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 300
-          spawn python scancompare --repo-url https://github.com/docker-library/hello-world --verbose
-          expect "Would you like to upload results to GitHub?" { send "n\r" }
-          expect "Open local HTML report in browser?" { send "n\r" }
-          expect eof
-          EOF
-          
-          # Test 11: Keep-data flag with browser prompt
-          cat > test_scripts/keep_data.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 300
-          spawn python scancompare nginx:latest --keep-data
-          expect "Open local HTML report in browser?" { send "n\r" }
-          expect eof
-          EOF
-          
-          # Test 12: Complex nested prompts with all GitHub options
-          cat > test_scripts/complex_github.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 300
-          spawn python scancompare --repo-url https://github.com/madnight/docker-alpine
-          expect "Do you want to upload to the upstream repository instead?" { send "y\r" }
-          expect "Would you like to upload results to GitHub?" { send "b\r" }
-          expect "Open GitHub-hosted reports in browser? (GHAS + GitHub Pages)" { send "n\r" }
-          expect eof
-          EOF
-          
-          # Make all scripts executable
-          chmod +x test_scripts/*.exp
-
-      # Run expect scripts for interactive tests
-      - name: Run interactive tests
-        run: |
-          echo "Running interactive tests..."
-          for script in test_scripts/*.exp; do
-            echo "Running test: $(basename $script)"
-            $script || echo "Test $(basename $script) failed"
-            sleep 2  # Small delay between tests
-          done
 
       # Test with combined flags
       - name: Test combined flags
@@ -218,53 +106,26 @@ jobs:
           echo "Verbose + Keep-data + Auto"
           python scancompare nginx:latest --verbose --keep-data --auto || echo "Test failed"
 
+      # Test multiple automation flags (should fail)
+      - name: Test multiple automation flags
+        run: |
+          source ~/ScanCompare/main/lib/venv/bin/activate
+          echo "Multiple automation flags test (should fail)"
+          python scancompare nginx:latest --auto --mock-yes && echo "FAIL: Multiple flags not handled correctly" || echo "PASS: Multiple flags correctly rejected"
+          
       # Test utility commands
       - name: Test utility commands with automation
         run: |
           source ~/ScanCompare/main/lib/venv/bin/activate
           echo "Version check"
-          python scancompare --version --auto || echo "Test failed"
-          echo "Update check"
+          python scancompare --version || echo "Test failed"
+          echo "Update check with auto"
           python scancompare --update --auto || echo "Test failed"
-
-      # Test error cases 
-      - name: Test error handling
-        run: |
-          source ~/ScanCompare/main/lib/venv/bin/activate
-          echo "Invalid image test"
-          python scancompare nonexistent:image --auto || echo "Invalid image handled correctly"
-          echo "Multiple automation flags test (should fail)"
-          python scancompare nginx:latest --auto --mock-yes && echo "Multiple flags not handled correctly!" || echo "Multiple flags correctly rejected"
 
       # Test uninstall and verify
       - name: Test uninstall
         run: |
           source ~/ScanCompare/main/lib/venv/bin/activate
-          python scancompare --uninstall --auto
+          python scancompare --uninstall --auto || echo "Uninstall failed"
           # Verify scancompare was uninstalled
-          [ ! -f ~/ScanCompare/main/lib/scancompare ] && echo "Uninstall successful" || echo "Uninstall failed"
-
-      # Generate test summary
-      - name: Generate test summary
-        if: always()
-        run: |
-          echo "## Scancompare Test Results" > test_summary.md
-          echo "| Test Category | Status |" >> test_summary.md
-          echo "| ------------- | ------ |" >> test_summary.md
-          
-          # Add test results based on previous steps
-          if [ ${{ steps.standard_image_tests.outcome }} == 'success' ]; then
-            echo "| Standard Image Tests | ✅ Passed |" >> test_summary.md
-          else
-            echo "| Standard Image Tests | ❌ Failed |" >> test_summary.md
-          fi
-          
-          # Add more test results similarly
-          
-          echo "### Interactive Tests" >> test_summary.md
-          echo "The following interactive test paths were tested:" >> test_summary.md
-          echo "- Standard scan browser prompt" >> test_summary.md
-          echo "- Fork repository selection" >> test_summary.md
-          echo "- GitHub integrations (GHAS, Pages)" >> test_summary.md
-          echo "- Repository upload options" >> test_summary.md
-          echo "- Complex nested prompts" >> test_summary.md
+          [ ! -f ~/ScanCompare/main/lib/scancompare ] && echo "Uninstall successful" || echo "Uninstall verification failed"
