@@ -358,6 +358,21 @@ def get_version(tool):
 
     return "unknown"
 
+def cleanup_old_reports(max_reports=5):
+    """
+    Keeps only the N most recent HTML reports in scan_reports/, removes the older ones.
+    """
+    try:
+        html_files = sorted(
+            [f for f in os.listdir(SCAN_REPORTS_DIR) if f.endswith(".html")],
+            key=lambda f: os.path.getmtime(os.path.join(SCAN_REPORTS_DIR, f)),
+            reverse=True
+        )
+        for old_file in html_files[max_reports:]:
+            os.remove(os.path.join(SCAN_REPORTS_DIR, old_file))
+    except Exception as e:
+        print(f"⚠️ Failed to clean up old HTML reports: {e}")
+
 def run_scan(tool, image, output_path, verbose=False):
     scan_command = {
         "trivy": ["trivy", "image", "--format", "json", "-o", str(output_path), image],
@@ -1948,6 +1963,8 @@ def main():
                     html_path = generate_html_report(image_tag, trivy_data, grype_data, shared, only_trivy, only_grype,
                                                     get_version("trivy"), get_version("grype"))
                     print(f"\n✅ Local HTML report saved: {html_path}")
+                    if not args.keep_data:
+                        cleanup_old_reports(max_reports=5)
 
                     handle_post_scan_prompts(
                         image_tag=image_tag,
@@ -2017,6 +2034,8 @@ def main():
             html_path = generate_html_report(image, trivy_data, grype_data, shared, only_trivy, only_grype,
                                             get_version("trivy"), get_version("grype"))
             print(f"\n✅ Local HTML report saved: {html_path}")
+            if not args.keep_data:
+                cleanup_old_reports(max_reports=5)
 
             handle_post_scan_prompts(
                 image_tag=image,
