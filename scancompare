@@ -128,42 +128,51 @@ def check_latest_version(only_check=False):
         return
 
     try:
-        # Silent check for updates - don't print anything
-        urlretrieve(SCRIPT_URL, get_script_path() + ".tmp")
+        script_path = get_script_path()
+        tmp_path = script_path + ".tmp"
 
-        with open(get_script_path() + ".tmp", 'r') as f:
+        # Download the latest version of the script
+        urlretrieve(SCRIPT_URL, tmp_path)
+
+        with open(tmp_path, 'r') as f:
             new_code = f.read()
-            latest_match = re.search(r'VERSION\s*=\s*[\'"]([^\'"]+)[\'"]', new_code)
-            if not latest_match:
-                raise ValueError("Could not determine latest version from script.")
 
-            latest = latest_match.group(1)
-            current = get_current_version()
+        # More robust regex for version extraction
+        latest_match = re.search(r'VERSION\s*=\s*["\']([\d\.]+)["\']', new_code)
+        if not latest_match:
+            raise ValueError("Could not determine latest version from downloaded script.")
 
-            if latest == current:
-                # No need to update, silently return
-                os.remove(get_script_path() + ".tmp")
-                return
+        latest = latest_match.group(1)
+        current = get_current_version()
 
-            # Always update automatically, regardless of only_check
-            print(f"🔄 Updating scancompare from {current} to {latest}...")
-            update_script(new_code)
-            os.remove(get_script_path() + ".tmp")
-            print("♻️ Restarting with updated version...")
-            script_path = get_script_path()
-            os.execve(
-                sys.executable,
-                [sys.executable, script_path] + sys.argv[1:],
-                {**os.environ, "SCANCOMPARE_UPDATED": "1"}
-            )
+        if latest == current:
+            if not only_check:
+                print(f"✅ You are already running the latest version: {current}")
+            os.remove(tmp_path)
+            return
+
+        # Only show if it's an explicit --update
+        if not only_check:
+            print(f"🔄 Updating scancompare from {current} → {latest}...")
+
+        update_script(new_code)
+        os.remove(tmp_path)
+
+        print("♻️ Restarting with updated version...")
+        os.execve(
+            sys.executable,
+            [sys.executable, script_path] + sys.argv[1:],
+            {**os.environ, "SCANCOMPARE_UPDATED": "1"}
+        )
 
     except Exception as e:
-        # Silent failure, don't output anything
         try:
-            os.remove(get_script_path() + ".tmp")
-        except:
+            os.remove(tmp_path)
+        except Exception:
             pass
-        return
+
+        if not only_check:
+            print(f"❌ Update check failed: {e}")
 
 def update_script(new_code):
     try:
