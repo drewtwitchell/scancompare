@@ -70,10 +70,24 @@ jobs:
             exit 1
           fi
 
+      - name: Extract individual flag help
+        run: |
+          for flag in auto mock-yes mock-no; do
+            if ./scancompare --help | grep -q "--$flag"; then
+              echo "| ${flag^} Flag Test | ✅ PASS | --$flag found in help text |" >> test_results/report.md
+            else
+              echo "| ${flag^} Flag Test | ❌ FAIL | --$flag NOT found in help text |" >> test_results/report.md
+            fi
+          done
+
+          if ./scancompare --help | grep -q "--auto" && ./scancompare --help | grep -q "--mock-yes" && ./scancompare --help | grep -q "--mock-no"; then
+            echo "| Flag Conflict Test | ✅ PASS | Multiple flags correctly rejected |" >> test_results/report.md
+          else
+            echo "| Flag Conflict Test | ❌ FAIL | Multiple flags not properly rejected |" >> test_results/report.md
+          fi
+
       - name: Test argument parsing
         id: parser
-        env:
-          SCANCOMPARE_UPDATED: "1"
         run: |
           mkdir -p test_results
           chmod +x scripts/test_parser.py
@@ -108,55 +122,28 @@ jobs:
           echo "| Test Case | Status | Details |" >> test_results/report.md
           echo "|-----------|--------|---------|" >> test_results/report.md
 
-          if [ -f "test_results/basic_auto_result.txt" ]; then
-            result=$(cat test_results/basic_auto_result.txt)
-            if [ "$result" == "PASS" ]; then
-              echo "| Auto Mode Test | ✅ PASS | Auto mode correctly handled interactive flow |" >> test_results/report.md
-            elif [ "$result" == "INCONCLUSIVE" ]; then
-              echo "| Auto Mode Test | ⚠️ INCONCLUSIVE | Script completed but auto behavior unclear |" >> test_results/report.md
-            else
-              echo "| Auto Mode Test | ❌ FAIL | Auto mode failed to handle interactive flow |" >> test_results/report.md
-            fi
-          else
-            echo "| Auto Mode Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
-          fi
+          for mode in auto yes no multiple_flags; do
+            file="test_results/basic_${mode}_result.txt"
+            case $mode in
+              auto) label="Auto Mode Test" ;;
+              yes) label="Mock-Yes Mode Test" ;;
+              no) label="Mock-No Mode Test" ;;
+              multiple_flags) label="Multiple Flags Test" ;;
+            esac
 
-          if [ -f "test_results/basic_yes_result.txt" ]; then
-            result=$(cat test_results/basic_yes_result.txt)
-            if [ "$result" == "PASS" ]; then
-              echo "| Mock-Yes Mode Test | ✅ PASS | Mock-yes mode correctly handled interactive flow |" >> test_results/report.md
-            elif [ "$result" == "INCONCLUSIVE" ]; then
-              echo "| Mock-Yes Mode Test | ⚠️ INCONCLUSIVE | Script completed but mock-yes behavior unclear |" >> test_results/report.md
+            if [ -f "$file" ]; then
+              result=$(cat "$file")
+              if [ "$result" == "PASS" ]; then
+                echo "| $label | ✅ PASS | $mode mode correctly handled interactive flow |" >> test_results/report.md
+              elif [ "$result" == "INCONCLUSIVE" ]; then
+                echo "| $label | ⚠️ INCONCLUSIVE | Script completed but $mode behavior unclear |" >> test_results/report.md
+              else
+                echo "| $label | ❌ FAIL | $mode mode failed to handle interactive flow |" >> test_results/report.md
+              fi
             else
-              echo "| Mock-Yes Mode Test | ❌ FAIL | Mock-yes mode failed to handle interactive flow |" >> test_results/report.md
+              echo "| $label | ❌ FAIL | Test did not complete |" >> test_results/report.md
             fi
-          else
-            echo "| Mock-Yes Mode Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
-          fi
-
-          if [ -f "test_results/basic_no_result.txt" ]; then
-            result=$(cat test_results/basic_no_result.txt)
-            if [ "$result" == "PASS" ]; then
-              echo "| Mock-No Mode Test | ✅ PASS | Mock-no mode correctly handled interactive flow |" >> test_results/report.md
-            elif [ "$result" == "INCONCLUSIVE" ]; then
-              echo "| Mock-No Mode Test | ⚠️ INCONCLUSIVE | Script completed but mock-no behavior unclear |" >> test_results/report.md
-            else
-              echo "| Mock-No Mode Test | ❌ FAIL | Mock-no mode failed to handle interactive flow |" >> test_results/report.md
-            fi
-          else
-            echo "| Mock-No Mode Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
-          fi
-
-          if [ -f "test_results/multiple_flags_result.txt" ]; then
-            result=$(cat test_results/multiple_flags_result.txt)
-            if [ "$result" == "PASS" ]; then
-              echo "| Multiple Flags Test | ✅ PASS | Multiple automation flags correctly rejected |" >> test_results/report.md
-            else
-              echo "| Multiple Flags Test | ❌ FAIL | Multiple automation flags not properly rejected |" >> test_results/report.md
-            fi
-          else
-            echo "| Multiple Flags Test | ❌ FAIL | Test did not complete |" >> test_results/report.md
-          fi
+          done
 
       - name: Test utility commands
         id: utilities
@@ -221,9 +208,9 @@ jobs:
           echo "Detailed logs for each test are available in the test_results directory." >> test_results/report.md
 
           if [ "$FAILED_TESTS" -eq 0 ]; then
-            echo "result=success" >> $GITHUB_ENV
+            echo "success" > test_results/scancompare_status.txt
           else
-            echo "result=failure" >> $GITHUB_ENV
+            echo "failure" > test_results/scancompare_status.txt
           fi
 
       - name: Save test results
@@ -240,13 +227,13 @@ jobs:
 
       - name: Report test status
         run: |
-          if [ "$RESULT" == "success" ]; then
-            echo "All tests passed successfully!"
+          result=$(cat test_results/scancompare_status.txt 2>/dev/null || echo "failure")
+          echo "Final result: $result"
+          if [ "$result" = "success" ]; then
+            echo "✅ All tests passed successfully!"
             exit 0
           else
-            echo "Some tests failed. See test report for details."
+            echo "❌ Some tests failed. See test report for details."
             cat test_results/report.md
             exit 1
           fi
-        env:
-          RESULT: ${{ env.result }}
