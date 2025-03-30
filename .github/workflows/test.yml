@@ -57,17 +57,10 @@ jobs:
           echo '| Test Case | Status | Details |' >> test_results/report.md
           echo '|-----------|--------|---------|' >> test_results/report.md
 
-      - name: Copy existing test scripts
+      - name: Prepare test scripts
         run: |
           # Copy all expect scripts to test_scripts directory
           cp scripts/expect/*.exp test_scripts/
-          chmod +x test_scripts/*.exp
-
-      - name: Prepare additional test scripts
-        run: |
-          # Instead of creating Expect scripts with heredoc, pull them from custom script directory
-          cp .github/test_scripts/multiple_flags.exp test_scripts/
-          cp .github/test_scripts/test_final_uninstall.exp test_scripts/
           chmod +x test_scripts/*.exp
 
       - name: Verify scancompare script
