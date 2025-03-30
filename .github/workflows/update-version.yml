@@ -32,22 +32,10 @@ jobs:
           sed -i "s/^# scancompare version .*/# scancompare version $VERSION/" scancompare
           sed -i "s/^VERSION = .*/VERSION = \"$VERSION\"/" scancompare
 
-      - name: Install Ruby + GitHub Changelog Generator
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ruby ruby-dev build-essential
-          gem install github_changelog_generator
-
-      - name: Generate CHANGELOG.md
-        run: |
-          github_changelog_generator drewtwitchell/scancompare \
-            --token "${{ secrets.GITHUB_TOKEN }}" \
-            --future-release $VERSION
-
-      - name: Commit and push version bump + changelog
+      - name: Commit and push version bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scancompare CHANGELOG.md
-          git commit -m "🔖 Bump version to $VERSION and update CHANGELOG"
+          git add scancompare
+          git commit -m "🔖 Bump version to $VERSION"
           git push
