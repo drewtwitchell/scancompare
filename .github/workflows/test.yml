@@ -10,9 +10,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      # Set this to prevent the script from trying to update itself
       SCANCOMPARE_UPDATED: "1"
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,11 +29,8 @@ jobs:
 
       - name: Install Trivy and Grype
         run: |
-          # Install Trivy
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.42.0
           trivy --version
-          
-          # Install Grype
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
           grype --version
 
@@ -192,13 +188,10 @@ jobs:
           echo "Contents of report.md:"
           cat test_results/report.md
 
-          TOTAL_ROWS=$(grep -c "^|" test_results/report.md || echo 0)
-          HEADER_ROWS=$(grep -c "^|---" test_results/report.md || echo 0)
-          TOTAL_TESTS=$((TOTAL_ROWS - HEADER_ROWS))
+          TOTAL_TESTS=$(grep "^|" test_results/report.md | grep -vE '\-\-\-|\| Test Case ' | wc -l)
           PASSED_TESTS=$(grep -c "✅ PASS" test_results/report.md || echo 0)
           INCONCLUSIVE_TESTS=$(grep -c "⚠️ INCONCLUSIVE" test_results/report.md || echo 0)
-          FAILED_TESTS=$((TOTAL_TESTS - PASSED_TESTS - INCONCLUSIVE_TESTS))
-          if [ "${FAILED_TESTS:-0}" -lt 0 ]; then FAILED_TESTS=0; fi
+          FAILED_TESTS=$(grep -c "❌ FAIL" test_results/report.md || echo 0)
 
           echo "" >> test_results/report.md
           echo "## Test Summary" >> test_results/report.md
@@ -208,14 +201,14 @@ jobs:
           echo "- Inconclusive: $INCONCLUSIVE_TESTS" >> test_results/report.md
           echo "- Failed: $FAILED_TESTS" >> test_results/report.md
 
-          if [ "${FAILED_TESTS:-0}" -gt 0 ]; then
+          if [ "$FAILED_TESTS" -gt 0 ]; then
             echo "" >> test_results/report.md
             echo "### Failed Tests" >> test_results/report.md
             echo "" >> test_results/report.md
             grep "❌ FAIL" test_results/report.md >> test_results/report.md || echo "- Error listing failed tests" >> test_results/report.md
           fi
 
-          if [ "${INCONCLUSIVE_TESTS:-0}" -gt 0 ]; then
+          if [ "$INCONCLUSIVE_TESTS" -gt 0 ]; then
             echo "" >> test_results/report.md
             echo "### Inconclusive Tests" >> test_results/report.md
             echo "" >> test_results/report.md
@@ -227,8 +220,7 @@ jobs:
           echo "" >> test_results/report.md
           echo "Detailed logs for each test are available in the test_results directory." >> test_results/report.md
 
-          FAIL_COUNT=$(grep -c "❌ FAIL" test_results/report.md || echo 0)
-          if [ "${FAIL_COUNT:-0}" -eq 0 ]; then
+          if [ "$FAILED_TESTS" -eq 0 ]; then
             echo "result=success" >> $GITHUB_ENV
           else
             echo "result=failure" >> $GITHUB_ENV
@@ -248,7 +240,7 @@ jobs:
 
       - name: Report test status
         run: |
-          if [ "$result" == "success" ]; then
+          if [ "$RESULT" == "success" ]; then
             echo "All tests passed successfully!"
             exit 0
           else
@@ -257,4 +249,4 @@ jobs:
             exit 1
           fi
         env:
-          result: ${{ env.result }}
+          RESULT: ${{ env.result }}
