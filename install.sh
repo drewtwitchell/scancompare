@@ -12,9 +12,9 @@ DEFAULT_SCRIPT_SOURCE="https://raw.githubusercontent.com/drewtwitchell/scancompa
 # Try to extract GitHub user and repo from local .git if available
 if git remote get-url origin &> /dev/null; then
   REMOTE_URL=$(git remote get-url origin)
-  # Fixed sed pattern for macOS compatibility
-  GITHUB_USER=$(echo "$REMOTE_URL" | sed -E 's|.*github.com[:\/]([^\/]*)/.*|\1|')
-  GITHUB_REPO=$(echo "$REMOTE_URL" | sed -E 's|.*/([^\/]*)(\.git)?$|\1|')
+  # Extract user with different pattern for compatibility
+  GITHUB_USER=$(echo "$REMOTE_URL" | sed -E 's|.*github.com[:/]([^/]*)/.*|\1|')
+  GITHUB_REPO=$(echo "$REMOTE_URL" | sed -E 's|.*/([^/.]*)(.git)?$|\1|')
 else
   # Fallback to extracting from default URL
   SCRIPT_SOURCE="${SCRIPT_SOURCE:-$DEFAULT_SCRIPT_SOURCE}"
@@ -24,15 +24,13 @@ fi
 
 # Fallback to defaults if extraction fails
 if [[ -z "$GITHUB_USER" ]]; then
-  # Fallback to default user if extraction fails
   GITHUB_USER="drewtwitchell"
-  [[ $VERBOSE -eq 1 ]] && echo "Failed to extract GitHub user from git remote, using default: $GITHUB_USER"
+  [[ $VERBOSE -eq 1 ]] && echo "Failed to extract GitHub user, using default: $GITHUB_USER"
 fi
 
 if [[ -z "$GITHUB_REPO" ]]; then
-  # Fallback to default repo if extraction fails
   GITHUB_REPO="scancompare"
-  [[ $VERBOSE -eq 1 ]] && echo "Failed to extract GitHub repo from git remote, using default: $GITHUB_REPO"
+  [[ $VERBOSE -eq 1 ]] && echo "Failed to extract GitHub repo, using default: $GITHUB_REPO"
 fi
 
 USER_ROOT="$HOME/ScanCompare"
@@ -103,9 +101,11 @@ install_python_and_tools() {
   fi
 
   if [[ ! -d "$VENV_DIR" ]]; then
+    tool_progress "🐍 Creating" "Python virtual environment"
     python3 -m venv "$VENV_DIR" &> /dev/null || {
       echo "❌ Failed to create virtual environment"; exit 1;
     }
+    tool_done
   fi
 
   source "$VENV_DIR/bin/activate"
@@ -166,13 +166,6 @@ fi
 # Check if we got an actual script file
 if [[ ! -s "$PYTHON_SCRIPT" ]]; then
   printf "❌ Downloaded file is empty. Repository may be private or URL is incorrect.\n"
-  exit 1
-fi
-
-# Check if the script contains expected content
-if ! grep -q "scancompare version" "$PYTHON_SCRIPT"; then
-  printf "❌ Downloaded script does not appear to be valid.\n"
-  printf "   Content: $(head -n 3 "$PYTHON_SCRIPT")\n"
   exit 1
 fi
 
