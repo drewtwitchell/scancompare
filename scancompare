@@ -1694,6 +1694,8 @@ def main():
     global args
     global cloned_repo_dir
 
+    args = handle_cli_args()
+
     ensure_directory_structure()
 
     if args.uninstall:
