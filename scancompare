@@ -1808,10 +1808,16 @@ def main():
     # Capture the command-line arguments
     args = handle_cli_args()
 
-    # Ensure that necessary directories are created
+    # ✅ Always check for updates *before* anything else
+    if args.update:
+        check_latest_version(only_check=False)
+        return
+    else:
+        check_latest_version(only_check=True)
+
+    # Now continue with directory setup and command handling
     ensure_directory_structure()
 
-    # Handle uninstall, version check, and update check
     if args.uninstall:
         uninstall_scancompare()
         return
@@ -1819,12 +1825,6 @@ def main():
     if args.version:
         print(f"📦 scancompare version {get_current_version()}")
         return
-
-    if args.update:
-        check_latest_version()
-        return
-    else:
-        check_latest_version(only_check=True)
 
     # If neither image nor repo URL is provided, show usage and exit
     if not args.image and not args.repo_url:
