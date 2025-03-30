@@ -196,17 +196,30 @@ def get_script_path():
     except NameError:
         return sys.argv[0]
 
+from pathlib import Path
+import shutil
+import sys
+
+# Define all relevant paths (must match installer layout)
+USER_ROOT = Path.home() / "ScanCompare"
+MAIN_DIR = USER_ROOT / "main"
+INSTALL_BIN = MAIN_DIR / "bin"
+INSTALL_LIB = MAIN_DIR / "lib"
+SCAN_REPORTS_DIR = USER_ROOT / "scan_reports"
+TEMP_DIR = USER_ROOT / "temp"
+BACKUP_DIR = USER_ROOT / "backups"
+LOG_FILE = USER_ROOT / "scancompare.log"
+
 def uninstall_scancompare():
     print("🧹 Uninstalling scancompare...")
 
     paths_removed = False
-    lib_dir = Path.home() / ".local" / "lib" / "scancompare"
-    script_path = lib_dir / "scancompare"
+    script_path = INSTALL_LIB / "scancompare"
     wrapper_path = Path.home() / ".local" / "bin" / "scancompare"
-    venv_path = lib_dir / "venv"
-    template_path = lib_dir / "scan_template.html"
+    venv_path = INSTALL_LIB / "venv"
+    template_path = INSTALL_LIB / "scan_template.html"
 
-    # Removing script and wrapper paths
+    # Removing script, wrapper, and template
     for path in [script_path, wrapper_path, template_path]:
         if path.exists():
             print(f"🗑️  Removing {path}...", end=" ")
@@ -217,7 +230,16 @@ def uninstall_scancompare():
             except Exception as e:
                 print(f"❌ Failed to remove {path}: {e}")
 
-    # Removing virtual environment
+    # Remove symlink just in case
+    if wrapper_path.is_symlink():
+        try:
+            wrapper_path.unlink()
+            print("🔗 Removed symlink from ~/.local/bin ✔")
+            paths_removed = True
+        except Exception as e:
+            print(f"❌ Failed to remove symlink: {e}")
+
+    # Remove virtual environment
     if venv_path.exists() and venv_path.is_dir():
         print("🧹 Removing virtual environment...", end=" ")
         try:
@@ -227,47 +249,28 @@ def uninstall_scancompare():
         except Exception as e:
             print(f"❌ Failed to remove virtual environment: {e}")
 
-    # Removing scan_reports directory
-    if Path(SCAN_REPORTS_DIR).exists():
-        print("🗑️  Removing scan reports...", end=" ")
-        try:
-            shutil.rmtree(SCAN_REPORTS_DIR)
-            print("✔")
-            paths_removed = True
-        except Exception as e:
-            print(f"❌ Failed to remove scan reports: {e}")
+    # Remove scan_reports, temp, backup directories
+    for path in [SCAN_REPORTS_DIR, TEMP_DIR, BACKUP_DIR]:
+        if path.exists() and path.is_dir():
+            print(f"🗑️  Removing {path.name} directory...", end=" ")
+            try:
+                shutil.rmtree(path)
+                print("✔")
+                paths_removed = True
+            except Exception as e:
+                print(f"❌ Failed to remove {path.name}: {e}")
 
-    # Removing temp directory
-    if Path(TEMP_DIR).exists():
-        print("🗑️  Removing temp directory...", end=" ")
-        try:
-            shutil.rmtree(TEMP_DIR)
-            print("✔")
-            paths_removed = True
-        except Exception as e:
-            print(f"❌ Failed to remove temp directory: {e}")
-
-    # Removing backup directory
-    if Path(BACKUP_DIR).exists():
-        print("🗑️  Removing backup directory...", end=" ")
-        try:
-            shutil.rmtree(BACKUP_DIR)
-            print("✔")
-            paths_removed = True
-        except Exception as e:
-            print(f"❌ Failed to remove backup directory: {e}")
-
-    # Removing log file
-    if Path(LOG_FILE).exists():
+    # Remove log file
+    if LOG_FILE.exists():
         print("🗑️  Removing log file...", end=" ")
         try:
-            Path(LOG_FILE).unlink()
+            LOG_FILE.unlink()
             print("✔")
             paths_removed = True
         except Exception as e:
             print(f"❌ Failed to remove log file: {e}")
 
-    # Cleaning up shell config in profile files
+    # Clean shell profiles
     profile_files = [".zshrc", ".bashrc", ".profile", ".bash_profile", ".zprofile"]
     for profile in profile_files:
         full_path = Path.home() / profile
@@ -284,27 +287,28 @@ def uninstall_scancompare():
             except Exception as e:
                 print(f"❌ Failed to clean up {profile}: {e}")
 
-    # Remove the lib directory if it's empty
-    if lib_dir.exists() and lib_dir.is_dir():
-        try:
-            if not any(lib_dir.iterdir()):
-                lib_dir.rmdir()
-                print("🗑️  Removing empty lib directory... ✔")
-        except Exception as e:
-            print(f"❌ Failed to remove lib directory: {e}")
+    # Remove INSTALL_BIN, INSTALL_LIB, MAIN_DIR if empty
+    for path in [INSTALL_BIN, INSTALL_LIB, MAIN_DIR]:
+        if path.exists() and path.is_dir():
+            try:
+                if not any(path.iterdir()):
+                    path.rmdir()
+                    print(f"🗑️  Removing empty {path.name} directory... ✔")
+            except Exception as e:
+                print(f"❌ Failed to remove {path.name} directory: {e}")
 
-    # Remove USER_ROOT if it's empty
-    if Path(USER_ROOT).exists() and Path(USER_ROOT).is_dir():
+    # Remove USER_ROOT if empty
+    if USER_ROOT.exists() and USER_ROOT.is_dir():
         try:
-            if not any(Path(USER_ROOT).iterdir()):
-                Path(USER_ROOT).rmdir()
+            if not any(USER_ROOT.iterdir()):
+                USER_ROOT.rmdir()
                 print("🗑️  Removing empty ScanCompare directory... ✔")
         except Exception as e:
             print(f"❌ Failed to remove ScanCompare directory: {e}")
 
     if paths_removed:
         print("\n✅ scancompare successfully uninstalled.")
-        print("\nℹ️  You may need to restart your terminal for changes to take effect.")
+        print("ℹ️  You may need to restart your terminal for changes to take effect.")
     else:
         print("\nℹ️  scancompare was not found or already uninstalled.")
 
