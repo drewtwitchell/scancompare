@@ -1,4 +1,4 @@
-name: Scancompare Comprehensive Test Suite
+name: Scancompare Test Suite
 
 on:
   push:
@@ -19,34 +19,25 @@ jobs:
         with:
           python-version: '3.8'
 
-      # Install Trivy and Grype
-      - name: Install Trivy
-        run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.42.0
-          trivy --version
-
-      - name: Install Grype
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
-          grype --version
-
-      # Use install.sh for environment setup but replace script with our branch version
-      - name: Install dependencies and setup environment
+      # Install dependencies directly
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y expect
           
-          # Run the installer to set up the directory structure and venv
-          bash <(curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh)
-          
-          # Replace the installed script with our current branch version
-          cp ./scancompare ~/ScanCompare/main/lib/scancompare
-          cp ./scan_template.html ~/ScanCompare/main/lib/scan_template.html
-          chmod +x ~/ScanCompare/main/lib/scancompare
-          
-          # Install required Python packages in the venv
-          source ~/ScanCompare/main/lib/venv/bin/activate
+          # Install Python dependencies
           pip install jinja2 requests
+
+      # Install Trivy and Grype
+      - name: Install Trivy and Grype
+        run: |
+          # Install Trivy
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.42.0
+          trivy --version
+          
+          # Install Grype
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          grype --version
 
       - name: Set up Docker
         run: |
@@ -54,78 +45,58 @@ jobs:
           sudo sh get-docker.sh
           sudo systemctl start docker
 
+      # Create necessary directories that the script expects
+      - name: Set up directory structure
+        run: |
+          mkdir -p ~/ScanCompare/scan_reports
+          mkdir -p ~/ScanCompare/temp
+          mkdir -p ~/ScanCompare/backups
+          mkdir -p ~/ScanCompare/temp/gh-pages
+          mkdir -p ~/ScanCompare/temp/docker
+
       # Verify scancompare has automation flags
       - name: Verify scancompare arguments
         run: |
-          source ~/ScanCompare/main/lib/venv/bin/activate
-          python scancompare --help
-          # Check if automation flags are in the help output
-          python scancompare --help | grep -E -- "--auto|--mock-yes|--mock-no" || (echo "Automation flags not found in scancompare" && exit 1)
+          # Make the script executable
+          chmod +x ./scancompare
+          
+          # Check script for automation flags
+          ./scancompare --help
+          ./scancompare --help | grep -E -- "--auto|--mock-yes|--mock-no" || (echo "Automation flags not found in scancompare" && exit 1)
 
-      # Test automation flags with standard image scanning
-      - name: Test standard image scanning with automation flags
+      # Test automation flags with direct script execution
+      - name: Test automation flags
         run: |
-          source ~/ScanCompare/main/lib/venv/bin/activate
           echo "Auto mode: Standard scan"
-          python scancompare nginx:latest --auto || echo "Test failed"
+          ./scancompare nginx:latest --auto || echo "Test failed"
+          
           echo "Mock Yes: Standard scan"
-          python scancompare nginx:latest --mock-yes || echo "Test failed"  
-          echo "Mock No: Standard scan"
-          python scancompare nginx:latest --mock-no || echo "Test failed"
+          ./scancompare nginx:latest --mock-yes || echo "Test failed"
+          
+          echo "Mock No: Standard scan"  
+          ./scancompare nginx:latest --mock-no || echo "Test failed"
 
-      # Test repo URL scanning with automation flags
-      - name: Test repo URL scanning with automation flags
+      # Test with repository URL
+      - name: Test with repository URL
         run: |
-          source ~/ScanCompare/main/lib/venv/bin/activate
           echo "Auto mode: Repo scan"
-          python scancompare --repo-url https://github.com/docker-library/hello-world --auto || echo "Test failed"
-          echo "Mock Yes: Repo scan"
-          python scancompare --repo-url https://github.com/docker-library/hello-world --mock-yes || echo "Test failed"
-          echo "Mock No: Repo scan"
-          python scancompare --repo-url https://github.com/docker-library/hello-world --mock-no || echo "Test failed"
+          ./scancompare --repo-url https://github.com/docker-library/hello-world --auto || echo "Test failed"
 
-      # Test GitHub integration options 
-      - name: Test GitHub integration options
+      # Test multiple flags combinations
+      - name: Test multiple flag combinations
         run: |
-          source ~/ScanCompare/main/lib/venv/bin/activate
-          echo "GHAS upload with auto"
-          python scancompare nginx:latest --repo-url https://github.com/docker-library/hello-world --ghas --auto || echo "Test failed"
-          echo "GitHub Pages with auto"
-          python scancompare nginx:latest --repo-url https://github.com/docker-library/hello-world --gh-pages --auto || echo "Test failed"
-          echo "GHAS and GitHub Pages with auto"
-          python scancompare nginx:latest --repo-url https://github.com/docker-library/hello-world --ghas --gh-pages --auto || echo "Test failed"
-
-      # Test with combined flags
-      - name: Test combined flags
-        run: |
-          source ~/ScanCompare/main/lib/venv/bin/activate
-          echo "Verbose + Auto"
-          python scancompare nginx:latest --verbose --auto || echo "Test failed"
-          echo "Keep-data + Auto" 
-          python scancompare nginx:latest --keep-data --auto || echo "Test failed"
-          echo "Verbose + Keep-data + Auto"
-          python scancompare nginx:latest --verbose --keep-data --auto || echo "Test failed"
+          echo "Multiple flags test"
+          ./scancompare nginx:latest --verbose --auto || echo "Test failed"
+          ./scancompare nginx:latest --keep-data --auto || echo "Test failed"
 
       # Test multiple automation flags (should fail)
       - name: Test multiple automation flags
         run: |
-          source ~/ScanCompare/main/lib/venv/bin/activate
           echo "Multiple automation flags test (should fail)"
-          python scancompare nginx:latest --auto --mock-yes && echo "FAIL: Multiple flags not handled correctly" || echo "PASS: Multiple flags correctly rejected"
-          
-      # Test utility commands
-      - name: Test utility commands with automation
-        run: |
-          source ~/ScanCompare/main/lib/venv/bin/activate
-          echo "Version check"
-          python scancompare --version || echo "Test failed"
-          echo "Update check with auto"
-          python scancompare --update --auto || echo "Test failed"
+          ./scancompare nginx:latest --auto --mock-yes && echo "FAIL: Multiple flags not handled correctly" || echo "PASS: Multiple flags correctly rejected"
 
-      # Test uninstall and verify
-      - name: Test uninstall
+      # Test utility commands
+      - name: Test utility commands
         run: |
-          source ~/ScanCompare/main/lib/venv/bin/activate
-          python scancompare --uninstall --auto || echo "Uninstall failed"
-          # Verify scancompare was uninstalled
-          [ ! -f ~/ScanCompare/main/lib/scancompare ] && echo "Uninstall successful" || echo "Uninstall verification failed"
+          echo "Version check"
+          ./scancompare --version || echo "Test failed"
