@@ -44,15 +44,14 @@ function Add-ToShellProfile {
     param($PathToAdd)
     $profiles = @("$HOME/.bashrc", "$HOME/.zshrc", "$HOME/.profile", "$HOME/.config/fish/config.fish")
     foreach ($profile in $profiles) {
+        $line = 'export PATH="' + $PathToAdd + ':$PATH"'
         if (Test-Path $profile) {
             $content = Get-Content $profile
-            if ($content -notcontains "export PATH=\"$PathToAdd:`$PATH\"") {
-                $line = 'export PATH="' + $PathToAdd + ':$PATH"'
+            if ($content -notcontains $line) {
                 Add-Content $profile $line
             }
         } else {
             New-Item -ItemType File -Path $profile -Force | Out-Null
-            $line = 'export PATH="' + $PathToAdd + ':$PATH"'
             Add-Content $profile $line
         }
     }
