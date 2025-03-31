@@ -1,28 +1,39 @@
 # 🔍 Scan Compare
 Scan Compare is a cross-platform CLI tool for scanning Docker images with both Grype and Trivy, comparing results, and grouping CVEs by severity. It supports building and testing Docker images from GitHub repos, uploading results to GitHub Advanced Security (GHAS), publishing GitHub Pages reports, and generating shareable HTML/PDF summaries.
 
-Designed for macOS, Linux, and Windows (via WSL or Git Bash), it runs securely and independently with automatic tool installation and built-in self-updating.
+Designed for macOS, Linux, and Windows (via WSL, Git Bash, or native PowerShell), it runs securely and independently with automatic tool installation and built-in self-updating.
+
+🔗 [Grype](https://github.com/anchore/grype) • [Trivy](https://github.com/aquasecurity/trivy)
 
 ---
 
 ## ✅ Supported Platforms
  - macOS (Intel & Apple Silicon)
  - Linux (Debian/Ubuntu, Fedora, Arch, etc.)
- - Windows (via WSL2 or Git Bash)
+ - Windows (via WSL2, Git Bash, or native PowerShell)
 
 ---
 
 ## 🚀 Installation (One-Liner)
+
+### macOS / Linux / WSL:
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh)
 ```
-This will install scancompare into ~/.local/bin with no sudo needed and update the user's PATH if necessary.
-All contents of the installation will live under ~/ScanCompare
+This will install scancompare into `~/.local/bin` with no sudo needed and update the user's PATH if necessary.
+All contents of the installation will live under `~/ScanCompare`.
+
+### Windows (Native PowerShell):
+```powershell
+irm https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.ps1 | iex
+```
+This installs scancompare into `C:\Users\<you>\ScanCompare` and sets up a PowerShell-compatible CLI wrapper.
 
 ---
 
 ## 🧹 Uninstall
-You can uninstall scancompare at any time using:
+
+### macOS / Linux / WSL:
 ```bash
 scancompare --uninstall
 ```
@@ -30,7 +41,13 @@ Or via the install script:
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh) --uninstall
 ```
-This will remove all contents and settings created during the installation of scancompare
+
+### Windows (PowerShell):
+```powershell
+irm https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.ps1 | iex; & "$env:USERPROFILE\ScanCompare\install.ps1" --uninstall
+```
+
+This will remove all contents and settings created during the installation of scancompare.
 
 ---
 
