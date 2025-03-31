@@ -42,7 +42,8 @@ function Install-ToolWithFallback {
 
 function Add-ToShellProfile {
     param($PathToAdd)
-    $profiles = @("$HOME/.bashrc", "$HOME/.zshrc", "$HOME/.profile", "$HOME/.config/fish/config.fish")
+    $home = [Environment]::GetFolderPath("UserProfile")
+    $profiles = @("$home/.bashrc", "$home/.zshrc", "$home/.profile", "$home/.config/fish/config.fish")
     foreach ($profile in $profiles) {
         $line = 'export PATH="' + $PathToAdd + ':$PATH"'
         if (Test-Path $profile) {
