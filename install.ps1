@@ -91,31 +91,19 @@ if "%1"=="--uninstall" (
     Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding ASCII
 }
 
-function Create-MacWrapperScript {
-    param($InstallDir)
+#!/usr/bin/env python3
+import os
+import subprocess
+import sys
 
-    $wrapperPath = "$InstallDir/scancompare"
+if len(sys.argv) > 1 and sys.argv[1] == "--uninstall":
+    uninstall_script = os.path.join(os.environ.get("HOME", ""), "ScanCompare", "install.ps1")
+    subprocess.run(["pwsh", "-Command", uninstall_script, "--uninstall"])
+    sys.exit(0)
 
-    $python = "$InstallDir/venv/bin/python3"
-
-    $script = @"
-with open('$wrapperPath', 'w') as f:
-    f.write('#!/bin/bash\n')
-    f.write('if [ "\$1" = "--uninstall" ]; then\n')
-    f.write('  pwsh -Command ''\$script = "\$HOME/ScanCompare/install.ps1"; & \$script --uninstall''\n')
-    f.write('  exit 0\n')
-    f.write('fi\n')
-    f.write('\$HOME/ScanCompare/venv/bin/python3 \$HOME/ScanCompare/scancompare "\$@"\n')
-"@
-
-    $tempScript = "$InstallDir/write_wrapper.py"
-    Set-Content -Path $tempScript -Value $script -Encoding UTF8
-
-    & $python $tempScript
-    Remove-Item $tempScript -Force
-
-    chmod +x $wrapperPath
-}
+venv_python = os.path.join(os.environ.get("HOME", ""), "ScanCompare", "venv", "bin", "python3")
+scancompare_script = os.path.join(os.environ.get("HOME", ""), "ScanCompare", "scancompare")
+subprocess.run([venv_python, scancompare_script] + sys.argv[1:])
 
 function Install-ScanCompare-Windows {
     $userProfile = [Environment]::GetFolderPath("UserProfile")
