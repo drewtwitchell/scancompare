@@ -63,7 +63,19 @@ function Add-ToShellProfile {
             $content = Get-Content $profile
             if ($content -notcontains $line) {
                 Add-Content $profile $line
-            }
+            
+    if ($PROFILE -and (Test-Path $PROFILE)) {
+        $psLine = 'if (!(($env:PATH).Split(":") -contains "$HOME/ScanCompare")) { $env:PATH += ":$HOME/ScanCompare" }'
+        $psContent = Get-Content $PROFILE
+        if ($psContent -notcontains $psLine) {
+            Add-Content $PROFILE $psLine
+        }
+    } elseif ($PROFILE) {
+        $psLine = 'if (!(($env:PATH).Split(":") -contains "$HOME/ScanCompare")) { $env:PATH += ":$HOME/ScanCompare" }'
+        New-Item -ItemType File -Path $PROFILE -Force | Out-Null
+        Add-Content $PROFILE $psLine
+    }
+}
         } else {
             New-Item -ItemType File -Path $profile -Force | Out-Null
             Add-Content $profile $line
@@ -102,6 +114,7 @@ if [ "$1" = "--uninstall" ]; then
     exit 0
 fi
 "$InstallDir/venv/bin/python3" "$InstallDir/scancompare" "$@"
+
 "@
     Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding UTF8
     chmod +x $wrapperPath
@@ -130,8 +143,8 @@ function Install-ScanCompare-Windows {
         python -m venv $venvDir
     }
 
-    & "$venvDir\Scripts\python.exe" -m pip install --upgrade pip
-    & "$venvDir\Scripts\pip.exe" install jinja2 requests
+    & "$venvDir\Scripts\python.exe" -m pip install --upgrade pip | Out-Null
+    & "$venvDir\Scripts\pip.exe" install jinja2 requests | Out-Null
 
     Invoke-WebRequest -Uri "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare" -OutFile "$InstallDir\scancompare"
     Invoke-WebRequest -Uri "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html" -OutFile "$InstallDir\scan_template.html"
@@ -169,8 +182,8 @@ function Install-ScanCompare-Mac {
         python3 -m venv $venvDir
     }
 
-    & "$venvDir/bin/python3" -m pip install --upgrade pip
-    & "$venvDir/bin/pip3" install jinja2 requests
+    & "$venvDir/bin/python3" -m pip install --upgrade pip | Out-Null
+    & "$venvDir/bin/pip3" install jinja2 requests | Out-Null
 
     Invoke-WebRequest -Uri "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare" -OutFile "$InstallDir/scancompare"
     Invoke-WebRequest -Uri "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html" -OutFile "$InstallDir/scan_template.html"
