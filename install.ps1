@@ -93,23 +93,27 @@ if "%1"=="--uninstall" (
 
 function Create-MacWrapperScript {
     param($InstallDir)
+
     $wrapperPath = "$InstallDir/scancompare"
 
-    # Clean paths for Bash
-    $pythonPath = "$InstallDir/venv/bin/python3" -replace '\\', '/'
-    $scriptPath = "$InstallDir/scancompare" -replace '\\', '/'
+    $python = "$InstallDir/venv/bin/python3"
 
-    # Use a here-string to avoid escaping madness
-    $wrapperContent = @"
-#!/bin/bash
-if [ "\$1" = "--uninstall" ]; then
-    pwsh -Command '$script = "\$HOME/ScanCompare/install.ps1"; & \$script --uninstall'
-    exit 0
-fi
-"$pythonPath" "$scriptPath" "\$@"
+    $script = @"
+with open('$wrapperPath', 'w') as f:
+    f.write('#!/bin/bash\n')
+    f.write('if [ "\$1" = "--uninstall" ]; then\n')
+    f.write('  pwsh -Command ''\$script = "\$HOME/ScanCompare/install.ps1"; & \$script --uninstall''\n')
+    f.write('  exit 0\n')
+    f.write('fi\n')
+    f.write('\$HOME/ScanCompare/venv/bin/python3 \$HOME/ScanCompare/scancompare "\$@"\n')
 "@
 
-    Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding UTF8
+    $tempScript = "$InstallDir/write_wrapper.py"
+    Set-Content -Path $tempScript -Value $script -Encoding UTF8
+
+    & $python $tempScript
+    Remove-Item $tempScript -Force
+
     chmod +x $wrapperPath
 }
 
