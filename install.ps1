@@ -1,22 +1,9 @@
-
 $ErrorActionPreference = "Stop"
 
 function Ensure-Directory {
     param ($Path)
     if (-Not (Test-Path $Path)) {
         New-Item -ItemType Directory -Path $Path | Out-Null
-    }
-
-    if ($PROFILE -and (Test-Path $PROFILE)) {
-        $psLine = 'if (!(($env:PATH).Split(":") -contains "$HOME/ScanCompare")) { $env:PATH += ":$HOME/ScanCompare" }'
-        $psContent = Get-Content $PROFILE
-        if ($psContent -notcontains $psLine) {
-            Add-Content $PROFILE $psLine
-        }
-    } elseif ($PROFILE) {
-        $psLine = 'if (!(($env:PATH).Split(":") -contains "$HOME/ScanCompare")) { $env:PATH += ":$HOME/ScanCompare" }'
-        New-Item -ItemType File -Path $PROFILE -Force | Out-Null
-        Add-Content $PROFILE $psLine
     }
 }
 
@@ -63,7 +50,13 @@ function Add-ToShellProfile {
             $content = Get-Content $profile
             if ($content -notcontains $line) {
                 Add-Content $profile $line
-            
+            }
+        } else {
+            New-Item -ItemType File -Path $profile -Force | Out-Null
+            Add-Content $profile $line
+        }
+    }
+
     if ($PROFILE -and (Test-Path $PROFILE)) {
         $psLine = 'if (!(($env:PATH).Split(":") -contains "$HOME/ScanCompare")) { $env:PATH += ":$HOME/ScanCompare" }'
         $psContent = Get-Content $PROFILE
@@ -74,12 +67,6 @@ function Add-ToShellProfile {
         $psLine = 'if (!(($env:PATH).Split(":") -contains "$HOME/ScanCompare")) { $env:PATH += ":$HOME/ScanCompare" }'
         New-Item -ItemType File -Path $PROFILE -Force | Out-Null
         Add-Content $PROFILE $psLine
-    }
-}
-        } else {
-            New-Item -ItemType File -Path $profile -Force | Out-Null
-            Add-Content $profile $line
-        }
     }
 }
 
@@ -96,7 +83,7 @@ function Create-WindowsWrapperScript {
     $wrapperContent = @"
 @echo off
 if "%1"=="--uninstall" (
-    powershell -ExecutionPolicy Bypass -Command "$script = if ($IsWindows) { \"$env:USERPROFILE\\ScanCompare\\install.ps1\" } else { \"$HOME/ScanCompare/install.ps1\" }; & $script --uninstall"
+    powershell -ExecutionPolicy Bypass -Command "$script = \"$env:USERPROFILE\ScanCompare\install.ps1\"; & $script --uninstall"
     exit /b
 )
 "%~dp0\venv\Scripts\python.exe" "%~dp0\scancompare" %*
@@ -109,19 +96,14 @@ function Create-MacWrapperScript {
     $wrapperPath = "$InstallDir/scancompare"
     $wrapperContent = @"
 #!/bin/bash
-if [ "$1" = "--uninstall" ]; then
-    pwsh -Command '$script = if ($IsWindows) { "$env:USERPROFILE/ScanCompare/install.ps1" } else { "$HOME/ScanCompare/install.ps1" }; & $script --uninstall'
+if [ "\$1" = "--uninstall" ]; then
+    pwsh -Command '
+        $script = "$HOME/ScanCompare/install.ps1"
+        & $script --uninstall
+    '
     exit 0
 fi
-"$InstallDir/venv/bin/python3" "$InstallDir/scancompare" "$@"
-"@
-    Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding UTF8
-    & chmod +x $wrapperPath
-} else { "$HOME/ScanCompare/install.ps1" }; & $script --uninstall'
-    exit 0
-fi
-"$InstallDir/venv/bin/python3" "$InstallDir/scancompare" "$@"
-
+"$InstallDir/venv/bin/python3" "$InstallDir/scancompare" "\$@"
 "@
     Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding UTF8
     chmod +x $wrapperPath
@@ -158,6 +140,7 @@ function Install-ScanCompare-Windows {
     Invoke-WebRequest -Uri "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.ps1" -OutFile "$InstallDir\install.ps1"
 
     Create-WindowsWrapperScript -InstallDir $InstallDir
+    Add-ToShellProfile $InstallDir
 
     Write-Host "✅ ScanCompare installed successfully!"
     Write-Host "💡 You can run it via: $InstallDir\scancompare.bat"
