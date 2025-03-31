@@ -1,3 +1,4 @@
+
 $ErrorActionPreference = "Stop"
 
 function Ensure-Directory {
@@ -88,14 +89,14 @@ if [ "$1" = "--uninstall" ]; then
     pwsh "$InstallDir/install.ps1" --uninstall
     exit 0
 fi
-\"$InstallDir/venv/bin/python3\" \"$InstallDir/scancompare\" \"$@\"
+"$InstallDir/venv/bin/python3" "$InstallDir/scancompare" "$@"
 "@
     Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding UTF8
     chmod +x $wrapperPath
 }
 
 function Install-ScanCompare-Windows {
-    $home = $env:USERPROFILE
+    $home = [Environment]::GetFolderPath("UserProfile")
     $global:InstallDir = "$home\ScanCompare"
     $venvDir = "$InstallDir\venv"
 
@@ -131,7 +132,7 @@ function Install-ScanCompare-Windows {
 }
 
 function Install-ScanCompare-Mac {
-    $home = $env:HOME
+    $home = [Environment]::GetFolderPath("UserProfile")
     $global:InstallDir = "$home/ScanCompare"
     $venvDir = "$InstallDir/venv"
 
@@ -171,11 +172,18 @@ function Install-ScanCompare-Mac {
 }
 
 function Uninstall-ScanCompare {
-    $home = ($env:USERPROFILE, $env:HOME)[[System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows) ? 0 : 1]
+    if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
+        $home = $env:USERPROFILE
+    } else {
+        $home = $env:HOME
+    }
+
     $installDir = "$home/ScanCompare"
     Remove-FromUserPath $installDir
 
-    if (Test-Path $installDir) { Remove-Item $installDir -Recurse -Force }
+    if (Test-Path $installDir) {
+        Remove-Item $installDir -Recurse -Force
+    }
 
     Write-Host "🧹 ScanCompare uninstalled successfully."
 }
