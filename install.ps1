@@ -91,19 +91,17 @@ if "%1"=="--uninstall" (
     Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding ASCII
 }
 
-#!/usr/bin/env python3
-import os
-import subprocess
-import sys
-
-if len(sys.argv) > 1 and sys.argv[1] == "--uninstall":
-    uninstall_script = os.path.join(os.environ.get("HOME", ""), "ScanCompare", "install.ps1")
-    subprocess.run(["pwsh", "-Command", uninstall_script, "--uninstall"])
-    sys.exit(0)
-
-venv_python = os.path.join(os.environ.get("HOME", ""), "ScanCompare", "venv", "bin", "python3")
-scancompare_script = os.path.join(os.environ.get("HOME", ""), "ScanCompare", "scancompare")
-subprocess.run([venv_python, scancompare_script] + sys.argv[1:])
+function Create-MacShim {
+    param($InstallDir)
+    $shimPath = "$InstallDir/scancompare"
+    $shimContent = @"
+#!/usr/bin/env bash
+source "$InstallDir/venv/bin/activate"
+python "$InstallDir/scancompare" "\$@"
+"@
+    Set-Content -Path $shimPath -Value $shimContent -Encoding UTF8
+    chmod +x $shimPath
+}
 
 function Install-ScanCompare-Windows {
     $userProfile = [Environment]::GetFolderPath("UserProfile")
@@ -143,43 +141,9 @@ function Install-ScanCompare-Windows {
 }
 
 function Install-ScanCompare-Mac {
-    $userProfile = [Environment]::GetFolderPath("UserProfile")
-    $global:InstallDir = "$userProfile/ScanCompare"
-    $venvDir = "$InstallDir/venv"
-
-    Write-Host "Installing ScanCompare to $InstallDir"
-    Ensure-Directory $InstallDir
-    Ensure-Directory "$InstallDir/scan_reports"
-    Ensure-Directory "$InstallDir/temp"
-    Ensure-Directory "$InstallDir/backups"
-
-    if (-not (Get-Command brew -ErrorAction SilentlyContinue)) {
-        Write-Host "🔍 Installing Homebrew..."
-        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    }
-
-    Install-ToolWithFallback -Name "python3" -ChocoName "" -WingetId "" -ManualUrl "" -ManualExe ""
-    Install-ToolWithFallback -Name "gh" -ChocoName "" -WingetId "" -ManualUrl "" -ManualExe ""
-    Install-ToolWithFallback -Name "trivy" -ChocoName "" -WingetId "" -ManualUrl "" -ManualExe ""
-    Install-ToolWithFallback -Name "grype" -ChocoName "" -WingetId "" -ManualUrl "" -ManualExe ""
-    Install-ToolWithFallback -Name "docker" -ChocoName "" -WingetId "" -ManualUrl "" -ManualExe ""
-
-    if (-not (Test-Path $venvDir)) {
-        python3 -m venv $venvDir
-    }
-
-    & "$venvDir/bin/python3" -m pip install --upgrade pip | Out-Null
-    & "$venvDir/bin/pip3" install jinja2 requests | Out-Null
-
-    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare" -OutFile "$InstallDir/scancompare"
-    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html" -OutFile "$InstallDir/scan_template.html"
-    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.ps1" -OutFile "$InstallDir/install.ps1"
-
-    Create-MacWrapperScript -InstallDir $InstallDir
-    Add-ToShellProfile $InstallDir
-
-    Write-Host "✅ ScanCompare installed successfully!"
-    Write-Host "💡 You can run it via: $InstallDir/scancompare"
+    $bashInstaller = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh"
+    Write-Host "🖥️  macOS detected — redirecting to bash installer..."
+    & bash -c "curl -fsSL '$bashInstaller' | bash"
 }
 
 function Uninstall-ScanCompare {
