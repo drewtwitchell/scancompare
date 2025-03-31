@@ -6,6 +6,18 @@ function Ensure-Directory {
     if (-Not (Test-Path $Path)) {
         New-Item -ItemType Directory -Path $Path | Out-Null
     }
+
+    if ($PROFILE -and (Test-Path $PROFILE)) {
+        $psLine = 'if (!(($env:PATH).Split(":") -contains "$HOME/ScanCompare")) { $env:PATH += ":$HOME/ScanCompare" }'
+        $psContent = Get-Content $PROFILE
+        if ($psContent -notcontains $psLine) {
+            Add-Content $PROFILE $psLine
+        }
+    } elseif ($PROFILE) {
+        $psLine = 'if (!(($env:PATH).Split(":") -contains "$HOME/ScanCompare")) { $env:PATH += ":$HOME/ScanCompare" }'
+        New-Item -ItemType File -Path $PROFILE -Force | Out-Null
+        Add-Content $PROFILE $psLine
+    }
 }
 
 function Install-ChocoIfMissing {
@@ -72,10 +84,10 @@ function Create-WindowsWrapperScript {
     $wrapperContent = @"
 @echo off
 if "%1"=="--uninstall" (
-    powershell -ExecutionPolicy Bypass -File "%~dp0install.ps1" --uninstall
+    powershell -ExecutionPolicy Bypass -Command "$script = if ($IsWindows) { \"$env:USERPROFILE\\ScanCompare\\install.ps1\" } else { \"$HOME/ScanCompare/install.ps1\" }; & $script --uninstall"
     exit /b
 )
-""%~dp0\venv\Scripts\python.exe"" ""%~dp0\scancompare"" %*
+"%~dp0\venv\Scripts\python.exe" "%~dp0\scancompare" %*
 "@
     Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding ASCII
 }
@@ -86,7 +98,7 @@ function Create-MacWrapperScript {
     $wrapperContent = @"
 #!/bin/bash
 if [ "$1" = "--uninstall" ]; then
-    pwsh "$InstallDir/install.ps1" --uninstall
+    pwsh -Command '$script = if ($IsWindows) { "$env:USERPROFILE/ScanCompare/install.ps1" } else { "$HOME/ScanCompare/install.ps1" }; & $script --uninstall'
     exit 0
 fi
 "$InstallDir/venv/bin/python3" "$InstallDir/scancompare" "$@"
@@ -136,7 +148,7 @@ function Install-ScanCompare-Mac {
     $global:InstallDir = "$userProfile/ScanCompare"
     $venvDir = "$InstallDir/venv"
 
-    Write-Host "🍎 Installing ScanCompare to $InstallDir"
+    Write-Host "Installing ScanCompare to $InstallDir"
     Ensure-Directory $InstallDir
     Ensure-Directory "$InstallDir/scan_reports"
     Ensure-Directory "$InstallDir/temp"
