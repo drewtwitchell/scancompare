@@ -47,11 +47,13 @@ function Add-ToShellProfile {
         if (Test-Path $profile) {
             $content = Get-Content $profile
             if ($content -notcontains "export PATH=\"$PathToAdd:`$PATH\"") {
-                Add-Content $profile "export PATH=\"$PathToAdd:`$PATH\""
+                $line = 'export PATH="' + $PathToAdd + ':$PATH"'
+                Add-Content $profile $line
             }
         } else {
             New-Item -ItemType File -Path $profile -Force | Out-Null
-            Add-Content $profile "export PATH=\"$PathToAdd:`$PATH\""
+            $line = 'export PATH="' + $PathToAdd + ':$PATH"'
+            Add-Content $profile $line
         }
     }
 }
