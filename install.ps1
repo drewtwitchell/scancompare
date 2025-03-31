@@ -45,7 +45,7 @@ function Add-ToShellProfile {
     $userProfile = [Environment]::GetFolderPath("UserProfile")
     $profiles = @("$userProfile/.bashrc", "$userProfile/.zshrc", "$userProfile/.profile", "$userProfile/.config/fish/config.fish")
     foreach ($profile in $profiles) {
-        $line = 'export PATH="' + $PathToAdd + ':$PATH"'
+        $line = 'export PATH="' + $PathToAdd + ':${PATH}"'
         if (Test-Path $profile) {
             $content = Get-Content $profile
             if ($content -notcontains $line) {
@@ -58,13 +58,13 @@ function Add-ToShellProfile {
     }
 
     if ($PROFILE -and (Test-Path $PROFILE)) {
-        $psLine = 'if (!(($env:PATH).Split(":") -contains "$HOME/ScanCompare")) { $env:PATH += ":$HOME/ScanCompare" }'
+        $psLine = 'if (!((\$env:PATH).Split(\":\") -contains "$HOME/ScanCompare")) { \$env:PATH += ":$HOME/ScanCompare" }'
         $psContent = Get-Content $PROFILE
         if ($psContent -notcontains $psLine) {
             Add-Content $PROFILE $psLine
         }
     } elseif ($PROFILE) {
-        $psLine = 'if (!(($env:PATH).Split(":") -contains "$HOME/ScanCompare")) { $env:PATH += ":$HOME/ScanCompare" }'
+        $psLine = 'if (!((\$env:PATH).Split(\":\") -contains "$HOME/ScanCompare")) { \$env:PATH += ":$HOME/ScanCompare" }'
         New-Item -ItemType File -Path $PROFILE -Force | Out-Null
         Add-Content $PROFILE $psLine
     }
@@ -83,7 +83,7 @@ function Create-WindowsWrapperScript {
     $wrapperContent = @"
 @echo off
 if "%1"=="--uninstall" (
-    powershell -ExecutionPolicy Bypass -Command "$script = \"$env:USERPROFILE\ScanCompare\install.ps1\"; & $script --uninstall"
+    powershell -ExecutionPolicy Bypass -Command "$script = \"$env:USERPROFILE\ScanCompare\install.ps1\"; & \$script --uninstall"
     exit /b
 )
 "%~dp0\venv\Scripts\python.exe" "%~dp0\scancompare" %*
@@ -139,16 +139,10 @@ function Uninstall-ScanCompare {
     Remove-FromUserPath $installDir
 
     if (Test-Path $installDir) {
-        Write-Host "🧹 Removing $installDir..."
-        try {
-            Remove-Item -Path $installDir -Recurse -Force
-            Write-Host "✅ scancompare fully uninstalled."
-        } catch {
-            Write-Host "❌ Failed to remove $installDir: $_"
-        }
-    } else {
-        Write-Host "ℹ️  scancompare not found."
+        Remove-Item $installDir -Recurse -Force
     }
+
+    Write-Host "🧹 ScanCompare uninstalled successfully."
 }
 
 # Entry Point
