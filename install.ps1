@@ -147,10 +147,17 @@ function Uninstall-ScanCompare {
 
 # Entry Point
 $isMac = (uname 2>$null) -eq "Darwin"
+
 if ($args.Count -gt 0 -and $args[0] -eq "--uninstall") {
     Uninstall-ScanCompare
 } elseif ($isMac) {
-    Write-Host "This script is for Windows only. Please run install.sh on macOS."
+    Write-Host "🖥️  macOS detected — downloading and running install.sh..."
+    $bashScriptUrl = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh"
+    $tempScriptPath = "$HOME/scancompare_temp_install.sh"
+    Invoke-WebRequest -Uri $bashScriptUrl -OutFile $tempScriptPath
+    chmod +x $tempScriptPath
+    bash $tempScriptPath
+    Remove-Item $tempScriptPath -Force
 } else {
     Install-ScanCompare-Windows
 }
