@@ -133,21 +133,22 @@ function Uninstall-ScanCompare {
         $userProfile = $env:USERPROFILE
     } else {
         $userProfile = [Environment]::GetFolderPath("UserProfile")
-        $uninstallScript = "$userProfile/ScanCompare/install.sh"
-        if (Test-Path $uninstallScript) {
-            bash $uninstallScript --uninstall
-            return
-        }
     }
 
     $installDir = "$userProfile/ScanCompare"
     Remove-FromUserPath $installDir
 
     if (Test-Path $installDir) {
-        Remove-Item $installDir -Recurse -Force
+        Write-Host "🧹 Removing $installDir..."
+        try {
+            Remove-Item -Path $installDir -Recurse -Force
+            Write-Host "✅ scancompare fully uninstalled."
+        } catch {
+            Write-Host "❌ Failed to remove $installDir: $_"
+        }
+    } else {
+        Write-Host "ℹ️  scancompare not found."
     }
-
-    Write-Host "🧹 ScanCompare uninstalled successfully."
 }
 
 # Entry Point
@@ -155,8 +156,7 @@ $isMac = (uname 2>$null) -eq "Darwin"
 if ($args.Count -gt 0 -and $args[0] -eq "--uninstall") {
     Uninstall-ScanCompare
 } elseif ($isMac) {
-    Write-Host "⏩ Detected macOS — switching to bash installer."
-    bash -c "curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh | bash"
+    Write-Host "This script is for Windows only. Please run install.sh on macOS."
 } else {
     Install-ScanCompare-Windows
 }
