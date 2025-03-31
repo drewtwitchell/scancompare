@@ -43,8 +43,8 @@ function Install-ToolWithFallback {
 
 function Add-ToShellProfile {
     param($PathToAdd)
-    $home = [Environment]::GetFolderPath("UserProfile")
-    $profiles = @("$home/.bashrc", "$home/.zshrc", "$home/.profile", "$home/.config/fish/config.fish")
+    $userProfile = [Environment]::GetFolderPath("UserProfile")
+    $profiles = @("$userProfile/.bashrc", "$userProfile/.zshrc", "$userProfile/.profile", "$userProfile/.config/fish/config.fish")
     foreach ($profile in $profiles) {
         $line = 'export PATH="' + $PathToAdd + ':$PATH"'
         if (Test-Path $profile) {
@@ -96,8 +96,8 @@ fi
 }
 
 function Install-ScanCompare-Windows {
-    $home = [Environment]::GetFolderPath("UserProfile")
-    $global:InstallDir = "$home\ScanCompare"
+    $userProfile = [Environment]::GetFolderPath("UserProfile")
+    $global:InstallDir = "$userProfile\ScanCompare"
     $venvDir = "$InstallDir\venv"
 
     Write-Host "📦 Installing ScanCompare to $InstallDir"
@@ -132,8 +132,8 @@ function Install-ScanCompare-Windows {
 }
 
 function Install-ScanCompare-Mac {
-    $home = [Environment]::GetFolderPath("UserProfile")
-    $global:InstallDir = "$home/ScanCompare"
+    $userProfile = [Environment]::GetFolderPath("UserProfile")
+    $global:InstallDir = "$userProfile/ScanCompare"
     $venvDir = "$InstallDir/venv"
 
     Write-Host "🍎 Installing ScanCompare to $InstallDir"
@@ -173,12 +173,12 @@ function Install-ScanCompare-Mac {
 
 function Uninstall-ScanCompare {
     if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
-        $home = $env:USERPROFILE
+        $userProfile = $env:USERPROFILE
     } else {
-        $home = [Environment]::GetFolderPath("UserProfile")
+        $userProfile = [Environment]::GetFolderPath("UserProfile")
     }
 
-    $installDir = "$home/ScanCompare"
+    $installDir = "$userProfile/ScanCompare"
     Remove-FromUserPath $installDir
 
     if (Test-Path $installDir) {
