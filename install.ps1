@@ -91,18 +91,6 @@ if "%1"=="--uninstall" (
     Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding ASCII
 }
 
-function Create-MacShim {
-    param($InstallDir)
-    $shimPath = "$InstallDir/scancompare"
-    $shimContent = @"
-#!/usr/bin/env bash
-source "$InstallDir/venv/bin/activate"
-python "$InstallDir/scancompare" "\$@"
-"@
-    Set-Content -Path $shimPath -Value $shimContent -Encoding UTF8
-    chmod +x $shimPath
-}
-
 function Install-ScanCompare-Windows {
     $userProfile = [Environment]::GetFolderPath("UserProfile")
     $global:InstallDir = "$userProfile\ScanCompare"
@@ -127,7 +115,7 @@ function Install-ScanCompare-Windows {
     }
 
     & "$venvDir\Scripts\python.exe" -m pip install --upgrade pip | Out-Null
-    & "$venvDir\Scripts\pip.exe" install jinja2 requests | Out-Null
+    & "$venvDir\Scripts\pip.exe" install jinja2 requests 'urllib3<2' | Out-Null
 
     Invoke-WebRequest -Uri "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scancompare" -OutFile "$InstallDir\scancompare"
     Invoke-WebRequest -Uri "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/scan_template.html" -OutFile "$InstallDir\scan_template.html"
@@ -140,17 +128,16 @@ function Install-ScanCompare-Windows {
     Write-Host "💡 You can run it via: $InstallDir\scancompare.bat"
 }
 
-function Install-ScanCompare-Mac {
-    $bashInstaller = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh"
-    Write-Host "🖥️  macOS detected — redirecting to bash installer..."
-    & bash -c "curl -fsSL '$bashInstaller' | bash"
-}
-
 function Uninstall-ScanCompare {
     if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
         $userProfile = $env:USERPROFILE
     } else {
         $userProfile = [Environment]::GetFolderPath("UserProfile")
+        $uninstallScript = "$userProfile/ScanCompare/install.sh"
+        if (Test-Path $uninstallScript) {
+            bash $uninstallScript --uninstall
+            return
+        }
     }
 
     $installDir = "$userProfile/ScanCompare"
@@ -168,7 +155,8 @@ $isMac = (uname 2>$null) -eq "Darwin"
 if ($args.Count -gt 0 -and $args[0] -eq "--uninstall") {
     Uninstall-ScanCompare
 } elseif ($isMac) {
-    Install-ScanCompare-Mac
+    Write-Host "⏩ Detected macOS — switching to bash installer."
+    bash -c "curl -fsSL https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh | bash"
 } else {
     Install-ScanCompare-Windows
 }
