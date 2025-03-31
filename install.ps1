@@ -114,6 +114,13 @@ if [ "$1" = "--uninstall" ]; then
     exit 0
 fi
 "$InstallDir/venv/bin/python3" "$InstallDir/scancompare" "$@"
+"@
+    Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding UTF8
+    & chmod +x $wrapperPath
+} else { "$HOME/ScanCompare/install.ps1" }; & $script --uninstall'
+    exit 0
+fi
+"$InstallDir/venv/bin/python3" "$InstallDir/scancompare" "$@"
 
 "@
     Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding UTF8
