@@ -58,13 +58,13 @@ function Add-ToShellProfile {
     }
 
     if ($PROFILE -and (Test-Path $PROFILE)) {
-        $psLine = 'if (!((($env:PATH).Split(":")) -contains "$HOME/ScanCompare")) { $env:PATH += ":$HOME/ScanCompare" }'
+        $psLine = 'if (!(($env:PATH).Split(":") -contains "$HOME/ScanCompare")) { $env:PATH += ":$HOME/ScanCompare" }'
         $psContent = Get-Content $PROFILE
         if ($psContent -notcontains $psLine) {
             Add-Content $PROFILE $psLine
         }
     } elseif ($PROFILE) {
-        $psLine = 'if (!((($env:PATH).Split(":")) -contains "$HOME/ScanCompare")) { $env:PATH += ":$HOME/ScanCompare" }'
+        $psLine = 'if (!(($env:PATH).Split(":") -contains "$HOME/ScanCompare")) { $env:PATH += ":$HOME/ScanCompare" }'
         New-Item -ItemType File -Path $PROFILE -Force | Out-Null
         Add-Content $PROFILE $psLine
     }
@@ -155,8 +155,7 @@ if ($args.Count -gt 0 -and $args[0] -eq "--uninstall") {
     $bashScriptUrl = "https://raw.githubusercontent.com/drewtwitchell/scancompare/main/install.sh"
     $tempScriptPath = "$HOME/scancompare_temp_install.sh"
     Invoke-WebRequest -Uri $bashScriptUrl -OutFile $tempScriptPath
-    chmod +x $tempScriptPath
-    bash $tempScriptPath
+    & /bin/bash $tempScriptPath
     Remove-Item $tempScriptPath -Force
 } else {
     Install-ScanCompare-Windows
