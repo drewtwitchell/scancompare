@@ -189,7 +189,7 @@ function Uninstall-ScanCompare {
 }
 
 # Entry Point
-$isMac = ($env:OS -eq $null -and $env:HOME -ne $null -and (uname) -eq "Darwin")
+$isMac = (uname 2>$null) -eq "Darwin"
 if ($args.Count -gt 0 -and $args[0] -eq "--uninstall") {
     Uninstall-ScanCompare
 } elseif ($isMac) {
