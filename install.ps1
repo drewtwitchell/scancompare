@@ -94,14 +94,14 @@ if "%1"=="--uninstall" (
 function Create-MacWrapperScript {
     param($InstallDir)
     $wrapperPath = "$InstallDir/scancompare"
-    $wrapperContent = @'
+    $wrapperContent = @"
 #!/bin/bash
-if [ "$1" = "--uninstall" ]; then
-    pwsh -Command "$script = \"$HOME/ScanCompare/install.ps1\"; & $script --uninstall"
+if [ "\$1" = "--uninstall" ]; then
+    pwsh -Command '$script = "\$HOME/ScanCompare/install.ps1"; & \$script --uninstall'
     exit 0
 fi
-"$HOME/ScanCompare/venv/bin/python3" "$HOME/ScanCompare/scancompare" "$@"
-'@
+"$InstallDir/venv/bin/python3" "$InstallDir/scancompare" "\$@"
+"@
     Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding UTF8
     chmod +x $wrapperPath
 }
