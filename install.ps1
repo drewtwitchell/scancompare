@@ -175,7 +175,7 @@ function Uninstall-ScanCompare {
     if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
         $home = $env:USERPROFILE
     } else {
-        $home = $env:HOME
+        $home = [Environment]::GetFolderPath("UserProfile")
     }
 
     $installDir = "$home/ScanCompare"
